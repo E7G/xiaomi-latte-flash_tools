@@ -1,0 +1,9 @@
+[Trigger]
+Operation = Upgrade
+Type = Package
+Target = linux-upstream
+[Action]
+Description = 签名内核
+When = PostTransaction 
+Exec = /usr/bin/sbsign --key /boot/EFI/MOK.key --cert /boot/EFI/MOK.crt --output /boot/vmlinuz-linux-upstream /boot/vmlinuz-linux-upstream
+Depends = sbsigntools

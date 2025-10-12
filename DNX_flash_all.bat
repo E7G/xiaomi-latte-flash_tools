@@ -19,7 +19,7 @@ if %debug% == 1  Pause
 
 fastboot flash gpt %~dp0images\gpt.bin
 fastboot flash boot  %~dp0images\xiaomi-latte-boot.img
-fastboot flash system  %~dp0images\xiaomi-latte-root.img
+fastboot flash system  %~dp0images\xiaomi-latte-rootfs.img
 if %debug% == 1  Pause
 
 fastboot reboot

@@ -1,7 +1,9 @@
 # how to use
+download [kernel file](https://github.com/Qs315490/linux_latte/releases/download/v1.1.3-alpha/linux-upstream-6.14.0-2-x86_64.pkg.tar.zst) to `./device_file/linux-upstream-6.14.0-2-x86_64.pkg.tar.zst`  
+check kernel has nbd.ko  
+install `qemu-utils` `arch-install-script` `btrfs-utils` package
 ```bash
-python3 gpt_ini2bin.py
-# put images in ./images
+bash build_rootfs.sh
 # windows users can use DNX_flash_all.bat
 # run this code to flash
 fastboot flash gpt images/gpt.bin
