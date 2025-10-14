@@ -17,9 +17,6 @@ fastboot getvar product 2>&1 | findstr /r /c:"^product: *latte" || exit /B 1
 fastboot oem unlock
 if %debug% == 1  Pause
 
-fastboot flash gpt %~dp0images\gpt.bin
-fastboot flash boot  %~dp0images\boot.img
-fastboot flash system  %~dp0images\system.img
 set "SIMG=%~dp0images\data.simg"
 set "IMG=%~dp0images\data.img"
 if exist "%SIMG%" (

@@ -17,7 +17,7 @@ fastboot getvar product 2>&1 | findstr /r /c:"^product: *latte" || exit /B 1
 fastboot oem unlock
 if %debug% == 1  Pause
 
-fastboot flash boot  %~dp0images\xiaomi-latte-boot.img
+fastboot flash boot  %~dp0images\boot.img
 if %debug% == 1  Pause
 
 fastboot reboot

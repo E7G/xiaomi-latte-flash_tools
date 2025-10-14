@@ -1,0 +1,43 @@
+diff --git a/init b/init.new
+old mode 100644
+new mode 100755
+index 93da8e5..1713976
+--- a/init
++++ b/init.new
+@@ -104,7 +104,7 @@ device_information()
+ 
+ 	echo ro.product.bliss.brand="$VENDOR" >> /tmp/device.prop
+ 	echo ro.product.bliss.manufacturer="$(cat $DMIPATH/board_vendor)" >> /tmp/device.prop
+-	echo ro.product.bliss.model="$BOARD" >> /tmp/device.prop
++	echo ro.product.bliss.model="$PRODUCT" >> /tmp/device.prop
+ 	echo ro.product.board="$BOARD" >> /tmp/device.prop
+ 	echo ro.bliss.serialnumber="$SERIALNO" >> /tmp/device.prop
+ 	mount --bind /tmp/device.prop system/vendor/etc/device.prop
+@@ -195,11 +195,15 @@ try_mount()
+ 				mount.ntfs-3g -o rw,force $@
+ 			fi
+ 			;;
+-		*TYPE=*)
+-			mount -o $RW,noatime $@
++		*TYPE=*erofs*)
++			mount -t erofs -o $RW,noatime $@
++			;;
++		*TYPE=*f2fs*)
++			mount -t f2fs -o $RW,noatime $@
+ 			;;
+ 		*)
+-			return 1
++			mount -o $RW,noatime $@
++			return $?
+ 			;;
+ 	esac
+ }
+@@ -314,7 +318,7 @@ echo ""
+ echo "If it took too long to detect, reboot and check your installation folder"
+ echo ""
+ 
+-[ -z "$SRC" -a -n "$BOOT_IMAGE" ] && SRC=`dirname $BOOT_IMAGE`
++# [ -z "$SRC" -a -n "$BOOT_IMAGE" ] && SRC=`dirname $BOOT_IMAGE`
+ 
+ for c in `cat /proc/cmdline`; do
+ 	case $c in
