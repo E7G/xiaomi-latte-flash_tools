@@ -12,6 +12,7 @@ modprobe nbd max_part=8
 boot_dev=/dev/nbd0
 rootfs_dev=/dev/nbd1
 mount_dir=./rootfs
+device_file=./device_files
 
 # 判断文件夹是否存在，不存在则创建
 if [ ! -d $mount_dir ]; then
@@ -196,14 +197,14 @@ snapshot
 alias run="arch-chroot $mount_dir"
 install_packages() {
 	# 安装基础包
-	pacstrap -C ./device_file/pacman.conf -c $mount_dir base iptables-nft ${firmware[@]} grub efibootmgr sbsigntools
+	pacstrap -C "${device_file}"/pacman.conf -c $mount_dir base iptables-nft ${firmware[@]} grub efibootmgr sbsigntools
 
 	echo Install linux-upstream-6.14.0-2-x86_64.pkg.tar.zst
-	pacstrap -C ./device_file/pacman.conf -U $mount_dir ./device_file/linux-upstream-6.14.0-2-x86_64.pkg.tar.zst
+	pacstrap -C "${device_file}"/pacman.conf -U $mount_dir "${device_file}"/linux-upstream-6.14.0-2-x86_64.pkg.tar.zst
 	run sh -c 'cp /usr/lib/modules/*/vmlinuz /boot/vmlinuz-linux-upstream'
 
 	declare -n desktop=$desktop_type
-	pacstrap -C ./device_file/pacman.conf -c $mount_dir ${packages[@]} ${desktop[@]} mkinitcpio
+	pacstrap -C "${device_file}"/pacman.conf -c $mount_dir ${packages[@]} ${desktop[@]} mkinitcpio
 
 	if ! grep -qs "archlinuxcn" $mount_dir/etc/pacman.conf;then
 		cat <<EOF >> $mount_dir/etc/pacman.conf
@@ -220,12 +221,12 @@ EOF
 
 config_packages() {
 	echo 复制 pacman 内核 hook
-	cp ./device_file/kernel.hook $mount_dir/etc/pacman.d/hooks/
+	cp "${device_file}"/kernel.hook $mount_dir/etc/pacman.d/hooks/
 	echo 复制 屏幕触控按键配置
-	cp ./device_file/61-keyboard.hwdb $mount_dir/usr/lib/udev/hwdb.d/
+	cp "${device_file}"/61-keyboard.hwdb $mount_dir/usr/lib/udev/hwdb.d/
 	run udevadm hwdb --update
 	echo 复制 蓝牙固件
-	cp ./device_file/BCM4356A2.hcd $mount_dir/usr/lib/firmware/brcm/
+	cp "${device_file}"/BCM4356A2.hcd $mount_dir/usr/lib/firmware/brcm/
 	echo 创建 alsa 配置文件
 	run sh -c 'echo "snd_soc_rt5659" >> /etc/modules-load.d/modules.conf'
 	run mkdir -p /usr/share/alsa/ucm2/conf.d/cht-bsw-rt5659
