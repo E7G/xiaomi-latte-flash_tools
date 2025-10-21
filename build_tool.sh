@@ -6,6 +6,7 @@ shopt -s expand_aliases
 BUILD_DIR='./build'
 OUTPUT_DIR='./images'
 CURRENT_DIR=$(pwd)
+DEVICE_FILE_DIR="$CURRENT_DIR/device_file"
 
 # blissos 官方镜像
 ISO_FILE=$(ls Bliss-v14.*-x86_64-OFFICIAL-*.iso | head -n 1)
@@ -45,7 +46,7 @@ unpack_initrd() {
 
 patch_initrd() {
     cd "$BUILD_DIR/initrd"
-    patch -p1 < "$CURRENT_DIR/device_file/initrd.patch"
+    patch -p1 < "${DEVICE_FILE_DIR}/initrd.patch"
     cd -
 }
 
@@ -143,15 +144,15 @@ copy_file_to_system() {
     echo "Copying kernel modules done."
 
     echo "Copying firmware..."
-    cp -rf "$CURRENT_DIR/device_file/BCM4356A2.hcd" "$system_mount_dir/system/vendor/firmware/brcm/"
-    cp -rf "$CURRENT_DIR/device_file/brcmfmac4356-pcie.Xiaomi Inc-Mipad2.txt" "$system_mount_dir/system/vendor/firmware/brcm/"
+    cp -rf "${DEVICE_FILE_DIR}/BCM4356A2.hcd" "$system_mount_dir/system/vendor/firmware/brcm/"
+    cp -rf "${DEVICE_FILE_DIR}/brcmfmac4356-pcie.Xiaomi Inc-Mipad2.txt" "$system_mount_dir/system/vendor/firmware/brcm/"
     echo "Copying firmware done."
 
     echo "Copying autio config ..."
     UCM_DIR="$system_mount_dir/system/usr/share/alsa/ucm2/conf.d"
     mkdir -p "$UCM_DIR"/cht-bsw-rt5659
-    cp -rf "$CURRENT_DIR/device_file/cht-bsw-rt5659.conf" "$UCM_DIR"/cht-bsw-rt5659/
-    cp -rf "$CURRENT_DIR/device_file/HiFi.conf" "$UCM_DIR"/cht-bsw-rt5659/
+    cp -rf "${DEVICE_FILE_DIR}/cht-bsw-rt5659.conf" "$UCM_DIR"/cht-bsw-rt5659/
+    cp -rf "${DEVICE_FILE_DIR}/HiFi.conf" "$UCM_DIR"/cht-bsw-rt5659/
     echo "Copying audio config done."
 
     echo "Config build.prop ..."
