@@ -7,7 +7,7 @@ cls
 
 set debug=0
 
-fastboot boot %~dp0loader.efi
+fastboot boot %~dp0device_files\fastboot.efi
 
 color 0A
 fastboot getvar product
