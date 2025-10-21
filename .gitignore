@@ -1,3 +1,6 @@
-EFI
-images
+EFI/
+tmp/
+images/*.img
+images/*.bin
 *.zip
+*.7z
