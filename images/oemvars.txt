@@ -1,0 +1,70 @@
+#
+# OEM Variables
+#
+# GMIN OEM variables are set by "fastboot oem setvar" or "fastboot
+# flash oemvars", and stored as EFI variables.  By default, they are
+# under the fastboot GUID of 1AC80A82-4F0C-456B-9A99-DEBEB431FCC1.
+#
+# The syntax supports "#-style" end of line comments
+#
+# Variable settings are specified as "<var> <val>".  Whitespace around
+# the variable name is removed, as is trailing whitespace at the end
+# of the line.  The value can otherwise contain any printable
+# character and is stored as an 8-bit string in the EFI variable's
+# value.  Non-printable bytes can be encoded with "%xx" URL-style
+# notation.
+#
+# A line of the form:
+#     GUID = xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
+# will change the GUID used for subsequent lines.
+#
+
+##########################
+# atomisp camera variables
+
+# Maximum timeout to check for magic key at boot; loader GUID
+MagicKeyTimeout     80
+
+GUID = ecb54cd9-e5ae-4fdc-a971-e877756068f7
+
+# CHT_RVP boards use this GPIO line to gate 1.8v camera power
+#gmin_V1P8GPIO  392
+#gmin_V2P8GPIO  274
+
+# S5K4H8 world-facing camera
+SS5K0008:00_CamId S5K4H8
+SS5K0008:00_CsiPort 1
+SS5K0008:00_CsiLanes 4
+SS5K0008:00_CamClk 0
+SS5K0008:00_ClkSrc 0
+
+# T4KA3 world-facing camera
+TOSH1490:00_CamId T4KA3
+TOSH1490:00_CsiPort 1
+TOSH1490:00_CsiLanes 4
+TOSH1490:00_CamClk 0
+TOSH1490:00_ClkSrc 0
+
+# OV5693 world-facing camera
+OVTI5693:00_CamId     ov5693
+OVTI5693:00_CsiPort   0
+OVTI5693:00_CsiLanes  2
+OVTI5693:00_CamClk    1
+OVTI5693:00_ClkSrc    0
+
+# OV2722 user-facing camera
+#INT33FB:00_CamId     ov2722
+#INT33FB:00_CsiPort   0
+#INT33FB:00_CsiLanes  1
+#INT33FB:00_CamClk    1
+#INT33FB:00_ClkSrc    0
+
+#IMX175 camera
+#INTCF1A:00_CamId     imx175
+#INTCF1A:00_ImxId     373
+#INTCF1A:00_CsiPort   1
+#INTCF1A:00_CsiLanes  4
+#INTCF1A:00_CamClk    0
+
+# PRAM (pstore ram)
+PRAM_Conf  1   # 4 MB
