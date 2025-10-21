@@ -7,7 +7,7 @@ cls
 
 set debug=0
 
-fastboot boot %~dp0device_files\fastboot.efi
+fastboot boot %~dp0device_files\boot\EFI\boot\fastboot.efi
 
 color 0A
 fastboot getvar product
@@ -22,18 +22,12 @@ fastboot flash oemvars %~dp0device_files\oemvars-battery-config-fake-disabled.tx
 fastboot flash oemvars %~dp0device_files\oemvars-battery-config-fake.txt
 
 fastboot flash gpt %~dp0images\gpt.bin
+fastboot format data
 fastboot flash boot  %~dp0images\boot.img
 fastboot flash system  %~dp0images\system.img
-set "SIMG=%~dp0images\data.simg"
-set "IMG=%~dp0images\data.img"
-if exist "%SIMG%" (
-    echo Using data.simg
-    set "DATA_FILE=%SIMG%"
-) else (
-    echo data.simg not found, falling back to data.img
-    set "DATA_FILE=%IMG%"
-)
-fastboot flash data "%DATA_FILE%"
+fastboot flash vendor %~dp0images\vendor.img
+
+fastboot getvar secureboot
 if %debug% == 1  Pause
 
 fastboot reboot
