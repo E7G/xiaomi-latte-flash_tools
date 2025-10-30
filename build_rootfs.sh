@@ -335,7 +335,7 @@ EOF
 	genfstab -U $mount_dir >> $mount_dir/etc/fstab
 	# fix fstab
 	sed -i 's/\\0[^ ]*//' $mount_dir/etc/fstab
-	sed -i '|/mnt/nvme/swap/swapfile|d' $mount_dir/etc/fstab
+	sed -i '/swapfile/d' $mount_dir/etc/fstab
 
 	echo 链接 vi 到 vim
 	run ln -s /usr/bin/vim /usr/bin/vi
