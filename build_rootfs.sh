@@ -58,7 +58,8 @@ create_img() {
 flag_connect=1
 connect_img() {
 	if [[ $flag_connect != 0 ]]; then
-		return
+		umount_img
+		disconnect_img
 	fi
 	pushd ./images
 	echo connect boot.qcow2 to $boot_dev
