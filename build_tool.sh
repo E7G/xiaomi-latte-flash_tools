@@ -6,12 +6,15 @@ shopt -s expand_aliases
 BUILD_DIR='./build'
 OUTPUT_DIR='./images'
 CURRENT_DIR=$(pwd)
-DEVICE_FILE_DIR="$CURRENT_DIR/device_file"
 
 # blissos 官方镜像
-ISO_FILE=$(ls Bliss-v14.*-x86_64-OFFICIAL-*.iso | head -n 1)
+ISO_FILE=$(ls *.iso | head -n 1)
 # 来自 https://github.com/Qs315490/android-x86-kernel-latte action编译的内核打包文件
 KERNEL_PACKAGE_FILE=$(ls kernel-*-package.zip | head -n 1)
+# https://dl.fedoraproject.org/pub/fedora/linux/releases/43/Everything/x86_64/os/Packages/s/shim-x64-15.8-3.x86_64.rpm
+SHIM_PACKAGE_FILE=$(ls shim-x64-*.x86_64.rpm | head -n 1)
+# https://dl.fedoraproject.org/pub/fedora/linux/releases/43/Everything/x86_64/os/Packages/g/grub2-efi-x64-2.12-40.fc43.x86_64.rpm
+GRUB_PACKAGE_FILE=$(ls grub2-efi-x64-*.x86_64.rpm | head -n 1)
 
 mkdir -p "$BUILD_DIR"
 
@@ -35,6 +38,33 @@ unpack_iso() {
     echo "Unpacking ISO done."
 }
 
+unpack_shim_grub_package() {
+    echo "Unpacking shim and grub package..."
+    if [ -d "$BUILD_DIR/shim_grub" ]; then
+        rm -rf "$BUILD_DIR/shim_grub"
+    fi
+
+    # need rpm2cpio
+    mkdir -p "$BUILD_DIR/shim_grub"
+    cd "$BUILD_DIR/shim_grub"
+    rpm2cpio "$CURRENT_DIR/$SHIM_PACKAGE_FILE" | cpio -idmv
+    rpm2cpio "$CURRENT_DIR/$GRUB_PACKAGE_FILE" | cpio -idmv
+    cd -
+    echo "Unpacking shim and grub package done."
+}
+
+copy_shim_grub_to_efi() {
+    if [ ! -d "$BUILD_DIR/shim_grub" ]; then
+        unpack_shim_grub_package
+    fi
+    echo "Copying shim and grub files..."
+    mkdir -p "$CURRENT_DIR/boot/EFI/boot"
+    cp "$BUILD_DIR/shim_grub"/boot/efi/EFI/fedora/shimx64.efi "$CURRENT_DIR/boot/EFI/boot/bootx64.efi"
+    cp "$BUILD_DIR/shim_grub"/boot/efi/EFI/fedora/mmx64.efi "$CURRENT_DIR/boot/EFI/boot/mmx64.efi"
+    cp "$BUILD_DIR/shim_grub"/boot/efi/EFI/fedora/grubx64.efi "$CURRENT_DIR/boot/EFI/boot/grubx64.efi"
+    echo "Copying shim and grub files done."
+}
+
 unpack_initrd() {
     echo "Unpacking initrd..."
     mkdir -p "$BUILD_DIR/initrd"
@@ -46,7 +76,7 @@ unpack_initrd() {
 
 patch_initrd() {
     cd "$BUILD_DIR/initrd"
-    patch -p1 < "${DEVICE_FILE_DIR}/initrd.patch"
+    patch -p1 < "$CURRENT_DIR/device_file/initrd.patch"
     cd -
 }
 
@@ -103,7 +133,7 @@ build_boot_image() {
     echo "Mounting boot image done."
 
     echo "Copying boot files to boot image..."
-    cp -r "$CURRENT_DIR/boot/EFI" "$mount_dir/"
+    cp -r "$CURRENT_DIR/boot/"* "$mount_dir/"
     echo "Copying boot files done."
 
     umount "$mount_dir"
@@ -144,39 +174,65 @@ copy_file_to_system() {
     echo "Copying kernel modules done."
 
     echo "Copying firmware..."
-    cp -rf "${DEVICE_FILE_DIR}/BCM4356A2.hcd" "$system_mount_dir/system/vendor/firmware/brcm/"
-    cp -rf "${DEVICE_FILE_DIR}/brcmfmac4356-pcie.Xiaomi Inc-Mipad2.txt" "$system_mount_dir/system/vendor/firmware/brcm/"
+    cp -rf "$CURRENT_DIR/device_file/BCM4356A2.hcd" "$system_mount_dir/system/vendor/firmware/brcm/"
+    cp -rf "$CURRENT_DIR/device_file/brcmfmac4356-pcie.Xiaomi Inc-Mipad2.txt" "$system_mount_dir/system/vendor/firmware/brcm/"
     echo "Copying firmware done."
 
     echo "Copying autio config ..."
     UCM_DIR="$system_mount_dir/system/usr/share/alsa/ucm2/conf.d"
     mkdir -p "$UCM_DIR"/cht-bsw-rt5659
-    cp -rf "${DEVICE_FILE_DIR}/cht-bsw-rt5659.conf" "$UCM_DIR"/cht-bsw-rt5659/
-    cp -rf "${DEVICE_FILE_DIR}/HiFi.conf" "$UCM_DIR"/cht-bsw-rt5659/
+    cp -rf "$CURRENT_DIR/device_file/cht-bsw-rt5659.conf" "$UCM_DIR"/cht-bsw-rt5659/
+    cp -rf "$CURRENT_DIR/device_file/HiFi.conf" "$UCM_DIR"/cht-bsw-rt5659/
     echo "Copying audio config done."
 
     echo "Config build.prop ..."
     sed -i 's/ro.com.android.dateformat=MM-dd-yyyy/ro.com.android.dateformat=yyyy-MM-dd/g' "$system_mount_dir/system/vendor/build.prop"
-    # 设置时区为上海
-    echo "persist.sys.timezone=Asia/Shanghai" >> "$system_mount_dir/system/vendor/build.prop"
-    # 设置语言为中文（简体）
-    echo "persist.sys.language=zh" >> "$system_mount_dir/system/vendor/build.prop"
-    echo "persist.sys.country=CN" >> "$system_mount_dir/system/vendor/build.prop"
-    # 可选：同时设置 ro.product.locale（推荐用于 Android 6.0+）
-    echo "ro.product.locale=zh-CN" >> "$system_mount_dir/system/vendor/build.prop"
+
+    cat << EOF >> "$system_mount_dir/system/vendor/build.prop"
+# 设置时区为上海
+persist.sys.timezone=Asia/Shanghai
+# 设置语言为中文（简体）
+persist.sys.language=zh
+persist.sys.country=CN
+# 可选：同时设置 ro.product.locale（推荐用于 Android 6.0+）
+ro.product.locale=zh-CN
+# 设置DPI
+ro.sf.lcd_density=320
+EOF
     echo "Config build.prop done."
+
+    echo "Config init ..."
+    cat << EOF >> "$system_mount_dir/init.environ.rc"
+on boot
+    setprop sys.usb.configfs 1
+
+on property:sys.boot_completed=1
+    # 系统启动完成后设置 captive portal URLs
+    exec -- /system/bin/settings put global captive_portal_https_url https://connect.rom.miui.com/generate_204
+
+EOF
+    echo "Config init done."
 
     # 删除不必要的应用
     echo "Removing unnecessary apps..."
+    rm -rf "$system_mount_dir/system/app/com.googlecode.eyesfree.setorientation_1.1.4-10"
+    rm -rf "$system_mount_dir/system/priv-app/BlissUpdater"
     rm -rf "$system_mount_dir/system/product/app/yetCalc"
     rm -rf "$system_mount_dir/system/product/app/messaging"
     rm -rf "$system_mount_dir/system/product/priv-app/Contacts"
     rm -rf "$system_mount_dir/system/product/priv-app/Dialer"
-    rm -rf "$system_mount_dir/system/priv-app/BlissUpdater"
     rm -rf "$system_mount_dir/system/system_ext/priv-app/com.farmerbb.taskbar"
     rm -rf "$system_mount_dir/system/system_ext/priv-app/com.farmerbb.taskbar.support"
     rm -rf "$system_mount_dir/system/system_ext/priv-app/smart-dock"
     echo "Removing unnecessary apps done."
+
+    # 删除不必要的固件
+    echo "Removing unnecessary firmware..."
+    rm -rf "$system_mount_dir/system/vendor/firmware/amd"*
+    rm -rf "$system_mount_dir/system/vendor/firmware/amlogic"
+    rm -rf "$system_mount_dir/system/vendor/firmware/arm"
+    rm -rf "$system_mount_dir/system/vendor/firmware/nvidia"
+    echo "Removing unnecessary firmware done."
 
     sync
 }
@@ -204,7 +260,7 @@ pack_system_image() {
 
 create_data_image() {
     echo "Creating data image..."
-    truncate -s 2G "$OUTPUT_DIR/data.img"
+    truncate -s 1G "$OUTPUT_DIR/data.img"
 
     echo "Formatting data image..."
     if command -v mkfs.f2fs &> /dev/null;then
@@ -234,6 +290,9 @@ all() {
     unpack_initrd
     patch_initrd
     pack_initrd
+    unpack_shim_grub_package
+    copy_shim_grub_to_efi
+    unpack_kernel_package
     copy_kernel_to_efi
     build_boot_image
 
