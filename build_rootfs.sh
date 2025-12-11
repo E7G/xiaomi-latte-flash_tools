@@ -333,7 +333,7 @@ EOF
 	echo 生成 fstab
 	genfstab -U $mount_dir >> $mount_dir/etc/fstab
 	# fix fstab
-	sed -i 's/\\0[^ ]*//' $mount_dir/etc/fstab
+	sed -i 's/\\0[^ \t]*//' $mount_dir/etc/fstab
 	sed -i '/swapfile/d' $mount_dir/etc/fstab
 
 	echo 链接 vi 到 vim
