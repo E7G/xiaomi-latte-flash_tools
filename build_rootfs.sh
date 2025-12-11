@@ -217,7 +217,7 @@ EOF
 
 	# 添加源后必须立马更新，不让报错
 	run pacman -Sy archlinuxcn-keyring --noconfirm
-	run pacman -S paru timeshift pamac-aur plymouth --noconfirm
+	run pacman -S yay timeshift pamac-aur plymouth --noconfirm
 }
 
 config_packages() {
@@ -415,14 +415,15 @@ EOF
 
 	run $enable bluetooth
 
-	echo 配置 paru
+	echo 配置 包管理器
 	run sed -i 's/#Color/Color/' /etc/pacman.conf
-	run sed -i 's/#BottomUp/BottomUp/' /etc/paru.conf
 
 	echo 配置 i915
 	echo 'options i915 enable_fbc=1' > $mount_dir/etc/modprobe.d/i915.conf
 	echo 配置 plymouth mkinitramfs.conf hooks
 	run sed -i 's/^HOOKS=(\([^)]*\))/HOOKS=(\1 plymouth)/' /etc/mkinitcpio.conf
+	# mkinitcpio 某些版本默认启用sd_vconsole hook导致报错修复
+	echo "KEYMAP=us" > $mount_dir/etc/vconsole.conf
 	run mkinitcpio -P
 
 	echo 配置 ENVIRONMENT
@@ -436,7 +437,7 @@ EOF
 config_user() {
 	echo 添加 $UserName 用户
 	run useradd -m -G wheel,lp -s '/usr/bin/zsh' $UserName
-	run su $UserName -c 'paru -S oh-my-zsh-git --noconfirm'
+	run su $UserName -c 'yay -S oh-my-zsh-git --noconfirm'
 
 	run sed -i 's|#[[:space:]]*ZSH_CUSTOM=.*|ZSH_CUSTOM=/usr/share/zsh|' /usr/share/oh-my-zsh/zshrc
 	run chmod -R 666 /usr/share/oh-my-zsh/zshrc
