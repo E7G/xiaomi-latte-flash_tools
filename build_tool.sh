@@ -199,6 +199,7 @@ copy_file_to_system() {
 
     echo "build keyboard remap program ..."
     gcc $DEVICE_FILES_DIR/mipad2_keymap.c -o $system_mount_dir/system/bin/mipad2_keymap -static
+    chmod 777 $system_mount_dir/system/bin/mipad2_keymap 
     echo "build keyboard remap program done."
 
     echo "Config build.prop ..."
@@ -219,10 +220,20 @@ EOF
 
     echo "Config init ..."
     cat << EOF >> "$system_mount_dir/init.environ.rc"
-on boot
-    setprop sys.usb.configfs 1
+# 小米平板2电容触摸按键重映射服务
+service mipad2_keymap /system/bin/mipad2_keymap
+    class main
+    user root
+    group root input
+    # 必须有 input 权限才能访问 /dev/input/event*
+    disabled
+    oneshot
+    # 在输入设备初始化完成后启动
+    start-delay 2
 
+# 在 sys.boot_completed 后启动（可选，更保险）
 on property:sys.boot_completed=1
+    start mipad2_keymap
     # 系统启动完成后设置 captive portal URLs
     exec -- /system/bin/settings put global captive_portal_https_url https://connect.rom.miui.com/generate_204
 
