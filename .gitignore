@@ -7,4 +7,5 @@ images/*.bin
 *.7z
 *.rpm
 *.iso
-*.gxp
+*.hex
+*.aml
