@@ -3,9 +3,12 @@ set -e
 # set -x
 shopt -s expand_aliases
 
-BUILD_DIR='./build'
-OUTPUT_DIR='./images'
 CURRENT_DIR=$(pwd)
+echo "Current directory: $CURRENT_DIR"
+DEVICE_FILES_DIR="$CURRENT_DIR/device_files"
+BUILD_DIR="$CURRENT_DIR/build"
+OUTPUT_DIR="$CURRENT_DIR/images"
+BOOT_DIR="$CURRENT_DIR/boot"
 
 # blissos 官方镜像
 ISO_FILE=$(ls *.iso | head -n 1)
@@ -16,7 +19,7 @@ SHIM_PACKAGE_FILE=$(ls shim-x64-*.x86_64.rpm | head -n 1)
 # https://dl.fedoraproject.org/pub/fedora/linux/releases/43/Everything/x86_64/os/Packages/g/grub2-efi-x64-2.12-40.fc43.x86_64.rpm
 GRUB_PACKAGE_FILE=$(ls grub2-efi-x64-*.x86_64.rpm | head -n 1)
 
-mkdir -p "$BUILD_DIR"
+mkdir -p "$BUILD_DIR" "$OUTPUT_DIR" "$BOOT_DIR"/EFI/{boot,BlissOS}
 
 is_mount() {
     if [ -z "$1" ]; then
@@ -58,10 +61,10 @@ copy_shim_grub_to_efi() {
         unpack_shim_grub_package
     fi
     echo "Copying shim and grub files..."
-    mkdir -p "$CURRENT_DIR/boot/EFI/boot"
-    cp "$BUILD_DIR/shim_grub"/boot/efi/EFI/fedora/shimx64.efi "$CURRENT_DIR/boot/EFI/boot/bootx64.efi"
-    cp "$BUILD_DIR/shim_grub"/boot/efi/EFI/fedora/mmx64.efi "$CURRENT_DIR/boot/EFI/boot/mmx64.efi"
-    cp "$BUILD_DIR/shim_grub"/boot/efi/EFI/fedora/grubx64.efi "$CURRENT_DIR/boot/EFI/boot/grubx64.efi"
+    mkdir -p "$BOOT_DIR/EFI/boot"
+    cp "$BUILD_DIR/shim_grub"/boot/efi/EFI/fedora/shimx64.efi "$BOOT_DIR/EFI/boot/bootx64.efi"
+    cp "$BUILD_DIR/shim_grub"/boot/efi/EFI/fedora/mmx64.efi "$BOOT_DIR/EFI/boot/mmx64.efi"
+    cp "$BUILD_DIR/shim_grub"/boot/efi/EFI/fedora/grubx64.efi "$BOOT_DIR/EFI/boot/grubx64.efi"
     echo "Copying shim and grub files done."
 }
 
@@ -76,14 +79,14 @@ unpack_initrd() {
 
 patch_initrd() {
     cd "$BUILD_DIR/initrd"
-    patch -p1 < "$CURRENT_DIR/device_file/initrd.patch"
+    patch -p1 < "$DEVICE_FILES_DIR/initrd.patch"
     cd -
 }
 
 pack_initrd() {
     echo "Packing initrd..."
     cd "$BUILD_DIR/initrd"
-    find . | cpio --create --format='newc' | gzip > "$CURRENT_DIR/boot/EFI/BlissOS/initrd.cpio.gz"
+    find . | cpio --create --format='newc' | gzip > "$BOOT_DIR/EFI/BlissOS/initrd.cpio.gz"
     cd -
     rm -rf "$BUILD_DIR/initrd"
     echo "Packing initrd done."
@@ -108,7 +111,7 @@ copy_kernel_to_efi() {
     fi
     cd "$BUILD_DIR/kernel" 
     FILE=$(ls vmlinuz-* | head -n 1)
-    cp "$FILE" "$CURRENT_DIR/boot/EFI/BlissOS/vmlinuz"
+    cp "$FILE" "$BOOT_DIR/EFI/BlissOS/vmlinuz"
     cd -
     echo "Copying kernel done."
 }
@@ -119,7 +122,7 @@ build_boot_image() {
     truncate -s 64M "$OUTPUT_DIR/boot.img"
 
     echo "Formatting boot image..."
-    mkfs.vfat -F 32 "$OUTPUT_DIR/boot.img"
+    mkfs.vfat -F 32 -n ESP "$OUTPUT_DIR/boot.img"
     echo "Formatting boot image done."
 
     echo "Mounting boot image..."
@@ -133,7 +136,17 @@ build_boot_image() {
     echo "Mounting boot image done."
 
     echo "Copying boot files to boot image..."
-    cp -r "$CURRENT_DIR/boot/"* "$mount_dir/"
+    cp -r "$BOOT_DIR/"* "$mount_dir/"
+    cat <<EOF >> "$mount_dir/EFI/boot/grub.cfg"
+search --no-floppy --set=root --label ESP
+set prefix="(\$root)/EFI/BlissOS"
+configfile \$prefix/grub.cfg
+
+EOF
+    cp "$DEVICE_FILES_DIR/grub.cfg" "$mount_dir/EFI/BlissOS/"
+    cp "$DEVICE_FILES_DIR/fastboot.efi" "$mount_dir/EFI/BlissOS/"
+    cp "$DEVICE_FILES_DIR/linux-usb-daget_ssh_123456.efi" "$mount_dir/EFI/BlissOS/"
+    cp "$DEVICE_FILES_DIR/MOK.cer" "$mount_dir/"
     echo "Copying boot files done."
 
     umount "$mount_dir"
@@ -150,7 +163,6 @@ unpack_system_image() {
 
 system_mount_dir="$BUILD_DIR/system_mount"
 mount_system_image() {
-    
     if is_mount "$system_mount_dir"; then
         # 如果已经挂载，先卸载
         umount -R "$system_mount_dir"
@@ -174,16 +186,20 @@ copy_file_to_system() {
     echo "Copying kernel modules done."
 
     echo "Copying firmware..."
-    cp -rf "$CURRENT_DIR/device_file/BCM4356A2.hcd" "$system_mount_dir/system/vendor/firmware/brcm/"
-    cp -rf "$CURRENT_DIR/device_file/brcmfmac4356-pcie.Xiaomi Inc-Mipad2.txt" "$system_mount_dir/system/vendor/firmware/brcm/"
+    cp -rf "$DEVICE_FILES_DIR/BCM4356A2.hcd" "$system_mount_dir/system/vendor/firmware/brcm/"
+    cp -rf "$DEVICE_FILES_DIR/brcmfmac4356-pcie.Xiaomi Inc-Mipad2.txt" "$system_mount_dir/system/vendor/firmware/brcm/"
     echo "Copying firmware done."
 
     echo "Copying autio config ..."
     UCM_DIR="$system_mount_dir/system/usr/share/alsa/ucm2/conf.d"
     mkdir -p "$UCM_DIR"/cht-bsw-rt5659
-    cp -rf "$CURRENT_DIR/device_file/cht-bsw-rt5659.conf" "$UCM_DIR"/cht-bsw-rt5659/
-    cp -rf "$CURRENT_DIR/device_file/HiFi.conf" "$UCM_DIR"/cht-bsw-rt5659/
+    cp -rf "$DEVICE_FILES_DIR/cht-bsw-rt5659.conf" "$UCM_DIR"/cht-bsw-rt5659/
+    cp -rf "$DEVICE_FILES_DIR/HiFi.conf" "$UCM_DIR"/cht-bsw-rt5659/
     echo "Copying audio config done."
+
+    echo "build keyboard remap program ..."
+    gcc $DEVICE_FILES_DIR/mipad2_keymap.c -o $system_mount_dir/system/bin/mipad2_keymap -static
+    echo "build keyboard remap program done."
 
     echo "Config build.prop ..."
     sed -i 's/ro.com.android.dateformat=MM-dd-yyyy/ro.com.android.dateformat=yyyy-MM-dd/g' "$system_mount_dir/system/vendor/build.prop"
@@ -280,6 +296,61 @@ convert_data_to_sparse() {
     img2simg "$OUTPUT_DIR/data.img" "$OUTPUT_DIR/data.simg"
 }
 
+install_libhoudini() {
+    echo "Installing libhoudini..."
+    libhoudini_file=$(ls *houdini*.zip|head -n 1)
+    if [ ! -f "$libhoudini_file" ];then
+        echo "libhoudini file not found."
+    fi
+    mount_system_image
+    libhoudini_dir="$BUILD_DIR/libhoudini"
+    mkdir -p $libhoudini_dir
+    unzip $libhoudini_file -d "$libhoudini_dir/"
+
+    echo Delete the original libhoudini
+    rm -rf "$system_mount_dir/system/etc/binfmt_misc/*"
+    rm -rf "$system_mount_dir/system/vendor/etc/binfmt_misc/*"
+    # 32 bit
+    rm -rf "$system_mount_dir/system/bin/houdini"
+    rm -rf "$system_mount_dir/system/bin/arm"
+    rm -rf "$system_mount_dir/system/vendor/bin/houdini"
+    rm -rf "$system_mount_dir/system/vendor/bin/arm"
+    rm -rf "$system_mount_dir/system/lib/libhoudini.so"
+    rm -rf "$system_mount_dir/system/lib/arm"
+    rm -rf "$system_mount_dir/system/vendor/lib/libhoudini.so"
+    rm -rf "$system_mount_dir/system/vendor/lib/arm"
+    # 64 bit
+    rm -rf "$system_mount_dir/system/bin/houdini64"
+    rm -rf "$system_mount_dir/system/bin/arm64"
+    rm -rf "$system_mount_dir/system/vendor/bin/houdini64"
+    rm -rf "$system_mount_dir/system/vendor/bin/arm64"
+    rm -rf "$system_mount_dir/system/lib64/libhoudini.so"
+    rm -rf "$system_mount_dir/system/lib64/arm64"
+    rm -rf "$system_mount_dir/system/vendor/lib64/libhoudini.so"
+    rm -rf "$system_mount_dir/system/vendor/lib64/arm64"
+
+    echo Delete libndk_translation
+    # 32 bit
+    rm -rf "$system_mount_dir/system/bin/ndk_translation_program_runner_binfmt_misc"
+    rm -rf "$system_mount_dir/system/bin/arm"
+    rm -rf "$system_mount_dir/system/etc/ld.config.arm.txt"
+    rm -rf "$system_mount_dir/system/lib/libndk_translation.so"
+    rm -rf "$system_mount_dir/system/lib/libndk_translation_proxy_*.so"
+    rm -rf "$system_mount_dir/system/lib/arm"
+    # 64 bit
+    rm -rf "$system_mount_dir/system/bin/ndk_translation_program_runner_binfmt_misc_arm64"
+    rm -rf "$system_mount_dir/system/bin/arm64"
+    rm -rf "$system_mount_dir/system/etc/ld.config.arm64.txt"
+    rm -rf "$system_mount_dir/system/lib64/libndk_translation.so"
+    rm -rf "$system_mount_dir/system/lib64/libndk_translation_proxy_*.so"
+    rm -rf "$system_mount_dir/system/lib64/arm64"
+
+    chmod -R 777 "$libhoudini_dir"/*/prebuilts/
+    cp -r "$libhoudini_dir"/*/prebuilts/* "$system_mount_dir/system/vendor/"
+
+    echo "Installing libhoudini done."
+}
+
 all() {
     gpt
 
@@ -299,6 +370,10 @@ all() {
     unpack_system_image
     mount_system_image
     copy_file_to_system
+    # libhoudini
+    if [ -f "$CURRENT_DIR/"*houdini*.zip ];then
+        install_libhoudini
+    fi
     pack_system_image
 
     create_data_image

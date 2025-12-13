@@ -1,6 +1,10 @@
-EFI/
-tmp/
+boot
+build/
 images/*.img
+images/*.simg
 images/*.bin
 *.zip
 *.7z
+*.rpm
+*.iso
+*.gxp
