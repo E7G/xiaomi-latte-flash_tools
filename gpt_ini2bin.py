@@ -7,17 +7,20 @@ from os import path, mkdir
 
 type_2_guid = {
     # official guid for gpt partition type
-    'fat': 'ebd0a0a2-b9e5-4433-87c0-68b6b72699c7',
-    'esp': 'c12a7328-f81f-11d2-ba4b-00a0c93ec93b',
-    'linux': '0fc63daf-8483-4772-8e79-3d69d8477de4',
-    'linux-swap': '0657fd6d-a4ab-43c4-84e5-0933c84b4f4f',
+    'fat': 'EBD0A0A2-B9E5-4433-87C0-68B6B72699C7',
+    'esp': 'C12A7328-F81F-11D2-BA4B-00A0C93EC93B',
+    'linux': '0FC63DAF-8483-4772-8E79-3D69D8477DE4',
+    'linux-swap': '0657FD6D-A4AB-43C4-84E5-0933C84B4F4F',
     # generated guid for android
-    'boot': '49a4d17f-93a3-45c1-a0de-f50b2ebe2599',
-    'recovery': '4177c722-9e92-4aab-8644-43502bfd5506',
-    'misc': 'ef32a33b-a409-486c-9141-9ffb711f6266',
-    'metadata': '20ac26be-20b7-11e3-84c5-6cfdb94711e9',
-    'tertiary': '767941d0-2085-11e3-ad3b-6cfdb94711e9',
-    'factory': '9fdaa6ef-4b3f-40d2-ba8d-bff16bfb887b',
+    'boot': '49A4D17F-93A3-45C1-A0DE-F50B2EBE2599',
+    'recovery': '4177C722-9E92-4AAB-8644-43502BFD5506',
+    'misc': 'EF32A33B-A409-486C-9141-9FFB711F6266',
+    'metadata': '20AC26BE-20B7-11E3-84C5-6CFDB94711E9',
+    'tertiary': '767941D0-2085-11E3-AD3B-6CFDB94711E9', # Fastboot
+    'factory': '8F68CC74-C5E5-48DA-BE91-A0C8C15E9C80',
+    'factory(alt)': '9FDAA6EF-4B3F-40D2-BA8D-BFF16BFB887B',
+    'system': '38F428E6-D326-425D-9140-6E0EA133647C',
+    'data': 'DC76DDA9-5AC1-491C-AF42-A82591580C0D',
 }
 
 def zero_pad(s: bytes, size: int):
