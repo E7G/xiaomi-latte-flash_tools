@@ -80,7 +80,7 @@ unpack_initrd() {
 patch_initrd() {
     cd "$BUILD_DIR/initrd"
     patch -p1 < "$DEVICE_FILES_DIR/initrd.patch"
-    if [ -f "$DEVICE_FILES_DIR/dsdt.aml" ]; then
+    if [ ! -f "$DEVICE_FILES_DIR/dsdt.aml" ]; then
         iasl -ve -ts "$DEVICE_FILES_DIR/dsdt.dsl"
     fi
     mkdir -p kernel/firmware/acpi
