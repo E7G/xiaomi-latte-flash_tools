@@ -149,8 +149,7 @@ configfile \$prefix/grub.cfg
 
 EOF
     cp "$DEVICE_FILES_DIR/grub.cfg" "$mount_dir/EFI/BlissOS/"
-    cp "$DEVICE_FILES_DIR/fastboot.efi" "$mount_dir/EFI/BlissOS/"
-    cp "$DEVICE_FILES_DIR/linux-usb-daget_ssh_123456.efi" "$mount_dir/EFI/BlissOS/"
+    cp "$DEVICE_FILES_DIR/"*.efi "$mount_dir/EFI/BlissOS/"
     cp "$DEVICE_FILES_DIR/MOK.cer" "$mount_dir/"
     echo "Copying boot files done."
 
@@ -362,7 +361,8 @@ install_libhoudini() {
     rm -rf "$system_mount_dir/system/lib64/arm64"
 
     chmod -R 777 "$libhoudini_dir"/*/prebuilts/
-    cp -r "$libhoudini_dir"/*/prebuilts/* "$system_mount_dir/system/vendor/"
+    cp -r "$libhoudini_dir"/*/prebuilts/{bin,lib,lib64} "$system_mount_dir/system/"
+    cp -r "$libhoudini_dir"/*/prebuilts/etc "$system_mount_dir/system/vendor/"
 
     echo "Installing libhoudini done."
 }

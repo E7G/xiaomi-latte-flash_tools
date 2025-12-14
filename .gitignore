@@ -9,3 +9,4 @@ images/*.bin
 *.iso
 *.hex
 *.aml
+*.bak
