@@ -1,9 +1,9 @@
-diff --git a/init b/init.new
+diff --git a/init b/init
 old mode 100644
 new mode 100755
 index 93da8e5..1713976
 --- a/init
-+++ b/init.new
++++ b/init
 @@ -104,7 +104,7 @@ device_information()
  
  	echo ro.product.bliss.brand="$VENDOR" >> /tmp/device.prop

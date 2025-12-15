@@ -161,7 +161,11 @@ EOF
 unpack_system_image() {
     echo "Unpacking system image..."
     # image is squashfs, need squashfs-tools
-    unsquashfs -d "$BUILD_DIR/" "$BUILD_DIR/iso/system.sfs"
+    if [ -f "$BUILD_DIR/iso/system.sfs" ]; then
+        unsquashfs -d "$BUILD_DIR/" "$BUILD_DIR/iso/system.sfs"
+    elif [ -f "$BUILD_DIR/iso/system.efs" ]; then
+        fsck.erofs --extract="$BUILD_DIR/" "$BUILD_DIR/iso/system.efs"
+    fi
     echo "Unpacking system image done."
 }
 
