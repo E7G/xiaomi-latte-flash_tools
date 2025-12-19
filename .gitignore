@@ -1,4 +1,4 @@
-boot
+/boot
 build/
 images/*.img
 images/*.simg
