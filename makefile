@@ -19,6 +19,7 @@ CHOWN := sudo chown
 CHMOD := sudo chmod
 INSTALL := sudo install
 CP := sudo cp
+RM := sudo rm -rf
 
 BOOT_SIZE ?= 64
 DATA_SIZE ?= 1024
@@ -90,31 +91,29 @@ $(ISO_STAMP): $(ISO_FILE) | $(ISO_DIR)
 unpack_iso: $(ISO_STAMP)
 .PHONY: unpack_iso
 
+INITRD_FILE := $(BUILD_DIR)/initrd.cpio.gz
 INITRD_STAMP := $(BUILD_DIR)/.initrd.stamp
+INITRD_PATCH_STAMP := $(BUILD_DIR)/.initrd.patch.stamp
 $(INITRD_STAMP): $(ISO_STAMP) | $(INITRD_DIR)
 	echo "解包initrd文件"
 	zcat "$(ISO_DIR)/initrd.img" | (cd "$(INITRD_DIR)" && cpio -id)
 	touch $@
 	echo "解包initrd文件:" "完成"
 unpack_initrd: $(INITRD_STAMP)
-.PHONY: unpack_initrd
-
-INITRD_PATCH_STAMP := $(BUILD_DIR)/.initrd.patch.stamp
 $(INITRD_PATCH_STAMP): $(INITRD_STAMP) $(DEVICE_FILES_DIR)/initrd.patch
 	echo "initrd 打补丁"
 	patch -p1 < $(DEVICE_FILES_DIR)/initrd.patch -d "$(INITRD_DIR)"
 	touch $@
 	echo "initrd 打补丁:" "完成"
 patch_initrd: $(INITRD_PATCH_STAMP)
-.PHONY: patch_initrd
-
-INITRD_FILE := $(BUILD_DIR)/initrd.cpio.gz
 $(INITRD_FILE): $(INITRD_PATCH_STAMP)
 	echo "initrd 打包"
-	find "$(INITRD_DIR)" | cpio -o -H newc | gzip > "$(INITRD_FILE)"
+	cd "$(INITRD_DIR)";find . | cpio -o -H newc | gzip > "$(INITRD_FILE)"
 	echo "initrd 打包:" "完成"
 pack_initrd: $(INITRD_FILE)
-.PHONY: pack_initrd
+clean_initrd:
+	$(RM) "$(INITRD_DIR)" "$(INITRD_FILE)" "$(INITRD_STAMP)" "$(INITRD_PATCH_STAMP)"
+.PHONY: unpack_initrd patch_initrd pack_initrd
 
 BOOT_FILE := $(IMAGES_DIR)/boot.img
 $(BOOT_FILE): $(OVERLAY_BOOT_DIR) $(SHIM_GRUB_STAMP) $(INITRD_FILE) $(KERNEL_STAMP) | $(IMAGES_DIR) $(BOOT_DIR)
@@ -179,7 +178,7 @@ SYSTEM_STAMP := $(BUILD_DIR)/system_$(VER).img
 $(SYSTEM_STAMP): $(ISO_STAMP) | $(SYSTEM_DIR)
 	echo "解包system.img"
 	if [ -f "$(BUILD_DIR)/system.img" ]; then \
-        rm "$(BUILD_DIR)/system.img"; \
+        $(RM)"$(BUILD_DIR)/system.img"; \
     fi
 	if [ -f "$(ISO_DIR)/system.sfs" ]; then \
         unsquashfs -d "$(BUILD_DIR)" "$(ISO_DIR)/system.sfs"; \
@@ -187,12 +186,14 @@ $(SYSTEM_STAMP): $(ISO_STAMP) | $(SYSTEM_DIR)
         fsck.erofs --extract="$(BUILD_DIR)/" "$(ISO_DIR)/system.efs"; \
     fi
 	mv "$(BUILD_DIR)/system.img" "$@"
+	touch $@
 	echo "解包system.img:" "完成"
 unpack_system: $(SYSTEM_STAMP)
 $(SYSTEM_FILE): $(OVERLAY_SYSTEM_DIR) $(SYSTEM_STAMP) $(KERNEL_STAMP) $(KEY_REMAP_PROG) | $(SYSTEM_DIR) $(IMAGES_DIR)
 	echo "修改system"
 	if grep -q "$(SYSTEM_DIR)" /proc/mounts;then $(UMOUNT) "$(SYSTEM_DIR)";fi
 	$(MOUNT) -o loop "$(SYSTEM_STAMP)" "$(SYSTEM_DIR)"
+	$(RM) "$(SYSTEM_DIR)/system/lib/modules"
 	$(INSTALL) -dm755 "$(SYSTEM_DIR)/system/lib/modules"
 	$(CP) -r "$(KERNEL_DIR)/lib/modules/"* "$(SYSTEM_DIR)/system/lib/modules"
 	$(INSTALL) -Dm755 "$(KEY_REMAP_PROG)" "$(SYSTEM_DIR)/system/bin/key-remap"
@@ -210,16 +211,19 @@ $(SYSTEM_FILE): $(OVERLAY_SYSTEM_DIR) $(SYSTEM_STAMP) $(KERNEL_STAMP) $(KEY_REMA
     else \
         echo "erofs-utils and squashfs-tools not found, no package"; \
         sudo umount "$(SYSTEM_DIR)"; \
-        cp "$BUILD_DIR/system.img" "$@"; \
+        cp "$(BUILD_DIR)/system.img" "$@"; \
     fi
 	$(UMOUNT) "$(SYSTEM_DIR)" || true
+	touch $@
 	echo "打包system.img:" "完成"
 pack_system system.img: $(SYSTEM_FILE)
 mount_system: $(SYSTEM_FILE)
 	$(MOUNT) -o loop "$<" "$(SYSTEM_DIR)"
 umount_system:
 	$(UMOUNT) "$(SYSTEM_DIR)"
-.PHONY: unpack_system pack_system system.img mount_system umount_system
+clean_system:
+	$(RM) $(SYSTEM_STAMP)
+.PHONY: unpack_system pack_system system.img mount_system umount_system clean_system
 
 GPT_FILE := $(IMAGES_DIR)/gpt.bin
 $(GPT_FILE): $(PWD)/gpt.ini | $(IMAGES_DIR)
@@ -228,12 +232,25 @@ gpt.bin: $(GPT_FILE)
 .PHONY: gpt.bin
 
 clean:
-	rm -rf $(BUILD_DIR)
+	$(RM) $(BUILD_DIR)
 clean_images:
-	rm -rf $(IMAGES_DIR)
+	$(RM) $(IMAGES_DIR)
 clean_all: clean clean_images
-	rm -rf $(SHIM_FILE) $(GRUB2_EFI_FILE)
+	$(RM) $(SHIM_FILE) $(GRUB2_EFI_FILE)
 .PHONY: clean clean_images clean_all
+
+flash_boot: $(BOOT_FILE)
+	fastboot flash boot "$<"
+flash_data: $(DATA_FILE)
+	fastboot flash data "$<"
+flash_system: $(SYSTEM_FILE)
+	fastboot flash system "$<"
+flash_gpt: $(GPT_FILE)
+	fastboot flash gpt "$<"
+flash_reboot:
+	fastboot reboot
+flash_all: flash_gpt flash_boot flash_system flash_data flash_reboot
+.PHONY: flash_boot flash_data flash_system flash_gpt flash_reboot flash_all
 
 all: gpt.bin boot.img system.img data.img
 .PHONY: all

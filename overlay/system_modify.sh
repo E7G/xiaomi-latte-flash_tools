@@ -20,6 +20,10 @@ persist.sys.country=CN
 ro.product.locale=zh-CN
 # 设置DPI
 ro.sf.lcd_density=320
+# 默认开启无线ADB
+service.adb.tcp.port=5555
+# 开启USB配置文件系统, 从传统sys配置转为configfs
+sys.usb.configfs=1
 $MARKER_END
 EOF
 fi
@@ -40,7 +44,24 @@ service mipad2_key_remap /system/bin/key-remap
     # 在输入设备初始化完成后启动
     start-delay 2
 
-# 在 sys.boot_completed 后启动（可选，更保险）
+service udc_serial /system/bin/udc-serial.sh
+    class main
+    user root
+    group root
+    oneshot
+
+# /dev/ttyGS0 串口终端
+service console_ttyGS0 /system/bin/sh
+    class main
+    console
+    user root
+    group root shell log readproc
+    seclabel u:r:init:s0
+    tty /dev/ttyGS0
+    disabled
+    restart
+
+# 在 sys.boot_completed 后启动（更保险）
 on property:sys.boot_completed=1
     start mipad2_key_remap
 
