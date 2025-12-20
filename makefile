@@ -175,7 +175,7 @@ $(KEY_REMAP_PROG): $(DEVICE_FILES_DIR)/mipad2_keymap.c
 	gcc -o $@ $< -static
 
 SYSTEM_FILE := $(IMAGES_DIR)/system.img
-SYSTEM_STAMP := $(BUILD_DIR)/.system.stamp
+SYSTEM_STAMP := $(BUILD_DIR)/system.img
 $(SYSTEM_STAMP): $(ISO_STAMP) | $(SYSTEM_DIR)
 	echo "解包system.img"
 	if [ -f "$(ISO_DIR)/system.sfs" ]; then \
@@ -210,7 +210,7 @@ $(SYSTEM_FILE): $(OVERLAY_SYSTEM_DIR) $(SYSTEM_STAMP) $(KERNEL_STAMP) $(KEY_REMA
         cp "$BUILD_DIR/system.img" "$@"; \
     fi
 	$(UMOUNT) "$(SYSTEM_DIR)" || true
-	echo "打包system.img:" "完成
+	echo "打包system.img:" "完成"
 
 pack_system system.img: $(SYSTEM_FILE)
 mount_system: $(SYSTEM_FILE)
