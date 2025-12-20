@@ -32,7 +32,7 @@ IMAGES_DIR := $(O)/images
 BUILD_DIR := $(O)/build
 SHIM_GRUB_DIR := $(BUILD_DIR)/shim_grub
 KERNEL_DIR := $(BUILD_DIR)/kernel
-ISO_DIR := $(BUILD_DIR)/iso
+ISO_DIR := $(BUILD_DIR)/iso-$(VER)
 INITRD_DIR := $(BUILD_DIR)/initrd
 BOOT_DIR := $(BUILD_DIR)/boot
 SYSTEM_DIR := $(BUILD_DIR)/system
@@ -135,7 +135,7 @@ $(BOOT_FILE): $(OVERLAY_BOOT_DIR) $(SHIM_GRUB_STAMP) $(INITRD_FILE) $(KERNEL_STA
 	echo "打包boot.img:" "完成"
 boot.img: $(BOOT_FILE)
 mount_boot: $(BOOT_FILE)
-	$(MOUNT) -o loop "$(BOOT_FILE)" "$(BOOT_DIR)"
+	$(MOUNT) -o loop "$<" "$(BOOT_DIR)"
 umount_boot:
 	$(UMOUNT) "$(BOOT_DIR)"
 .PHONY: boot.img mount_boot umount_boot
@@ -165,7 +165,7 @@ $(DATA_FILE): $(OVERLAY_DATA_DIR) | $(IMAGES_DIR) $(DATA_DIR)
 	echo "打包data.img:" "完成"
 data.img: $(DATA_FILE)
 mount_data: $(DATA_FILE)
-	$(MOUNT) -o loop "$(DATA_FILE)" "$(DATA_DIR)"
+	$(MOUNT) -o loop "$<" "$(DATA_DIR)"
 umount_data:
 	$(UMOUNT) "$(DATA_DIR)"
 .PHONY: data.img mount_data umount_data
@@ -175,21 +175,24 @@ $(KEY_REMAP_PROG): $(DEVICE_FILES_DIR)/mipad2_keymap.c
 	gcc -o $@ $< -static
 
 SYSTEM_FILE := $(IMAGES_DIR)/system.img
-SYSTEM_STAMP := $(BUILD_DIR)/system.img
+SYSTEM_STAMP := $(BUILD_DIR)/system_$(VER).img
 $(SYSTEM_STAMP): $(ISO_STAMP) | $(SYSTEM_DIR)
 	echo "解包system.img"
+	if [ -f "$(BUILD_DIR)/system.img" ]; then \
+        rm "$(BUILD_DIR)/system.img"; \
+    fi
 	if [ -f "$(ISO_DIR)/system.sfs" ]; then \
         unsquashfs -d "$(BUILD_DIR)" "$(ISO_DIR)/system.sfs"; \
     elif [ -f "$(ISO_DIR)/system.efs" ]; then \
         fsck.erofs --extract="$(BUILD_DIR)/" "$(ISO_DIR)/system.efs"; \
     fi
-	touch $@
+	mv "$(BUILD_DIR)/system.img" "$@"
 	echo "解包system.img:" "完成"
 unpack_system: $(SYSTEM_STAMP)
-$(SYSTEM_FILE): $(OVERLAY_SYSTEM_DIR) $(SYSTEM_STAMP) $(KERNEL_STAMP) $(KEY_REMAP_PROG) | $(SYSTEM_DIR)
+$(SYSTEM_FILE): $(OVERLAY_SYSTEM_DIR) $(SYSTEM_STAMP) $(KERNEL_STAMP) $(KEY_REMAP_PROG) | $(SYSTEM_DIR) $(IMAGES_DIR)
 	echo "修改system"
 	if grep -q "$(SYSTEM_DIR)" /proc/mounts;then $(UMOUNT) "$(SYSTEM_DIR)";fi
-	$(MOUNT) -o loop "$(BUILD_DIR)/system.img" "$(SYSTEM_DIR)"
+	$(MOUNT) -o loop "$(SYSTEM_STAMP)" "$(SYSTEM_DIR)"
 	$(INSTALL) -dm755 "$(SYSTEM_DIR)/system/lib/modules"
 	$(CP) -r "$(KERNEL_DIR)/lib/modules/"* "$(SYSTEM_DIR)/system/lib/modules"
 	$(INSTALL) -Dm755 "$(KEY_REMAP_PROG)" "$(SYSTEM_DIR)/system/bin/key-remap"
@@ -211,10 +214,9 @@ $(SYSTEM_FILE): $(OVERLAY_SYSTEM_DIR) $(SYSTEM_STAMP) $(KERNEL_STAMP) $(KEY_REMA
     fi
 	$(UMOUNT) "$(SYSTEM_DIR)" || true
 	echo "打包system.img:" "完成"
-
 pack_system system.img: $(SYSTEM_FILE)
 mount_system: $(SYSTEM_FILE)
-	$(MOUNT) -o loop "$@" "$(SYSTEM_DIR)"
+	$(MOUNT) -o loop "$<" "$(SYSTEM_DIR)"
 umount_system:
 	$(UMOUNT) "$(SYSTEM_DIR)"
 .PHONY: unpack_system pack_system system.img mount_system umount_system

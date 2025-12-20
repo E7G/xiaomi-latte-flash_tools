@@ -1,10 +1,16 @@
 #!/bin/sh
 set -e
 
-echo "Config build.prop ..."
-sed -i 's/ro.com.android.dateformat=MM-dd-yyyy/ro.com.android.dateformat=yyyy-MM-dd/g' system/vendor/build.prop
+BUILD_PROP="system/vendor/build.prop"
+MARKER_START="# start modify"
+MARKER_END="# end modify"
 
-cat << EOF >> system/vendor/build.prop
+echo "Config build.prop ..."
+sed -i 's/ro.com.android.dateformat=MM-dd-yyyy/ro.com.android.dateformat=yyyy-MM-dd/g' $BUILD_PROP
+
+if ! grep -qF "$MARKER_START" "$BUILD_PROP"; then
+cat << EOF >> $BUILD_PROP
+$MARKER_START
 # 设置时区为上海
 persist.sys.timezone=Asia/Shanghai
 # 设置语言为中文（简体）
@@ -14,11 +20,15 @@ persist.sys.country=CN
 ro.product.locale=zh-CN
 # 设置DPI
 ro.sf.lcd_density=320
+$MARKER_END
 EOF
+fi
 echo "Config build.prop done."
 
 echo "Config init ..."
+if ! grep -qF "$MARKER_START" "init.environ.rc"; then
 cat << EOF >> "init.environ.rc"
+$MARKER_START
 # 小米平板2电容触摸按键重映射服务
 service mipad2_key_remap /system/bin/key-remap
     class main
@@ -32,11 +42,14 @@ service mipad2_key_remap /system/bin/key-remap
 
 # 在 sys.boot_completed 后启动（可选，更保险）
 on property:sys.boot_completed=1
-    start mipad2_keymap
+    start mipad2_key_remap
+
     # 系统启动完成后设置 captive portal URLs
     exec -- /system/bin/settings put global captive_portal_https_url https://connect.rom.miui.com/generate_204
 
+$MARKER_END
 EOF
+fi
 echo "Config init done."
 
 echo "Config fstab ..."
