@@ -18,6 +18,7 @@ UMOUNT := sudo umount
 CHOWN := sudo chown
 CHMOD := sudo chmod
 INSTALL := sudo install
+CP := sudo cp
 
 BOOT_SIZE ?= 64
 DATA_SIZE ?= 1024
@@ -128,7 +129,7 @@ $(BOOT_FILE): $(OVERLAY_BOOT_DIR) $(SHIM_GRUB_STAMP) $(INITRD_FILE) $(KERNEL_STA
 	$(INSTALL) -D "$(SHIM_GRUB_DIR)/boot/efi/EFI/fedora/grubx64.efi" "$(BOOT_DIR)/EFI/boot/grubx64.efi"
 	$(INSTALL) -D "$(INITRD_FILE)" "$(BOOT_DIR)/EFI/BlissOS/initrd.cpio.gz"
 	$(INSTALL) -D "$(KERNEL_DIR)"/vmlinuz-* "$(BOOT_DIR)/EFI/BlissOS/vmlinuz"
-	sudo cp -r "$(OVERLAY_BOOT_DIR)"/* "$(BOOT_DIR)"
+	$(CP) -r "$(OVERLAY_BOOT_DIR)"/* "$(BOOT_DIR)"
 	$(CHMOD) -R 644 "$(BOOT_DIR)/"
 	$(UMOUNT) "$(BOOT_DIR)"
 	echo "打包boot.img:" "完成"
@@ -153,24 +154,24 @@ $(DATA_FILE): $(OVERLAY_DATA_DIR) | $(IMAGES_DIR) $(DATA_DIR)
         sudo mkfs.ext4 -L data -s -F "$@"; \
     fi
 	$(MOUNT) -o loop "$@" "$(DATA_DIR)"
-	sudo cp -r "$(OVERLAY_DATA_DIR)/"* "$(DATA_DIR)" || echo OVERLAY_DATA_DIR为空, 跳过复制.
+	$(CP) -r "$(OVERLAY_DATA_DIR)/"* "$(DATA_DIR)" || echo OVERLAY_DATA_DIR为空, 跳过复制.
 	$(CHMOD) -R 755 "$(DATA_DIR)/"
 	$(UMOUNT) "$(DATA_DIR)"
 	if command -v img2simg &> /dev/null; then \
-        img2simg "$@" "$IMAGES_DIR/data.simg"; \
+        img2simg "$@" "$(IMAGES_DIR)/data.simg"; \
     else \
         echo "img2simg not found, skipping sparse conversion."; \
     fi
 	echo "打包data.img:" "完成"
 data.img: $(DATA_FILE)
 mount_data: $(DATA_FILE)
-	$(MOUNT) -o loop "$@" "$(DATA_DIR)"
+	$(MOUNT) -o loop "$(DATA_FILE)" "$(DATA_DIR)"
 umount_data:
 	$(UMOUNT) "$(DATA_DIR)"
 .PHONY: data.img mount_data umount_data
 
 KEY_REMAP_PROG := $(BUILD_DIR)/key-remap
-$(KEY_REMAP_PROG): $(DEVICE_FILES_DIR)/mipad2-keymap.c
+$(KEY_REMAP_PROG): $(DEVICE_FILES_DIR)/mipad2_keymap.c
 	gcc -o $@ $< -static
 
 SYSTEM_FILE := $(IMAGES_DIR)/system.img
@@ -190,10 +191,10 @@ $(SYSTEM_FILE): $(OVERLAY_SYSTEM_DIR) $(SYSTEM_STAMP) $(KERNEL_STAMP) $(KEY_REMA
 	if grep -q "$(SYSTEM_DIR)" /proc/mounts;then $(UMOUNT) "$(SYSTEM_DIR)";fi
 	$(MOUNT) -o loop "$(BUILD_DIR)/system.img" "$(SYSTEM_DIR)"
 	$(INSTALL) -dm755 "$(SYSTEM_DIR)/system/lib/modules"
-	cp -r "$(KERNEL_DIR)/lib/modules/"* "$(SYSTEM_DIR)/system/lib/modules"
+	$(CP) -r "$(KERNEL_DIR)/lib/modules/"* "$(SYSTEM_DIR)/system/lib/modules"
 	$(INSTALL) -Dm755 "$(KEY_REMAP_PROG)" "$(SYSTEM_DIR)/system/bin/key-remap"
-	cd "$(SYSTEM_DIR)"; if [ -f "$(OVERLAY_DIR)/system_modify.sh" ]; then sh "$(OVERLAY_DIR)/system_modify.sh"; fi
-	sudo cp -r "$(OVERLAY_SYSTEM_DIR)/"* "$(SYSTEM_DIR)" || echo OVERLAY_SYSTEM_DIR为空, 跳过复制.
+	cd "$(SYSTEM_DIR)"; if [ -f "$(OVERLAY_DIR)/system_modify.sh" ]; then sudo sh "$(OVERLAY_DIR)/system_modify.sh"; fi
+	$(CP) -r "$(OVERLAY_SYSTEM_DIR)/"* "$(SYSTEM_DIR)" || echo OVERLAY_SYSTEM_DIR为空, 跳过复制.
 	$(CHMOD) -R 755 "$(SYSTEM_DIR)/"
 	echo "修改system:" "完成"
 	echo "打包system.img"
