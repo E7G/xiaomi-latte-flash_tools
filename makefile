@@ -91,6 +91,10 @@ $(ISO_STAMP): $(ISO_FILE) | $(ISO_DIR)
 unpack_iso: $(ISO_STAMP)
 .PHONY: unpack_iso
 
+DSDT_FILE := $(DEVICE_FILES_DIR)/dsdt.aml
+DSDT_FILE: $(DEVICE_FILES_DIR)/dsdt.dsl
+	iasl -ve -ts -w1 "$<"
+
 INITRD_FILE := $(BUILD_DIR)/initrd.cpio.gz
 INITRD_STAMP := $(BUILD_DIR)/.initrd.stamp
 INITRD_PATCH_STAMP := $(BUILD_DIR)/.initrd.patch.stamp
@@ -100,9 +104,10 @@ $(INITRD_STAMP): $(ISO_STAMP) | $(INITRD_DIR)
 	touch $@
 	echo "解包initrd文件:" "完成"
 unpack_initrd: $(INITRD_STAMP)
-$(INITRD_PATCH_STAMP): $(INITRD_STAMP) $(DEVICE_FILES_DIR)/initrd.patch
+$(INITRD_PATCH_STAMP): $(INITRD_STAMP) $(DEVICE_FILES_DIR)/initrd.patch $(DSDT_FILE)
 	echo "initrd 打补丁"
 	patch -p1 < $(DEVICE_FILES_DIR)/initrd.patch -d "$(INITRD_DIR)"
+	$(INSTALL) -Dm755 "$(DSDT_FILE)" "$(INITRD_DIR)/kernel/firmware/acpi/dsdt.aml"
 	touch $@
 	echo "initrd 打补丁:" "完成"
 patch_initrd: $(INITRD_PATCH_STAMP)
@@ -178,11 +183,12 @@ SYSTEM_STAMP := $(BUILD_DIR)/system_$(VER).img
 $(SYSTEM_STAMP): $(ISO_STAMP) | $(SYSTEM_DIR)
 	echo "解包system.img"
 	if [ -f "$(BUILD_DIR)/system.img" ]; then \
-        $(RM)"$(BUILD_DIR)/system.img"; \
+        $(RM) "$(BUILD_DIR)/system.img"; \
     fi
 	if [ -f "$(ISO_DIR)/system.sfs" ]; then \
         unsquashfs -d "$(BUILD_DIR)" "$(ISO_DIR)/system.sfs"; \
     elif [ -f "$(ISO_DIR)/system.efs" ]; then \
+		$(RM) "$(BUILD_DIR)/system_image_info.txt"; \
         fsck.erofs --extract="$(BUILD_DIR)/" "$(ISO_DIR)/system.efs"; \
     fi
 	mv "$(BUILD_DIR)/system.img" "$@"

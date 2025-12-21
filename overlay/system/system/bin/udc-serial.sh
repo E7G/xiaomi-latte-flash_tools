@@ -60,7 +60,7 @@ fi
 # 检查设备是否已连接
 ls /dev/ttyGS*
 
-start console_ttyGS0
+start ttygs0
 
 echo OK
 return 0
