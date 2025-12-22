@@ -3,8 +3,8 @@ ifeq ($(V),0)
 .SILENT:
 endif
 
-VER_LIST := 14 15 16
-# 14 15 16
+# ProjectSakura-5.2 为 Android 11
+VER_LIST := 14 15 16 5
 VER ?= 15
 # 判断输入版本是否在范围内
 ifeq ($(filter $(VER),$(VER_LIST)),)
@@ -77,7 +77,7 @@ clean_kenrel:
 	$(RM) "$(KERNEL_DIR)" "$(KERNEL_STAMP)"
 .PHONY: unpack_kenrel clean_kenrel
 
-ISO_FILE := $(wildcard Bliss-*v$(VER)*.iso)
+ISO_FILE := $(wildcard *$(VER).*.iso)
 ISO_STAMP := $(ISO_DIR)/.stamp
 $(ISO_STAMP): $(ISO_FILE) | $(ISO_DIR)
 	echo "解包ISO文件:" $<
@@ -90,7 +90,7 @@ clean_iso:
 .PHONY: unpack_iso clean_iso
 
 DSDT_FILE := $(DEVICE_FILES_DIR)/dsdt.aml
-DSDT_FILE: $(DEVICE_FILES_DIR)/dsdt.dsl
+$(DSDT_FILE): $(DEVICE_FILES_DIR)/dsdt.dsl
 	iasl -ve -ts -w1 "$<"
 
 INITRD_FILE := $(BUILD_DIR)/initrd-$(VER).cpio.gz
@@ -107,6 +107,7 @@ unpack_initrd: $(INITRD_STAMP)
 $(INITRD_PATCH_STAMP): $(INITRD_STAMP) $(DEVICE_FILES_DIR)/initrd.patch $(DSDT_FILE)
 	echo "initrd 打补丁"
 	patch -p1 < $(DEVICE_FILES_DIR)/initrd.patch -d "$(INITRD_DIR)"
+	sed -i 's|bliss.model="$$BOARD"|bliss.model="$$PRODUCT"|' "$(INITRD_DIR)/init"
 	$(INSTALL) -Dm755 "$(DSDT_FILE)" "$(INITRD_DIR)/kernel/firmware/acpi/dsdt.aml"
 	touch $@
 	echo "initrd 打补丁:" "完成"
@@ -204,18 +205,24 @@ $(SYSTEM_UNCOMP_FILE): $(ISO_STAMP) | $(SYSTEM_UNCOMP_DIR)
 	touch $@
 	echo "解包system.img:" "完成"
 unpack_system: $(SYSTEM_UNCOMP_FILE)
-$(SYSTEM_FILE): $(OVERLAY_SYSTEM_DIR) $(SYSTEM_UNCOMP_FILE) $(KERNEL_STAMP) $(KEY_REMAP_PROG) $(DROPBEAR_FILE) | $(SYSTEM_DIR) $(IMAGES_DIR)
+$(SYSTEM_FILE): $(OVERLAY_SYSTEM_DIR) $(SYSTEM_UNCOMP_FILE) $(KERNEL_STAMP) $(KEY_REMAP_PROG) $(DROPBEAR_FILE) $(SSH_KEY_PUB) | $(SYSTEM_DIR) $(IMAGES_DIR)
 	echo "修改system"
 	if grep -q "$(SYSTEM_DIR)" /proc/mounts;then $(UMOUNT) "$(SYSTEM_DIR)";fi
 	$(MOUNT) -o loop "$(SYSTEM_UNCOMP_FILE)" "$(SYSTEM_DIR)"
+
 	$(RM) "$(SYSTEM_DIR)/system/lib/modules"
 	$(INSTALL) -dm755 "$(SYSTEM_DIR)/system/lib/modules"
 	$(CP) -r "$(KERNEL_DIR)/lib/modules/"* "$(SYSTEM_DIR)/system/lib/modules"
+
 	$(INSTALL) --strip -Dm755 "$(KEY_REMAP_PROG)" "$(SYSTEM_DIR)/system/bin/key-remap"
+
 	$(INSTALL) --strip -Dm755 "$(DROPBEAR_FILE)" "$(SYSTEM_DIR)/system/bin/dropbear"
+	$(INSTALL) -Dm755 "$(SSH_KEY_PUB)" "$(SYSTEM_DIR)/system/etc/dropbear/authorized_keys"
+
 	cd "$(SYSTEM_DIR)"; if [ -f "$(OVERLAY_DIR)/system_modify.sh" ]; then sudo sh "$(OVERLAY_DIR)/system_modify.sh"; fi
 	$(CP) -r "$(OVERLAY_SYSTEM_DIR)/"* "$(SYSTEM_DIR)" || echo OVERLAY_SYSTEM_DIR为空, 跳过复制.
 	$(CHMOD) -R 755 "$(SYSTEM_DIR)/"
+
 	echo "修改system:" "完成"
 	echo "打包system.img"
 	$(UMOUNT) "$(SYSTEM_DIR)" || true
@@ -272,13 +279,20 @@ flash_all: flash_gpt flash_boot flash_system flash_data flash_reboot
 all: gpt.bin boot.img system.img data.img
 .PHONY: all
 
-ssh:
-	ssh -i "$(DEVICE_FILES_DIR)/id_rsa" root@192.168.255.1 "/system/bin/sh -i"
+SSH_KEY := $(DEVICE_FILES_DIR)/id_rsa
+SSH_KEY_PUB := $(DEVICE_FILES_DIR)/id_rsa.pub
+$(SSH_KEY) $(SSH_KEY_PUB): | $(DEVICE_FILES_DIR)
+	ssh-keygen -t rsa -N "" -f "$@"
+
+ssh: $(SSH_KEY)
+# 依赖 内核 PTY 支持
+	echo 如果遇到连接时间过长问题，开个新终端执行 ping 192.168.255.1
+	ssh -i "$(SSH_KEY)" -t root@192.168.255.1 || true
 .PHONY: ssh
 
 VIRGL := y
 QEMU_DEBUG=0
-QEMU_KERNEL_CMDLINE := console=tty1 console=ttyS0,115200 DATA=/dev/sdb DEBUG=$(QEMU_DEBUG)
+QEMU_KERNEL_CMDLINE := console=ttyS0,115200 DATA=/dev/sdb vdso=0 DEBUG=$(QEMU_DEBUG)
 ifeq ($(VIRGL),n)
 	QEMU_KERNEL_CMDLINE += nomodeset HWACCEL=0
 endif

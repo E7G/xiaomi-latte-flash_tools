@@ -4,15 +4,6 @@ new mode 100755
 index 93da8e5..1713976
 --- a/init
 +++ b/init
-@@ -104,7 +104,7 @@ device_information()
- 
- 	echo ro.product.bliss.brand="$VENDOR" >> /tmp/device.prop
- 	echo ro.product.bliss.manufacturer="$(cat $DMIPATH/board_vendor)" >> /tmp/device.prop
--	echo ro.product.bliss.model="$BOARD" >> /tmp/device.prop
-+	echo ro.product.bliss.model="$PRODUCT" >> /tmp/device.prop
- 	echo ro.product.board="$BOARD" >> /tmp/device.prop
- 	echo ro.bliss.serialnumber="$SERIALNO" >> /tmp/device.prop
- 	mount --bind /tmp/device.prop system/vendor/etc/device.prop
 @@ -195,11 +195,15 @@ try_mount()
  				mount.ntfs-3g -o rw,force $@
  			fi

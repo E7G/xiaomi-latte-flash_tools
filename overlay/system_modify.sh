@@ -30,8 +30,11 @@ fi
 echo "Config build.prop done."
 
 echo "Config fstab ..."
-sed -i '/mmc/d' "fstab.bliss_x86_64"
-sed -i '/mmc/d' "system/vendor/etc/fstab.internal.x86"
+ROOT_FSTAB="fstab.android_x86_64"
+[ -f "fstab.bliss_x86_64" ] && ROOT_FSTAB="fstab.bliss_x86_64"
+sed -i '/mmc/d' "$ROOT_FSTAB"
+VENDOR_FSTAB="system/vendor/etc/fstab.internal.x86"
+[ -f "$VENDOR_FSTAB" ] && sed -i '/mmc/d' "$VENDOR_FSTAB"
 echo "Config fstab done."
 
 # 删除不必要的应用

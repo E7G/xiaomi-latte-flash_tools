@@ -72,7 +72,11 @@ ip addr add 192.168.255.1/24 dev usb0
 # 启动 usb0 网络接口
 ip link set usb0 up
 # 强制让 local 流量走 main 表
-ip rule add from all lookup main pref 100
+# ip rule add from all lookup main pref 100
+# 允许未标记的包通过
+ndc network create 99
+ndc network interface add 99 usb0
+ndc network route add 99 usb0 192.168.255.0/24
 
 start dnsmasq_rndis
 

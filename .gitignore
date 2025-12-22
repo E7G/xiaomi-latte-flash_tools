@@ -1,4 +1,5 @@
 build/
+device_files/id_rsa*
 images/*.img
 images/*.simg
 images/*.bin
