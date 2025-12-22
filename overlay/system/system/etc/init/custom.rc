@@ -9,19 +9,32 @@ service mipad2_key_remap /system/bin/key-remap
     # 在输入设备初始化完成后启动
     start-delay 2
 
-service udc_serial /system/bin/udc-serial.sh
+service udc /system/bin/udc.sh
     class main
     user root
     group root
     oneshot
 
-# /dev/ttyGS0 串口终端
-service ttygs0 /system/bin/ttygs0.sh
+service dnsmasq_rndis /system/bin/dnsmasq \
+    --no-daemon \
+    --interface=usb0 \
+    --bind-interfaces \
+    --dhcp-range=192.168.255.2,192.168.255.254,12h \
+    --dhcp-option=3,192.168.255.1 \
+    --log-queries \
+    --no-resolv \
+    --log-facility=/dev/log
+    class main
+    user root
+    group root net_admin inet
+    disabled
+    oneshot
+
+# sshd
+service sshd /system/bin/dropbear -F -D /system/etc/dropbear
     class main
     user root
     group root shell log readproc
-    seclabel u:r:init:s0
-    disabled
     restart
 
 # 在 sys.boot_completed 后启动（更保险）

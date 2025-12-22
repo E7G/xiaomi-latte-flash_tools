@@ -49,9 +49,12 @@ rm -rf "system/system_ext/priv-app/smart-dock"
 echo "Removing unnecessary apps done."
 
 # 删除不必要的固件
-# echo "Removing unnecessary firmware..."
-# rm -rf "system/vendor/firmware/amd"*
-# rm -rf "system/vendor/firmware/amlogic"
-# rm -rf "system/vendor/firmware/arm"
-# rm -rf "system/vendor/firmware/nvidia"
-# echo "Removing unnecessary firmware done."
+echo "Removing unnecessary firmware..."
+rm -rf "system/vendor/firmware/amd"*
+rm -rf "system/vendor/firmware/radeon"
+rm -rf "system/vendor/firmware/amlogic"
+rm -rf "system/vendor/firmware/arm"
+rm -rf "system/vendor/firmware/nvidia"
+rm -rf "system/vendor/firmware/qcom"
+rm -rf "system/vendor/firmware/iwlwifi-"*
+echo "Removing unnecessary firmware done."

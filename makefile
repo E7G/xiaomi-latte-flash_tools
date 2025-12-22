@@ -34,7 +34,7 @@ BUILD_DIR := $(O)/build
 SHIM_GRUB_DIR := $(BUILD_DIR)/shim_grub
 KERNEL_DIR := $(BUILD_DIR)/kernel
 ISO_DIR := $(BUILD_DIR)/iso-$(VER)
-INITRD_DIR := $(BUILD_DIR)/initrd
+INITRD_DIR := $(BUILD_DIR)/initrd-$(VER)
 BOOT_DIR := $(BUILD_DIR)/boot
 SYSTEM_DIR := $(BUILD_DIR)/system
 DATA_DIR := $(BUILD_DIR)/data
@@ -46,12 +46,6 @@ OVERLAY_DATA_DIR := $(OVERLAY_DIR)/data
 
 SHIM_URL := https://dl.fedoraproject.org/pub/fedora/linux/releases/43/Everything/x86_64/os/Packages/s/shim-x64-15.8-3.x86_64.rpm
 GRUB2_EFI_URL := https://dl.fedoraproject.org/pub/fedora/linux/releases/43/Everything/x86_64/os/Packages/g/grub2-efi-x64-2.12-40.fc43.x86_64.rpm
-
-# 
-DIR_VARS := $(filter %_DIR,$(.VARIABLES)) $(O)
-ALL_DIRS := $(foreach v,$(DIR_VARS),$($(v)))
-$(ALL_DIRS):
-	mkdir -p $@
 
 SHIM_FILE := $(O)/shim-x64.rpm
 GRUB2_EFI_FILE := $(O)/grub2-efi-x64.rpm
@@ -79,9 +73,11 @@ $(KERNEL_STAMP): $(KERNEL_ZIP) | $(KERNEL_DIR)
 	touch $@
 	echo "解包内核文件:" "完成"
 unpack_kenrel: $(KERNEL_STAMP)
-.PHONY: unpack_kenrel
+clean_kenrel:
+	$(RM) "$(KERNEL_DIR)" "$(KERNEL_STAMP)"
+.PHONY: unpack_kenrel clean_kenrel
 
-ISO_FILE := $(wildcard Bliss-*$(VER)*.iso)
+ISO_FILE := $(wildcard Bliss-*v$(VER)*.iso)
 ISO_STAMP := $(ISO_DIR)/.stamp
 $(ISO_STAMP): $(ISO_FILE) | $(ISO_DIR)
 	echo "解包ISO文件:" $<
@@ -89,17 +85,21 @@ $(ISO_STAMP): $(ISO_FILE) | $(ISO_DIR)
 	touch $@
 	echo "解包ISO文件:" "完成"
 unpack_iso: $(ISO_STAMP)
-.PHONY: unpack_iso
+clean_iso:
+	$(RM) "$(ISO_DIR)" "$(ISO_STAMP)"
+.PHONY: unpack_iso clean_iso
 
 DSDT_FILE := $(DEVICE_FILES_DIR)/dsdt.aml
 DSDT_FILE: $(DEVICE_FILES_DIR)/dsdt.dsl
 	iasl -ve -ts -w1 "$<"
 
-INITRD_FILE := $(BUILD_DIR)/initrd.cpio.gz
-INITRD_STAMP := $(BUILD_DIR)/.initrd.stamp
-INITRD_PATCH_STAMP := $(BUILD_DIR)/.initrd.patch.stamp
-$(INITRD_STAMP): $(ISO_STAMP) | $(INITRD_DIR)
+INITRD_FILE := $(BUILD_DIR)/initrd-$(VER).cpio.gz
+INITRD_STAMP := $(BUILD_DIR)/.initrd-$(VER).stamp
+INITRD_PATCH_STAMP := $(BUILD_DIR)/.initrd-$(VER).patch.stamp
+$(INITRD_STAMP): $(ISO_STAMP)
 	echo "解包initrd文件"
+	$(RM) "$(INITRD_DIR)"
+	mkdir -p "$(INITRD_DIR)"
 	zcat "$(ISO_DIR)/initrd.img" | (cd "$(INITRD_DIR)" && cpio -id)
 	touch $@
 	echo "解包initrd文件:" "完成"
@@ -175,51 +175,60 @@ umount_data:
 .PHONY: data.img mount_data umount_data
 
 KEY_REMAP_PROG := $(BUILD_DIR)/key-remap
-$(KEY_REMAP_PROG): $(DEVICE_FILES_DIR)/mipad2_keymap.c
-	gcc -o $@ $< -static
+$(KEY_REMAP_PROG): $(DEVICE_FILES_DIR)/mipad2_keymap.c | $(BUILD_DIR)
+	gcc -o "$@" "$<" -static
+
+DROPBEAR_URL := https://github.com/ribbons/android-dropbear/releases/latest/download/dropbear-x86_64-linux-android.zip
+DROPBEAR_ZIP := $(O)/dropbear-x86_64-linux-android.zip
+DROPBEAR_FILE := $(BUILD_DIR)/dropbear
+$(DROPBEAR_ZIP): | $(O)
+	wget --quiet $(DROPBEAR_URL) -O "$@"
+$(DROPBEAR_FILE): $(DROPBEAR_ZIP) | $(BUILD_DIR)
+	unzip "$<" -d "$(BUILD_DIR)" dropbear
+	touch $@
 
 SYSTEM_FILE := $(IMAGES_DIR)/system.img
-SYSTEM_STAMP := $(BUILD_DIR)/system_$(VER).img
-$(SYSTEM_STAMP): $(ISO_STAMP) | $(SYSTEM_DIR)
+SYSTEM_UNCOMP_DIR := $(BUILD_DIR)/system_uncomp_$(VER)
+SYSTEM_UNCOMP_FILE := $(SYSTEM_UNCOMP_DIR)/system.img
+$(SYSTEM_UNCOMP_FILE): $(ISO_STAMP) | $(SYSTEM_UNCOMP_DIR)
 	echo "解包system.img"
-	if [ -f "$(BUILD_DIR)/system.img" ]; then \
-        $(RM) "$(BUILD_DIR)/system.img"; \
+	if [ -f "$(SYSTEM_UNCOMP_FILE)" ]; then \
+        $(RM) "$(SYSTEM_UNCOMP_FILE)"; \
     fi
 	if [ -f "$(ISO_DIR)/system.sfs" ]; then \
-        unsquashfs -d "$(BUILD_DIR)" "$(ISO_DIR)/system.sfs"; \
+        unsquashfs -d "$(SYSTEM_UNCOMP_DIR)" "$(ISO_DIR)/system.sfs"; \
     elif [ -f "$(ISO_DIR)/system.efs" ]; then \
-		$(RM) "$(BUILD_DIR)/system_image_info.txt"; \
-        fsck.erofs --extract="$(BUILD_DIR)/" "$(ISO_DIR)/system.efs"; \
+		$(RM) "$(SYSTEM_UNCOMP_DIR)/system_image_info.txt"; \
+        fsck.erofs --extract="$(SYSTEM_UNCOMP_DIR)/" "$(ISO_DIR)/system.efs"; \
     fi
-	mv "$(BUILD_DIR)/system.img" "$@"
 	touch $@
 	echo "解包system.img:" "完成"
-unpack_system: $(SYSTEM_STAMP)
-$(SYSTEM_FILE): $(OVERLAY_SYSTEM_DIR) $(SYSTEM_STAMP) $(KERNEL_STAMP) $(KEY_REMAP_PROG) | $(SYSTEM_DIR) $(IMAGES_DIR)
+unpack_system: $(SYSTEM_UNCOMP_FILE)
+$(SYSTEM_FILE): $(OVERLAY_SYSTEM_DIR) $(SYSTEM_UNCOMP_FILE) $(KERNEL_STAMP) $(KEY_REMAP_PROG) $(DROPBEAR_FILE) | $(SYSTEM_DIR) $(IMAGES_DIR)
 	echo "修改system"
 	if grep -q "$(SYSTEM_DIR)" /proc/mounts;then $(UMOUNT) "$(SYSTEM_DIR)";fi
-	$(MOUNT) -o loop "$(SYSTEM_STAMP)" "$(SYSTEM_DIR)"
+	$(MOUNT) -o loop "$(SYSTEM_UNCOMP_FILE)" "$(SYSTEM_DIR)"
 	$(RM) "$(SYSTEM_DIR)/system/lib/modules"
 	$(INSTALL) -dm755 "$(SYSTEM_DIR)/system/lib/modules"
 	$(CP) -r "$(KERNEL_DIR)/lib/modules/"* "$(SYSTEM_DIR)/system/lib/modules"
-	$(INSTALL) -Dm755 "$(KEY_REMAP_PROG)" "$(SYSTEM_DIR)/system/bin/key-remap"
+	$(INSTALL) --strip -Dm755 "$(KEY_REMAP_PROG)" "$(SYSTEM_DIR)/system/bin/key-remap"
+	$(INSTALL) --strip -Dm755 "$(DROPBEAR_FILE)" "$(SYSTEM_DIR)/system/bin/dropbear"
 	cd "$(SYSTEM_DIR)"; if [ -f "$(OVERLAY_DIR)/system_modify.sh" ]; then sudo sh "$(OVERLAY_DIR)/system_modify.sh"; fi
 	$(CP) -r "$(OVERLAY_SYSTEM_DIR)/"* "$(SYSTEM_DIR)" || echo OVERLAY_SYSTEM_DIR为空, 跳过复制.
 	$(CHMOD) -R 755 "$(SYSTEM_DIR)/"
 	echo "修改system:" "完成"
 	echo "打包system.img"
+	$(UMOUNT) "$(SYSTEM_DIR)" || true
 	if command -v mkfs.erofs &> /dev/null;then \
         echo "erofs-utils found, using erofs for system image."; \
-        mkfs.erofs -L system -zlzma "$@" "$(SYSTEM_DIR)"; \
+        mkfs.erofs -L system -zlzma "$@" "$(SYSTEM_UNCOMP_DIR)"; \
     elif command -v mksquashfs &> /dev/null;then \
         echo "squashfs-tools found, using squashfs for system image."; \
-        mksquashfs "$(SYSTEM_DIR)" "$@" -comp xz -Xcompression-level 19 -b 1M -Xdict-size 1M -noappend; \
+        mksquashfs "$(SYSTEM_UNCOMP_DIR)" "$@" -comp xz -Xcompression-level 19 -b 1M -Xdict-size 1M -noappend; \
     else \
         echo "erofs-utils and squashfs-tools not found, no package"; \
-        sudo umount "$(SYSTEM_DIR)"; \
-        cp "$(BUILD_DIR)/system.img" "$@"; \
+        cp "$(SYSTEM_UNCOMP_FILE)" "$@"; \
     fi
-	$(UMOUNT) "$(SYSTEM_DIR)" || true
 	touch $@
 	echo "打包system.img:" "完成"
 pack_system system.img: $(SYSTEM_FILE)
@@ -228,7 +237,7 @@ mount_system: $(SYSTEM_FILE)
 umount_system:
 	$(UMOUNT) "$(SYSTEM_DIR)"
 clean_system:
-	$(RM) $(SYSTEM_STAMP)
+	$(RM) $(SYSTEM_UNCOMP_FILE) $(SYSTEM_UNCOMP_DIR)/system.img $(SYSTEM_UNCOMP_DIR)/system_image_info.txt
 .PHONY: unpack_system pack_system system.img mount_system umount_system clean_system
 
 GPT_FILE := $(IMAGES_DIR)/gpt.bin
@@ -243,20 +252,62 @@ clean_images:
 	$(RM) $(IMAGES_DIR)
 clean_all: clean clean_images
 	$(RM) $(SHIM_FILE) $(GRUB2_EFI_FILE)
+	$(RM) $(DEVICE_FILES_DIR)/dsdt.{aml,hex}
 .PHONY: clean clean_images clean_all
 
-flash_boot: $(BOOT_FILE)
-	fastboot flash boot "$<"
-flash_data: $(DATA_FILE)
-	fastboot flash data "$<"
-flash_system: $(SYSTEM_FILE)
-	fastboot flash system "$<"
 flash_gpt: $(GPT_FILE)
 	fastboot flash gpt "$<"
+flash_boot: $(BOOT_FILE)
+	fastboot flash boot "$<"
+flash_system: $(SYSTEM_FILE)
+	fastboot flash system "$<"
+flash_data: $(DATA_FILE)
+	fastboot flash data "$<"
+flash_boot_system: flash_boot flash_system
 flash_reboot:
 	fastboot reboot
 flash_all: flash_gpt flash_boot flash_system flash_data flash_reboot
-.PHONY: flash_boot flash_data flash_system flash_gpt flash_reboot flash_all
+.PHONY: flash_gpt flash_boot flash_system flash_boot_system flash_data flash_reboot flash_all
 
 all: gpt.bin boot.img system.img data.img
 .PHONY: all
+
+ssh:
+	ssh -i "$(DEVICE_FILES_DIR)/id_rsa" root@192.168.255.1 "/system/bin/sh -i"
+.PHONY: ssh
+
+VIRGL := y
+QEMU_DEBUG=0
+QEMU_KERNEL_CMDLINE := console=tty1 console=ttyS0,115200 DATA=/dev/sdb DEBUG=$(QEMU_DEBUG)
+ifeq ($(VIRGL),n)
+	QEMU_KERNEL_CMDLINE += nomodeset HWACCEL=0
+endif
+ifeq ($(QEMU_DEBUG),0)
+	QEMU_KERNEL_CMDLINE += quiet
+endif
+KVM := y
+QEMU_KVM :=
+ifeq ($(KVM),y)
+	QEMU_KVM := -enable-kvm
+endif
+QEMU_MEM := 1800
+QEMU_DATA_FILE := $(BUILD_DIR)/data.qcow2
+$(QEMU_DATA_FILE): $(DATA_FILE)
+	qemu-img convert -f raw -O qcow2 "$<" "$@"
+qemu: $(SYSTEM_FILE) $(INITRD_FILE) $(QEMU_DATA_FILE)
+	qemu-system-x86_64 -cpu Broadwell -kernel "$(KERNEL_DIR)"/vmlinuz-*-zenith -initrd "$(INITRD_FILE)" \
+	-append "$(QEMU_KERNEL_CMDLINE)" \
+	-drive if=pflash,format=raw,readonly=on,file=/usr/share/edk2/x64/OVMF_CODE.4m.fd \
+	-device virtio-vga-gl,xres=960,yres=1280 -display sdl,gl=on \
+	-nic user,model=virtio-net-pci,mac=52:54:00:12:34:56,hostfwd=tcp::5555-:5555 \
+	-serial stdio -hda "$(SYSTEM_FILE)" -hdb "$(QEMU_DATA_FILE)" \
+	-m "$(QEMU_MEM)" -smp 4 $(QEMU_KVM)
+clean_qemu:
+	$(RM) $(QEMU_DATA_FILE)
+.PHONY: qemu clean_qemu
+
+# 文件夹创建目标自动生成
+DIR_VARS := $(filter %_DIR,$(.VARIABLES)) $(O)
+ALL_DIRS := $(foreach v,$(DIR_VARS),$($(v)))
+$(ALL_DIRS):
+	mkdir -p $@
