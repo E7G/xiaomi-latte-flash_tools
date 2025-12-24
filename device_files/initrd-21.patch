@@ -1,0 +1,39 @@
+--- a/init	2025-12-24 12:17:03.768913145 +0800
++++ b/init	2025-12-24 12:17:51.917845067 +0800
+@@ -295,12 +295,12 @@
+ 	esac
+ done
+ 
+-if [ -z "$SRC" ]; then
+-	if [ -z "$ISO" ] && [ "$BOOT_IMAGE" ]; then
+-		# Avoid GRUB partition prefix
+-		SRC=$(dirname "${BOOT_IMAGE#/}")
+-	fi
+-fi
++# if [ -z "$SRC" ]; then
++# 	if [ -z "$ISO" ] && [ "$BOOT_IMAGE" ]; then
++# 		# Avoid GRUB partition prefix
++# 		SRC=$(dirname "${BOOT_IMAGE#/}")
++# 	fi
++# fi
+ 
+ # Most of the times they mislead devices in /dev with /dev/block, as
+ # /dev/block is used in Android (booted). So this is a workaround to
+@@ -314,7 +314,7 @@
+ cd /
+ # If there's no ROOT= specified, try to find one for 5 times
+ if [ ! "$ROOT" ] || ! try_mount rw "$ROOT" /mnt; then
+-	: "${ROOT_SEARCH_FILES:="fstab.android ${BOOT_IMAGE#/} system$SLOT.?fs system$SLOT.img system$SLOT/system/build.prop system/build.prop"}"
++	: "${ROOT_SEARCH_FILES:="system$SLOT.img fstab.android ${BOOT_IMAGE#/} system$SLOT.?fs system$SLOT/system/build.prop system/build.prop"}"
+ 
+ 	# If is live/install mode, prior to search for $INSTALL image, default to install.sfs
+ 	if [ "$INSTALL" ] || grep -q 'androidboot.live=true' /proc/cmdline; then
+@@ -389,6 +389,8 @@
+ setup_dpi
+ post_detect
+ post_setup_recovery
+ 
++[ -n "$DATA" ] && mount $DATA /android/data
++
+ if [ 0"$DEBUG" -gt 1 ]; then
+ 	echo -e "\nUse Alt-F1/F2/F3 to switch between virtual consoles"

@@ -3,8 +3,9 @@ ifeq ($(V),0)
 .SILENT:
 endif
 
+# LineageOS 21.1 为 Android 14
 # ProjectSakura-5.2 为 Android 11
-VER_LIST := 14 15 16 5
+VER_LIST := 14 15 16 21 5
 VER ?= 15
 # 判断输入版本是否在范围内
 ifeq ($(filter $(VER),$(VER_LIST)),)
@@ -77,11 +78,15 @@ clean_kenrel:
 	$(RM) "$(KERNEL_DIR)" "$(KERNEL_STAMP)"
 .PHONY: unpack_kenrel clean_kenrel
 
+ifeq ($(VER),5)
+ISO_FILE := $(wildcard ProjectSakura-$(VER).*.iso)
+else
 ISO_FILE := $(wildcard *$(VER).*.iso)
+endif
 ISO_STAMP := $(ISO_DIR)/.stamp
 $(ISO_STAMP): $(ISO_FILE) | $(ISO_DIR)
 	echo "解包ISO文件:" $<
-	7z x "$<" -o"$(ISO_DIR)"
+	7z x -aos -o"$(ISO_DIR)" "$<"
 	touch $@
 	echo "解包ISO文件:" "完成"
 unpack_iso: $(ISO_STAMP)
@@ -95,6 +100,10 @@ $(DSDT_FILE): $(DEVICE_FILES_DIR)/dsdt.dsl
 
 INITRD_FILE := $(BUILD_DIR)/initrd-$(VER).cpio.gz
 INITRD_STAMP := $(BUILD_DIR)/.initrd-$(VER).stamp
+INITRD_PATCH_FILE := $(DEVICE_FILES_DIR)/initrd-$(VER).patch
+ifeq ($(wildcard $(INITRD_PATCH_FILE)),)
+INITRD_PATCH_FILE := $(DEVICE_FILES_DIR)/initrd.patch
+endif
 INITRD_PATCH_STAMP := $(BUILD_DIR)/.initrd-$(VER).patch.stamp
 $(INITRD_STAMP): $(ISO_STAMP)
 	echo "解包initrd文件"
@@ -104,9 +113,9 @@ $(INITRD_STAMP): $(ISO_STAMP)
 	touch $@
 	echo "解包initrd文件:" "完成"
 unpack_initrd: $(INITRD_STAMP)
-$(INITRD_PATCH_STAMP): $(INITRD_STAMP) $(DEVICE_FILES_DIR)/initrd.patch $(DSDT_FILE)
+$(INITRD_PATCH_STAMP): $(INITRD_STAMP) $(INITRD_PATCH_FILE) $(DSDT_FILE)
 	echo "initrd 打补丁"
-	patch -p1 < $(DEVICE_FILES_DIR)/initrd.patch -d "$(INITRD_DIR)"
+	patch -p1 < $(INITRD_PATCH_FILE) -d "$(INITRD_DIR)"
 	sed -i 's|bliss.model="$$BOARD"|bliss.model="$$PRODUCT"|' "$(INITRD_DIR)/init"
 	$(INSTALL) -Dm755 "$(DSDT_FILE)" "$(INITRD_DIR)/kernel/firmware/acpi/dsdt.aml"
 	touch $@
@@ -142,7 +151,7 @@ boot.img: $(BOOT_FILE)
 mount_boot: $(BOOT_FILE)
 	$(MOUNT) -o loop "$<" "$(BOOT_DIR)"
 umount_boot:
-	$(UMOUNT) "$(BOOT_DIR)"
+	$(UMOUNT) "$(BOOT_DIR)" || echo "未挂载boot.img"
 .PHONY: boot.img mount_boot umount_boot
 
 DATA_FILE := $(IMAGES_DIR)/data.img
@@ -172,7 +181,7 @@ data.img: $(DATA_FILE)
 mount_data: $(DATA_FILE)
 	$(MOUNT) -o loop "$<" "$(DATA_DIR)"
 umount_data:
-	$(UMOUNT) "$(DATA_DIR)"
+	$(UMOUNT) "$(DATA_DIR)" || echo "未挂载data.img"
 .PHONY: data.img mount_data umount_data
 
 KEY_REMAP_PROG := $(BUILD_DIR)/key-remap
@@ -199,7 +208,7 @@ $(SYSTEM_UNCOMP_FILE): $(ISO_STAMP) | $(SYSTEM_UNCOMP_DIR)
 	if [ -f "$(ISO_DIR)/system.sfs" ]; then \
         unsquashfs -d "$(SYSTEM_UNCOMP_DIR)" "$(ISO_DIR)/system.sfs"; \
     elif [ -f "$(ISO_DIR)/system.efs" ]; then \
-		$(RM) "$(SYSTEM_UNCOMP_DIR)/system_image_info.txt"; \
+		$(RM) "$(SYSTEM_UNCOMP_DIR)"/*.txt*; \
         fsck.erofs --extract="$(SYSTEM_UNCOMP_DIR)/" "$(ISO_DIR)/system.efs"; \
     fi
 	touch $@
@@ -226,6 +235,7 @@ $(SYSTEM_FILE): $(OVERLAY_SYSTEM_DIR) $(SYSTEM_UNCOMP_FILE) $(KERNEL_STAMP) $(KE
 	echo "修改system:" "完成"
 	echo "打包system.img"
 	$(UMOUNT) "$(SYSTEM_DIR)" || true
+	$(RM) "$(SYSTEM_UNCOMP_DIR)"/*.txt*;
 	if command -v mkfs.erofs &> /dev/null;then \
         echo "erofs-utils found, using erofs for system image."; \
         mkfs.erofs -L system -zlzma "$@" "$(SYSTEM_UNCOMP_DIR)"; \
@@ -242,7 +252,7 @@ pack_system system.img: $(SYSTEM_FILE)
 mount_system: $(SYSTEM_FILE)
 	$(MOUNT) -o loop "$<" "$(SYSTEM_DIR)"
 umount_system:
-	$(UMOUNT) "$(SYSTEM_DIR)"
+	$(UMOUNT) "$(SYSTEM_DIR)" || echo "未挂载system.img"
 clean_system:
 	$(RM) $(SYSTEM_UNCOMP_FILE) $(SYSTEM_UNCOMP_DIR)/system.img $(SYSTEM_UNCOMP_DIR)/system_image_info.txt
 .PHONY: unpack_system pack_system system.img mount_system umount_system clean_system
@@ -253,7 +263,7 @@ $(GPT_FILE): $(PWD)/gpt.ini | $(IMAGES_DIR)
 gpt.bin: $(GPT_FILE)
 .PHONY: gpt.bin
 
-clean:
+clean: umount_boot umount_system umount_data
 	$(RM) $(BUILD_DIR)
 clean_images:
 	$(RM) $(IMAGES_DIR)
@@ -290,10 +300,10 @@ ssh: $(SSH_KEY)
 	ssh -i "$(SSH_KEY)" -t root@192.168.255.1 || true
 .PHONY: ssh
 
-VIRGL := y
+QEMU_VIRGL := y
 QEMU_DEBUG=0
 QEMU_KERNEL_CMDLINE := console=ttyS0,115200 DATA=/dev/sdb vdso=0 DEBUG=$(QEMU_DEBUG)
-ifeq ($(VIRGL),n)
+ifeq ($(QEMU_VIRGL),n)
 	QEMU_KERNEL_CMDLINE += nomodeset HWACCEL=0
 endif
 ifeq ($(QEMU_DEBUG),0)
@@ -305,15 +315,18 @@ ifeq ($(KVM),y)
 	QEMU_KVM := -enable-kvm
 endif
 QEMU_MEM := 1800
+QEMU_KERNEL_FILE := $(KERNEL_DIR)/vmlinuz-*-zenith
+QEMU_INITRD_FILE := $(INITRD_FILE)
+QEMU_SYSTEM_FILE := $(SYSTEM_FILE)
 QEMU_DATA_FILE := $(BUILD_DIR)/data.qcow2
 $(QEMU_DATA_FILE): $(DATA_FILE)
 	qemu-img convert -f raw -O qcow2 "$<" "$@"
-qemu: $(SYSTEM_FILE) $(INITRD_FILE) $(QEMU_DATA_FILE)
-	qemu-system-x86_64 -cpu Broadwell -kernel "$(KERNEL_DIR)"/vmlinuz-*-zenith -initrd "$(INITRD_FILE)" \
+qemu: $(QEMU_INITRD_FILE) $(QEMU_SYSTEM_FILE) $(QEMU_DATA_FILE)
+	qemu-system-x86_64 -cpu Broadwell -kernel $(QEMU_KERNEL_FILE) -initrd "$(QEMU_INITRD_FILE)" \
 	-append "$(QEMU_KERNEL_CMDLINE)" \
 	-drive if=pflash,format=raw,readonly=on,file=/usr/share/edk2/x64/OVMF_CODE.4m.fd \
 	-device virtio-vga-gl,xres=960,yres=1280 -display sdl,gl=on \
-	-nic user,model=virtio-net-pci,mac=52:54:00:12:34:56,hostfwd=tcp::5555-:5555 \
+	-nic user,model=virtio-net-pci,mac=52:54:00:12:34:56,hostfwd=tcp::5555-:5555,hostfwd=tcp::5522-:22 \
 	-serial stdio -hda "$(SYSTEM_FILE)" -hdb "$(QEMU_DATA_FILE)" \
 	-m "$(QEMU_MEM)" -smp 4 $(QEMU_KVM)
 clean_qemu:

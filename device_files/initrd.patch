@@ -1,7 +1,4 @@
 diff --git a/init b/init
-old mode 100644
-new mode 100755
-index 93da8e5..1713976
 --- a/init
 +++ b/init
 @@ -195,11 +195,15 @@ try_mount()
