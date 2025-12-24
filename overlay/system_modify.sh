@@ -1,7 +1,7 @@
 #!/system/bin/sh
 set -e
 
-if [ -f "init.real" ];then
+if [ -L "init.real" ];then
     # Remove rusty-magisk
     mv -f init.real init
 fi

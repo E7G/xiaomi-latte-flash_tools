@@ -5,6 +5,7 @@ images/*.simg
 images/*.bin
 *.zip
 *.7z
+*.tar.*
 *.rpm
 *.iso
 *.hex

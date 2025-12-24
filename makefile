@@ -4,8 +4,9 @@ ifeq ($(V),0)
 endif
 
 # LineageOS 21.1 为 Android 14
+# LineageOS 17 为 Android 10
 # ProjectSakura-5.2 为 Android 11
-VER_LIST := 14 15 16 21 5
+VER_LIST := 17 5 14 15 16 21
 VER ?= 15
 # 判断输入版本是否在范围内
 ifeq ($(filter $(VER),$(VER_LIST)),)
@@ -65,12 +66,11 @@ $(SHIM_GRUB_STAMP): $(SHIM_FILE) $(GRUB2_EFI_FILE) | $(SHIM_GRUB_DIR)
 unpack_shim_grub: $(SHIM_GRUB_STAMP)
 .PHONY: unpack_shim_grub
 
-KERNEL_ZIP := $(wildcard kernel-*-package.zip)
+KERNEL_PACKAGE_FILE := $(wildcard kernel-*-zenith.tar.gz)
 KERNEL_STAMP := $(KERNEL_DIR)/.stamp
-$(KERNEL_STAMP): $(KERNEL_ZIP) | $(KERNEL_DIR)
+$(KERNEL_STAMP): $(KERNEL_PACKAGE_FILE) | $(KERNEL_DIR)
 	echo "解包内核文件:" $<
-	unzip $< -d "$(BUILD_DIR)"
-	tar -xzf $(BUILD_DIR)/kernel-*-zenith.tar.gz -C "$(KERNEL_DIR)"
+	tar -xzf $< -C "$(KERNEL_DIR)"
 	touch $@
 	echo "解包内核文件:" "完成"
 unpack_kenrel: $(KERNEL_STAMP)
@@ -148,7 +148,7 @@ $(BOOT_FILE): $(OVERLAY_BOOT_DIR) $(SHIM_GRUB_STAMP) $(INITRD_FILE) $(KERNEL_STA
 	$(UMOUNT) "$(BOOT_DIR)"
 	echo "打包boot.img:" "完成"
 boot.img: $(BOOT_FILE)
-mount_boot: $(BOOT_FILE)
+mount_boot: $(BOOT_FILE) umount_boot
 	$(MOUNT) -o loop "$<" "$(BOOT_DIR)"
 umount_boot:
 	$(UMOUNT) "$(BOOT_DIR)" || echo "未挂载boot.img"
@@ -162,10 +162,10 @@ $(DATA_FILE): $(OVERLAY_DATA_DIR) | $(IMAGES_DIR) $(DATA_DIR)
 	$(CHOWN) $(UID):$(GID) "$@"
 	if command -v mkfs.f2fs &> /dev/null;then \
         echo "f2fs-tools found, using f2fs for data image."; \
-        sudo mkfs.f2fs -l data -f "$@"; \
+        sudo mkfs.f2fs -l userdata -f "$@"; \
     else \
         echo "f2fs-tools not found, using ext4 for data image."; \
-        sudo mkfs.ext4 -L data -s -F "$@"; \
+        sudo mkfs.ext4 -L userdata -s -F "$@"; \
     fi
 	$(MOUNT) -o loop "$@" "$(DATA_DIR)"
 	$(CP) -r "$(OVERLAY_DATA_DIR)/"* "$(DATA_DIR)" || echo OVERLAY_DATA_DIR为空, 跳过复制.
@@ -178,7 +178,7 @@ $(DATA_FILE): $(OVERLAY_DATA_DIR) | $(IMAGES_DIR) $(DATA_DIR)
     fi
 	echo "打包data.img:" "完成"
 data.img: $(DATA_FILE)
-mount_data: $(DATA_FILE)
+mount_data: $(DATA_FILE) umount_data
 	$(MOUNT) -o loop "$<" "$(DATA_DIR)"
 umount_data:
 	$(UMOUNT) "$(DATA_DIR)" || echo "未挂载data.img"
@@ -197,6 +197,7 @@ $(DROPBEAR_FILE): $(DROPBEAR_ZIP) | $(BUILD_DIR)
 	unzip "$<" -d "$(BUILD_DIR)" dropbear
 	touch $@
 
+EROFS :=
 SYSTEM_FILE := $(IMAGES_DIR)/system.img
 SYSTEM_UNCOMP_DIR := $(BUILD_DIR)/system_uncomp_$(VER)
 SYSTEM_UNCOMP_FILE := $(SYSTEM_UNCOMP_DIR)/system.img
@@ -213,10 +214,9 @@ $(SYSTEM_UNCOMP_FILE): $(ISO_STAMP) | $(SYSTEM_UNCOMP_DIR)
     fi
 	touch $@
 	echo "解包system.img:" "完成"
-unpack_system: $(SYSTEM_UNCOMP_FILE)
+unpack_system: $(SYSTEM_UNCOMP_FILE) umount_system
 $(SYSTEM_FILE): $(OVERLAY_SYSTEM_DIR) $(SYSTEM_UNCOMP_FILE) $(KERNEL_STAMP) $(KEY_REMAP_PROG) $(DROPBEAR_FILE) $(SSH_KEY_PUB) | $(SYSTEM_DIR) $(IMAGES_DIR)
 	echo "修改system"
-	if grep -q "$(SYSTEM_DIR)" /proc/mounts;then $(UMOUNT) "$(SYSTEM_DIR)";fi
 	$(MOUNT) -o loop "$(SYSTEM_UNCOMP_FILE)" "$(SYSTEM_DIR)"
 
 	$(RM) "$(SYSTEM_DIR)/system/lib/modules"
@@ -236,12 +236,12 @@ $(SYSTEM_FILE): $(OVERLAY_SYSTEM_DIR) $(SYSTEM_UNCOMP_FILE) $(KERNEL_STAMP) $(KE
 	echo "打包system.img"
 	$(UMOUNT) "$(SYSTEM_DIR)" || true
 	$(RM) "$(SYSTEM_UNCOMP_DIR)"/*.txt*;
-	if command -v mkfs.erofs &> /dev/null;then \
+	if (command -v mkfs.erofs &> /dev/null) && [ -z "$(EROFS)" ];then \
         echo "erofs-utils found, using erofs for system image."; \
-        mkfs.erofs -L system -zlzma "$@" "$(SYSTEM_UNCOMP_DIR)"; \
+        mkfs.erofs -L system -zzstd,level=7 "$@" "$(SYSTEM_UNCOMP_DIR)"; \
     elif command -v mksquashfs &> /dev/null;then \
         echo "squashfs-tools found, using squashfs for system image."; \
-        mksquashfs "$(SYSTEM_UNCOMP_DIR)" "$@" -comp xz -Xcompression-level 19 -b 1M -Xdict-size 1M -noappend; \
+        mksquashfs "$(SYSTEM_UNCOMP_DIR)" "$@" -comp xz -b 1M -Xdict-size 1M -noappend; \
     else \
         echo "erofs-utils and squashfs-tools not found, no package"; \
         cp "$(SYSTEM_UNCOMP_FILE)" "$@"; \
@@ -249,7 +249,7 @@ $(SYSTEM_FILE): $(OVERLAY_SYSTEM_DIR) $(SYSTEM_UNCOMP_FILE) $(KERNEL_STAMP) $(KE
 	touch $@
 	echo "打包system.img:" "完成"
 pack_system system.img: $(SYSTEM_FILE)
-mount_system: $(SYSTEM_FILE)
+mount_system: $(SYSTEM_UNCOMP_FILE) umount_system
 	$(MOUNT) -o loop "$<" "$(SYSTEM_DIR)"
 umount_system:
 	$(UMOUNT) "$(SYSTEM_DIR)" || echo "未挂载system.img"
@@ -301,8 +301,8 @@ ssh: $(SSH_KEY)
 .PHONY: ssh
 
 QEMU_VIRGL := y
-QEMU_DEBUG=0
-QEMU_KERNEL_CMDLINE := console=ttyS0,115200 DATA=/dev/sdb vdso=0 DEBUG=$(QEMU_DEBUG)
+QEMU_DEBUG := 0
+QEMU_KERNEL_CMDLINE := console=tty1 console=ttyS0,115200 DATA=/dev/sdb vdso=0 DEBUG=$(QEMU_DEBUG) androidboot.selinux=permissive
 ifeq ($(QEMU_VIRGL),n)
 	QEMU_KERNEL_CMDLINE += nomodeset HWACCEL=0
 endif
@@ -315,23 +315,27 @@ ifeq ($(KVM),y)
 	QEMU_KVM := -enable-kvm
 endif
 QEMU_MEM := 1800
-QEMU_KERNEL_FILE := $(KERNEL_DIR)/vmlinuz-*-zenith
+QEMU_KERNEL_FILE := $(KERNEL_DIR)/vmlinuz-*
 QEMU_INITRD_FILE := $(INITRD_FILE)
 QEMU_SYSTEM_FILE := $(SYSTEM_FILE)
 QEMU_DATA_FILE := $(BUILD_DIR)/data.qcow2
 $(QEMU_DATA_FILE): $(DATA_FILE)
 	qemu-img convert -f raw -O qcow2 "$<" "$@"
 qemu: $(QEMU_INITRD_FILE) $(QEMU_SYSTEM_FILE) $(QEMU_DATA_FILE)
-	qemu-system-x86_64 -cpu Broadwell -kernel $(QEMU_KERNEL_FILE) -initrd "$(QEMU_INITRD_FILE)" \
-	-append "$(QEMU_KERNEL_CMDLINE)" \
+	qemu-system-x86_64 -cpu Broadwell,vendor=GenuineIntel -M q35 \
+	-kernel $(QEMU_KERNEL_FILE) -initrd "$(QEMU_INITRD_FILE)" -append "$(QEMU_KERNEL_CMDLINE)" \
 	-drive if=pflash,format=raw,readonly=on,file=/usr/share/edk2/x64/OVMF_CODE.4m.fd \
-	-device virtio-vga-gl,xres=960,yres=1280 -display sdl,gl=on \
+	-device virtio-vga-gl,xres=540,yres=960 -display sdl,gl=on \
 	-nic user,model=virtio-net-pci,mac=52:54:00:12:34:56,hostfwd=tcp::5555-:5555,hostfwd=tcp::5522-:22 \
 	-serial stdio -hda "$(SYSTEM_FILE)" -hdb "$(QEMU_DATA_FILE)" \
 	-m "$(QEMU_MEM)" -smp 4 $(QEMU_KVM)
+mount_qemu_data: $(QEMU_DATA_FILE) umount_qemu_data
+	sudo guestmount -a "$<" -m /dev/sda "$(DATA_DIR)"
+umount_qemu_data:
+	sudo guestunmount "$(DATA_DIR)" || echo "未挂载data.img"
 clean_qemu:
 	$(RM) $(QEMU_DATA_FILE)
-.PHONY: qemu clean_qemu
+.PHONY: qemu mount_qemu_data umount_qemu_data clean_qemu
 
 # 文件夹创建目标自动生成
 DIR_VARS := $(filter %_DIR,$(.VARIABLES)) $(O)
