@@ -238,7 +238,7 @@ $(SYSTEM_FILE): $(OVERLAY_SYSTEM_DIR) $(SYSTEM_UNCOMP_FILE) $(KERNEL_STAMP) $(KE
 	$(RM) "$(SYSTEM_UNCOMP_DIR)"/*.txt*;
 	if (command -v mkfs.erofs &> /dev/null) && [ -z "$(EROFS)" ];then \
         echo "erofs-utils found, using erofs for system image."; \
-        mkfs.erofs -L system -zzstd,level=7 "$@" "$(SYSTEM_UNCOMP_DIR)"; \
+        mkfs.erofs -L system -zlzma "$@" "$(SYSTEM_UNCOMP_DIR)"; \
     elif command -v mksquashfs &> /dev/null;then \
         echo "squashfs-tools found, using squashfs for system image."; \
         mksquashfs "$(SYSTEM_UNCOMP_DIR)" "$@" -comp xz -b 1M -Xdict-size 1M -noappend; \
