@@ -2,8 +2,21 @@
 set -e
 
 if [ -L "init.real" ];then
+    # ProjectSakura 5.2 使用rusty-magisk，替换为SukiSU-Ultra
     # Remove rusty-magisk
     mv -f init.real init
+    rm -rf system/bin/su
+    rm -rf system/xbin/su
+fi
+
+# 部分系统缺失 libwvhidl.so
+if ! find system/vendor -name "libwvhidl.so" 2>/dev/null; then
+    echo "libwvhidl.so 未找到，移除 android.hardware.drm@1.3-service.widevine.rc"
+    rm -rf system/vendor/etc/init/android.hardware.drm@1.3-service.widevine.rc
+elif [ -f system/vendor/lib64/libwvhidl.so ] && file system/vendor/lib64/libwvhidl.so | grep -q "32-bit LSB" 2>/dev/null; then
+    # ProjectSakura
+    echo "vendor/lib64/libwvhidl.so 为32位，移动到vendor/lib"
+    mv -f system/vendor/lib64/libwvhidl.so system/vendor/lib
 fi
 
 BUILD_PROP="system/vendor/build.prop"
@@ -45,16 +58,35 @@ echo "Config fstab done."
 
 # 删除不必要的应用
 echo "Removing unnecessary apps..."
+# BlissOS
 rm -rf "system/app/AboutBliss"
-rm -rf "system/app/com.googlecode.eyesfree.setorientation_1.1.4-10"
 rm -rf "system/priv-app/BlissUpdater"
+rm -rf "system/etc/permissions/privapp_whitelist_com.blissos.updater.xml"
+# 屏幕旋转
+rm -rf "system/app/com.googlecode.eyesfree.setorientation_1.1.4-10"
+# 计算器
 rm -rf "system/product/app/yetCalc"
+# 信息
 rm -rf "system/product/app/messaging"
+# 联系人
 rm -rf "system/product/priv-app/Contacts"
+rm -rf "system/product/etc/permissions/com.android.contacts.xml"
+# 拨号
 rm -rf "system/product/priv-app/Dialer"
+rm -rf "system/product/etc/permissions/com.android.dialer.xml"
+# 触摸屏校准 ProjectSakura 附带
+rm -rf system/priv-app/TSCalibration2
+# 桌面启动器
+rm -rf "system/priv-app/com.farmerbb.taskbar" # ProjectSakura
+rm -rf "system/etc/permissions/privapp-permissions-com.farmerbb.taskbar.xml"
 rm -rf "system/system_ext/priv-app/com.farmerbb.taskbar"
+rm -rf "system/system_ext/etc/permissions/privapp-permissions-com.farmerbb.taskbar.xml"
+rm -rf "system/priv-app/com.farmerbb.taskbar.support" # ProjectSakura
+rm -rf "system/etc/permissions/privapp-permissions-com.farmerbb.taskbar.support.xml"
 rm -rf "system/system_ext/priv-app/com.farmerbb.taskbar.support"
+rm -rf "system/system_ext/etc/permissions/privapp-permissions-com.farmerbb.taskbar.support.xml"
 rm -rf "system/system_ext/priv-app/smart-dock"
+rm -rf "system/system_ext/etc/permissions/cu.axel.smartdock-permissions.xml"
 echo "Removing unnecessary apps done."
 
 # 删除不必要的固件

@@ -4,7 +4,7 @@ ifeq ($(V),0)
 endif
 
 # LineageOS 21.1 为 Android 14
-# LineageOS 17 为 Android 10
+# LineageOS 17.1 为 Android 10
 # ProjectSakura-5.2 为 Android 11
 VER_LIST := 17 5 14 15 16 21
 VER ?= 15
@@ -12,6 +12,8 @@ VER ?= 15
 ifeq ($(filter $(VER),$(VER_LIST)),)
 $(error "VER must be one of $(VER_LIST)")
 endif
+
+NO_SUPPORT_EROFS_LIST := 17 5
 
 UID := $(shell id -u)
 GID := $(shell id -g)
@@ -154,18 +156,19 @@ umount_boot:
 	$(UMOUNT) "$(BOOT_DIR)" || echo "未挂载boot.img"
 .PHONY: boot.img mount_boot umount_boot
 
+F2FS :=
 DATA_FILE := $(IMAGES_DIR)/data.img
 $(DATA_FILE): $(OVERLAY_DATA_DIR) | $(IMAGES_DIR) $(DATA_DIR)
 	echo "打包data.img"
 	if grep -q "$(DATA_DIR)" /proc/mounts;then $(UMOUNT) "$(DATA_DIR)";fi
 	sudo truncate -s $(DATA_SIZE)M "$@"
 	$(CHOWN) $(UID):$(GID) "$@"
-	if command -v mkfs.f2fs &> /dev/null;then \
+	if (command -v mkfs.f2fs &> /dev/null) && [ -z "$(F2FS)" ];then \
         echo "f2fs-tools found, using f2fs for data image."; \
         sudo mkfs.f2fs -l userdata -f "$@"; \
     else \
         echo "f2fs-tools not found, using ext4 for data image."; \
-        sudo mkfs.ext4 -L userdata -s -F "$@"; \
+        sudo mkfs.ext4 -L userdata -F "$@"; \
     fi
 	$(MOUNT) -o loop "$@" "$(DATA_DIR)"
 	$(CP) -r "$(OVERLAY_DATA_DIR)/"* "$(DATA_DIR)" || echo OVERLAY_DATA_DIR为空, 跳过复制.
@@ -198,6 +201,11 @@ $(DROPBEAR_FILE): $(DROPBEAR_ZIP) | $(BUILD_DIR)
 	touch $@
 
 EROFS :=
+SQUASHFS_COMP := -comp xz -Xdict-size 1M
+ifneq ($(filter $(VER),$(NO_SUPPORT_EROFS_LIST)),)
+EROFS := n
+SQUASHFS_COMP := -comp gzip
+endif
 SYSTEM_FILE := $(IMAGES_DIR)/system.img
 SYSTEM_UNCOMP_DIR := $(BUILD_DIR)/system_uncomp_$(VER)
 SYSTEM_UNCOMP_FILE := $(SYSTEM_UNCOMP_DIR)/system.img
@@ -214,9 +222,11 @@ $(SYSTEM_UNCOMP_FILE): $(ISO_STAMP) | $(SYSTEM_UNCOMP_DIR)
     fi
 	touch $@
 	echo "解包system.img:" "完成"
-unpack_system: $(SYSTEM_UNCOMP_FILE) umount_system
-$(SYSTEM_FILE): $(OVERLAY_SYSTEM_DIR) $(SYSTEM_UNCOMP_FILE) $(KERNEL_STAMP) $(KEY_REMAP_PROG) $(DROPBEAR_FILE) $(SSH_KEY_PUB) | $(SYSTEM_DIR) $(IMAGES_DIR)
+unpack_system: $(SYSTEM_UNCOMP_FILE)
+$(SYSTEM_FILE): $(OVERLAY_SYSTEM_DIR) $(SYSTEM_UNCOMP_FILE) $(KERNEL_STAMP) $(KEY_REMAP_PROG) \
+				$(DROPBEAR_FILE) $(SSH_KEY_PUB) | $(SYSTEM_DIR) $(IMAGES_DIR)
 	echo "修改system"
+	if grep -q "$(SYSTEM_DIR)" /proc/mounts;then $(UMOUNT) "$(SYSTEM_DIR)";fi
 	$(MOUNT) -o loop "$(SYSTEM_UNCOMP_FILE)" "$(SYSTEM_DIR)"
 
 	$(RM) "$(SYSTEM_DIR)/system/lib/modules"
@@ -241,7 +251,7 @@ $(SYSTEM_FILE): $(OVERLAY_SYSTEM_DIR) $(SYSTEM_UNCOMP_FILE) $(KERNEL_STAMP) $(KE
         mkfs.erofs -L system -zlzma "$@" "$(SYSTEM_UNCOMP_DIR)"; \
     elif command -v mksquashfs &> /dev/null;then \
         echo "squashfs-tools found, using squashfs for system image."; \
-        mksquashfs "$(SYSTEM_UNCOMP_DIR)" "$@" -comp xz -b 1M -Xdict-size 1M -noappend; \
+        mksquashfs "$(SYSTEM_UNCOMP_DIR)" "$@" -b 1M $(SQUASHFS_COMP) -noappend; \
     else \
         echo "erofs-utils and squashfs-tools not found, no package"; \
         cp "$(SYSTEM_UNCOMP_FILE)" "$@"; \
@@ -302,9 +312,14 @@ ssh: $(SSH_KEY)
 
 QEMU_VIRGL := y
 QEMU_DEBUG := 0
-QEMU_KERNEL_CMDLINE := console=tty1 console=ttyS0,115200 DATA=/dev/sdb vdso=0 DEBUG=$(QEMU_DEBUG) androidboot.selinux=permissive
+KERNEL_DEFAULT_CMDLINE := console=tty1 console=ttyS0,115200 DATA=/dev/sdb DEBUG=$(QEMU_DEBUG)
+EXTRA_KERNEL_CMDLINE :=
+QEMU_KERNEL_CMDLINE = $(KERNEL_DEFAULT_CMDLINE) $(EXTRA_KERNEL_CMDLINE)
+
 ifeq ($(QEMU_VIRGL),n)
 	QEMU_KERNEL_CMDLINE += nomodeset HWACCEL=0
+else
+	QEMU_KERNEL_CMDLINE += 
 endif
 ifeq ($(QEMU_DEBUG),0)
 	QEMU_KERNEL_CMDLINE += quiet
@@ -322,12 +337,12 @@ QEMU_DATA_FILE := $(BUILD_DIR)/data.qcow2
 $(QEMU_DATA_FILE): $(DATA_FILE)
 	qemu-img convert -f raw -O qcow2 "$<" "$@"
 qemu: $(QEMU_INITRD_FILE) $(QEMU_SYSTEM_FILE) $(QEMU_DATA_FILE)
-	qemu-system-x86_64 -cpu Broadwell,vendor=GenuineIntel -M q35 \
+	qemu-system-x86_64 -cpu Broadwell -M q35 -device virtio-tablet-pci \
 	-kernel $(QEMU_KERNEL_FILE) -initrd "$(QEMU_INITRD_FILE)" -append "$(QEMU_KERNEL_CMDLINE)" \
 	-drive if=pflash,format=raw,readonly=on,file=/usr/share/edk2/x64/OVMF_CODE.4m.fd \
-	-device virtio-vga-gl,xres=540,yres=960 -display sdl,gl=on \
+	-device virtio-vga-gl -display sdl,gl=on \
 	-nic user,model=virtio-net-pci,mac=52:54:00:12:34:56,hostfwd=tcp::5555-:5555,hostfwd=tcp::5522-:22 \
-	-serial stdio -hda "$(SYSTEM_FILE)" -hdb "$(QEMU_DATA_FILE)" \
+	-serial stdio -hda "$(QEMU_SYSTEM_FILE)" -hdb "$(QEMU_DATA_FILE)" \
 	-m "$(QEMU_MEM)" -smp 4 $(QEMU_KVM)
 mount_qemu_data: $(QEMU_DATA_FILE) umount_qemu_data
 	sudo guestmount -a "$<" -m /dev/sda "$(DATA_DIR)"
