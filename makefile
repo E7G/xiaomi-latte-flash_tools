@@ -352,6 +352,10 @@ clean_qemu:
 	$(RM) $(QEMU_DATA_FILE)
 .PHONY: qemu mount_qemu_data umount_qemu_data clean_qemu
 
+dnx.7z: all
+	7z a DNX_Fastboot.7z $(IMAGES_DIR)/*.img $(IMAGES_DIR)/*.simg $(PWD)/*.bat
+.PHONY: dnx.7z
+
 # 文件夹创建目标自动生成
 DIR_VARS := $(filter %_DIR,$(.VARIABLES)) $(O)
 ALL_DIRS := $(foreach v,$(DIR_VARS),$($(v)))

@@ -1,6 +1,6 @@
 build/
 device_files/id_rsa*
-images/*.img
+*.img
 images/*.simg
 images/*.bin
 *.zip
