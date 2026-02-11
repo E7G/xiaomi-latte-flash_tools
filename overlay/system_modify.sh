@@ -87,6 +87,11 @@ rm -rf "system/system_ext/priv-app/com.farmerbb.taskbar.support"
 rm -rf "system/system_ext/etc/permissions/privapp-permissions-com.farmerbb.taskbar.support.xml"
 rm -rf "system/system_ext/priv-app/smart-dock"
 rm -rf "system/system_ext/etc/permissions/cu.axel.smartdock-permissions.xml"
+# FOSS
+rm -rf "system/app/at.bitfire.davdroid"
+rm -rf "system/app/eu.faircode.email"
+rm -rf "system/app/com.reecedunn.espeak"
+rm -rf "system/app/Phonograph"
 echo "Removing unnecessary apps done."
 
 # 删除不必要的固件

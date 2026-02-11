@@ -3,17 +3,24 @@ ifeq ($(V),0)
 .SILENT:
 endif
 
-# LineageOS 21.1 为 Android 14
-# LineageOS 17.1 为 Android 10
-# ProjectSakura-5.2 为 Android 11
-VER_LIST := 17 5 14 15 16 21
-VER ?= 15
+# LineageOS 21.1	为 Android 14 6.12.30-zenith
+# LineageOS 17.1	为 Android 10 5.8.0-android-x86_64-93451-g2eba2073e8a6
+# ProjectSakura-5.2	为 Android 11 5.10.61-GoogleLTS-xanmod1-pledge
+# BlissOS 15		为 Android 12 6.1.112-gloria-xanmod1
+# BlissOS 16		为 Android 13 6.1.112-gloria-xanmod1
+# BlissOS-Zenith 16	为 Android 13 6.9.9-zenith
+# BlissOS-Zenith17.2为 Android 14 6.7.10-zenith-xanmod1
+# BlissOS 18.4		为 Android 15 6.6.89-crimson-xanmod1
+VER_LIST := 17.1 5 14 15 16 17.2 18 21
+VER ?= 16
 # 判断输入版本是否在范围内
 ifeq ($(filter $(VER),$(VER_LIST)),)
 $(error "VER must be one of $(VER_LIST)")
 endif
 
 NO_SUPPORT_EROFS_LIST := 17 5
+RAW_SYSTEM_IMAGE_LIST := 
+HAVE_DROPBEAR := n
 
 UID := $(shell id -u)
 GID := $(shell id -g)
@@ -83,8 +90,9 @@ clean_kenrel:
 ifeq ($(VER),5)
 ISO_FILE := $(wildcard ProjectSakura-$(VER).*.iso)
 else
-ISO_FILE := $(wildcard *$(VER).*.iso)
+ISO_FILE := $(wildcard *$(VER)*.iso)
 endif
+ISO_FILE := $(firstword $(ISO_FILE))
 ISO_STAMP := $(ISO_DIR)/.stamp
 $(ISO_STAMP): $(ISO_FILE) | $(ISO_DIR)
 	echo "解包ISO文件:" $<
@@ -154,7 +162,9 @@ mount_boot: $(BOOT_FILE) umount_boot
 	$(MOUNT) -o loop "$<" "$(BOOT_DIR)"
 umount_boot:
 	$(UMOUNT) "$(BOOT_DIR)" || echo "未挂载boot.img"
-.PHONY: boot.img mount_boot umount_boot
+clean_boot: umount_boot
+	$(RM) "$(BOOT_FILE)"
+.PHONY: boot.img mount_boot umount_boot clean_boot
 
 F2FS :=
 DATA_FILE := $(IMAGES_DIR)/data.img
@@ -185,7 +195,9 @@ mount_data: $(DATA_FILE) umount_data
 	$(MOUNT) -o loop "$<" "$(DATA_DIR)"
 umount_data:
 	$(UMOUNT) "$(DATA_DIR)" || echo "未挂载data.img"
-.PHONY: data.img mount_data umount_data
+clean_data: umount_data
+	$(RM) "$(DATA_FILE)" "$(IMAGES_DIR)/data.simg"
+.PHONY: data.img mount_data umount_data clean_data
 
 KEY_REMAP_PROG := $(BUILD_DIR)/key-remap
 $(KEY_REMAP_PROG): $(DEVICE_FILES_DIR)/mipad2_keymap.c | $(BUILD_DIR)
@@ -205,6 +217,9 @@ SQUASHFS_COMP := -comp xz -Xdict-size 1M
 ifneq ($(filter $(VER),$(NO_SUPPORT_EROFS_LIST)),)
 EROFS := n
 SQUASHFS_COMP := -comp gzip
+else ifneq ($(filter $(VER),$(RAW_SYSTEM_IMAGE_LIST)),)
+EROFS := n
+SQUASHFS := n
 endif
 SYSTEM_FILE := $(IMAGES_DIR)/system.img
 SYSTEM_UNCOMP_DIR := $(BUILD_DIR)/system_uncomp_$(VER)
@@ -235,11 +250,17 @@ $(SYSTEM_FILE): $(OVERLAY_SYSTEM_DIR) $(SYSTEM_UNCOMP_FILE) $(KERNEL_STAMP) $(KE
 
 	$(INSTALL) --strip -Dm755 "$(KEY_REMAP_PROG)" "$(SYSTEM_DIR)/system/bin/key-remap"
 
-	$(INSTALL) --strip -Dm755 "$(DROPBEAR_FILE)" "$(SYSTEM_DIR)/system/bin/dropbear"
-	$(INSTALL) -Dm755 "$(SSH_KEY_PUB)" "$(SYSTEM_DIR)/system/etc/dropbear/authorized_keys"
-
 	cd "$(SYSTEM_DIR)"; if [ -f "$(OVERLAY_DIR)/system_modify.sh" ]; then sudo sh "$(OVERLAY_DIR)/system_modify.sh"; fi
 	$(CP) -r "$(OVERLAY_SYSTEM_DIR)/"* "$(SYSTEM_DIR)" || echo OVERLAY_SYSTEM_DIR为空, 跳过复制.
+
+	if [ -z "$(HAVE_DROPBEAR)" ];then \
+		$(INSTALL) --strip -Dm755 "$(DROPBEAR_FILE)" "$(SYSTEM_DIR)/system/bin/dropbear";\
+		$(INSTALL) -Dm755 "$(SSH_KEY_PUB)" "$(SYSTEM_DIR)/system/etc/dropbear/authorized_keys";\
+	else \
+		$(RM) -rf "$(SYSTEM_DIR)/system/etc/dropbear";\
+		$(RM) -rf "$(SYSTEM_DIR)/system/etc/init/sshd.rc";\
+	fi
+
 	$(CHMOD) -R 755 "$(SYSTEM_DIR)/"
 
 	echo "修改system:" "完成"
@@ -249,7 +270,7 @@ $(SYSTEM_FILE): $(OVERLAY_SYSTEM_DIR) $(SYSTEM_UNCOMP_FILE) $(KERNEL_STAMP) $(KE
 	if (command -v mkfs.erofs &> /dev/null) && [ -z "$(EROFS)" ];then \
         echo "erofs-utils found, using erofs for system image."; \
         mkfs.erofs -L system -zlzma "$@" "$(SYSTEM_UNCOMP_DIR)"; \
-    elif command -v mksquashfs &> /dev/null;then \
+    elif (command -v mksquashfs &> /dev/null) && [ -z "$(SQUASHFS)" ];then \
         echo "squashfs-tools found, using squashfs for system image."; \
         mksquashfs "$(SYSTEM_UNCOMP_DIR)" "$@" -b 1M $(SQUASHFS_COMP) -noappend; \
     else \
@@ -268,8 +289,8 @@ clean_system:
 .PHONY: unpack_system pack_system system.img mount_system umount_system clean_system
 
 GPT_FILE := $(IMAGES_DIR)/gpt.bin
-$(GPT_FILE): $(PWD)/gpt.ini | $(IMAGES_DIR)
-	python3 gpt_ini2bin.py
+$(GPT_FILE): $(DEVICE_FILES_DIR)/gpt.ini | $(IMAGES_DIR)
+	python3 "$(DEVICE_FILES_DIR)/gpt_ini2bin.py" -c "$<" "$@"
 gpt.bin: $(GPT_FILE)
 .PHONY: gpt.bin
 
@@ -313,7 +334,7 @@ ssh: $(SSH_KEY)
 QEMU_VIRGL := y
 QEMU_DEBUG := 0
 KERNEL_DEFAULT_CMDLINE := console=tty1 console=ttyS0,115200 DATA=/dev/sdb DEBUG=$(QEMU_DEBUG)
-EXTRA_KERNEL_CMDLINE :=
+EXTRA_KERNEL_CMDLINE := 
 QEMU_KERNEL_CMDLINE = $(KERNEL_DEFAULT_CMDLINE) $(EXTRA_KERNEL_CMDLINE)
 
 ifeq ($(QEMU_VIRGL),n)
@@ -330,7 +351,7 @@ ifeq ($(KVM),y)
 	QEMU_KVM := -enable-kvm
 endif
 QEMU_MEM := 1800
-QEMU_KERNEL_FILE := $(KERNEL_DIR)/vmlinuz-*
+QEMU_KERNEL_FILE := $(wildcard $(KERNEL_DIR)/vmlinuz-* )
 QEMU_INITRD_FILE := $(INITRD_FILE)
 QEMU_SYSTEM_FILE := $(SYSTEM_FILE)
 QEMU_DATA_FILE := $(BUILD_DIR)/data.qcow2
@@ -340,9 +361,16 @@ qemu: $(QEMU_INITRD_FILE) $(QEMU_SYSTEM_FILE) $(QEMU_DATA_FILE)
 	qemu-system-x86_64 -cpu Broadwell -M q35 -device virtio-tablet-pci \
 	-kernel $(QEMU_KERNEL_FILE) -initrd "$(QEMU_INITRD_FILE)" -append "$(QEMU_KERNEL_CMDLINE)" \
 	-drive if=pflash,format=raw,readonly=on,file=/usr/share/edk2/x64/OVMF_CODE.4m.fd \
-	-device virtio-vga-gl -display sdl,gl=on \
+	-device virtio-vga-gl -display gtk,gl=on,zoom-to-fit=off \
 	-nic user,model=virtio-net-pci,mac=52:54:00:12:34:56,hostfwd=tcp::5555-:5555,hostfwd=tcp::5522-:22 \
 	-serial stdio -hda "$(QEMU_SYSTEM_FILE)" -hdb "$(QEMU_DATA_FILE)" \
+	-m "$(QEMU_MEM)" -smp 4 $(QEMU_KVM)
+qemu-iso: $(QEMU_DATA_FILE)
+	qemu-system-x86_64 -cpu Broadwell -M q35 -device virtio-tablet-pci \
+	-drive if=pflash,format=raw,readonly=on,file=/usr/share/edk2/x64/OVMF_CODE.4m.fd \
+	-device virtio-vga-gl -display gtk,gl=on,zoom-to-fit=off \
+	-nic user,model=virtio-net-pci,mac=52:54:00:12:34:56,hostfwd=tcp::5555-:5555,hostfwd=tcp::5522-:22 \
+	-serial stdio -cdrom "$(ISO_FILE)" -hda "$(QEMU_DATA_FILE)" \
 	-m "$(QEMU_MEM)" -smp 4 $(QEMU_KVM)
 mount_qemu_data: $(QEMU_DATA_FILE) umount_qemu_data
 	sudo guestmount -a "$<" -m /dev/sda "$(DATA_DIR)"

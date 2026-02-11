@@ -1,0 +1,37 @@
+--- a/init	2026-01-06 13:51:03.399779037 +0800
++++ b/init	2026-01-06 13:58:06.667164456 +0800
+@@ -166,6 +166,12 @@
+ 			mount.ntfs-3g -o rw,force $@
+ 		fi
+ 		;;
++	*TYPE=*erofs*)
++		mount -t erofs -o $RW,noatime $@
++		;;
++	*TYPE=*f2fs*)
++		mount -t f2fs -o $RW,noatime $@
++		;;
+ 	*TYPE=*) mount -o $RW,noatime $@ ;;
+ 	*) return 1 ;;
+ 	esac
+@@ -278,9 +284,9 @@
+ 	setup_loop "/mnt/$SRC/misc.img" $ln_path/misc
+ }
+ 
+-[ -z "$SRC" ] && [ "$BOOT_IMAGE" ] &&
+-	# Avoid GRUB partition prefix
+-	SRC=$(dirname "${BOOT_IMAGE#/}")
++# [ -z "$SRC" ] && [ "$BOOT_IMAGE" ] &&
++# 	# Avoid GRUB partition prefix
++# 	SRC=$(dirname "${BOOT_IMAGE#/}")
+ 
+ # shellcheck disable=SC2013
+ for c in $(cat /proc/cmdline); do
+@@ -310,7 +310,7 @@
+ 	if [ "$ISO" ]; then
+ 		ROOT_SEARCH_FILES="$ISO"
+ 	else
+-		ROOT_SEARCH_FILES="fstab.android ${BOOT_IMAGE#/} system$SLOT.?fs system$SLOT.img system$SLOT/system/build.prop system/build.prop"
++		ROOT_SEARCH_FILES="system$SLOT.img fstab.android ${BOOT_IMAGE#/} system$SLOT.?fs system$SLOT/system/build.prop system/build.prop"
+ 
+ 		# If is live/install mode, prior to search for $INSTALL image, default to install.sfs
+ 		if [ "$INSTALL" ] || grep -q 'androidboot.live=true' /proc/cmdline; then

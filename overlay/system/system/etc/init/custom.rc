@@ -30,13 +30,6 @@ service dnsmasq_rndis /system/bin/dnsmasq \
     disabled
     oneshot
 
-# sshd
-service sshd /system/bin/dropbear -F -D /system/etc/dropbear
-    class main
-    user root
-    group root shell log readproc
-    restart
-
 # 在 sys.boot_completed 后启动（更保险）
 on property:sys.boot_completed=1
     start mipad2_key_remap

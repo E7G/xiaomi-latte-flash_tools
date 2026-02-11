@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
-from configparser import ConfigParser
-import uuid
 import struct
 import sys
-from os import path, mkdir
+import uuid
+from argparse import ArgumentParser
+from configparser import ConfigParser
+from pathlib import Path
 
 type_2_guid = {
     # official guid for gpt partition type
@@ -24,6 +25,11 @@ type_2_guid = {
     'data': 'DC76DDA9-5AC1-491C-AF42-A82591580C0D',
 }
 
+parser = ArgumentParser()
+parser.add_argument('-c','--config', default='gpt.ini')
+parser.add_argument('output', nargs='?', default='gpt.bin', help='output file')
+args = parser.parse_args()
+
 def zero_pad(s: bytes, size: int):
     if len(s) > size:
         print('error', len(s))
@@ -31,11 +37,11 @@ def zero_pad(s: bytes, size: int):
     return s
 
 def preparse_partitions(gpt_in, cfg):
-    with open(gpt_in, 'r') as f:
+    with open(gpt_in) as f:
         data = f.read()
     partitions = cfg.get('base', 'partitions').split()
-    for l in data.split('\n'):
-        words = l.split()
+    for line in data.split('\n'):
+        words = line.split()
         if len(words) > 2:
             if words[0] == 'partitions' and words[1] == '+=':
                 partitions += words[2:]
@@ -48,10 +54,9 @@ def main():
         sys.exit(1)
 
     # 读取配置文件
-    gpt_in = "gpt.ini" if len(sys.argv) < 2 else sys.argv[1]
     cfg = ConfigParser()
-    cfg.read(gpt_in)
-    part = preparse_partitions(gpt_in, cfg)
+    cfg.read(args.config)
+    part = preparse_partitions(args.config, cfg)
 
     magic = 0x6A8B0DA1
     start_lba = 0
@@ -60,10 +65,10 @@ def main():
 
     # 有效的分区数量
     npart = len(part)
+    output_file = Path(args.output)
+    output_file.parent.mkdir(parents=True, exist_ok=True)
     # 输出分区信息
-    if not path.exists('images/'):
-        mkdir("images/")
-    with open("images/gpt.bin", 'wb') as out:
+    with open(output_file, 'wb') as out:
         out.write(struct.pack('<I', magic))
         out.write(struct.pack('<I', start_lba))
         out.write(struct.pack('<I', npart))
