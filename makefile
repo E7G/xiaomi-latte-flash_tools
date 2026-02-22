@@ -333,7 +333,7 @@ ssh: $(SSH_KEY)
 
 QEMU_VIRGL := y
 QEMU_DEBUG := 0
-KERNEL_DEFAULT_CMDLINE := console=tty1 console=ttyS0,115200 DATA=/dev/sdb DEBUG=$(QEMU_DEBUG)
+KERNEL_DEFAULT_CMDLINE := console=tty1 console=ttyS0,115200 androidboot.console=ttyS0 androidboot.enable_console=1 DATA=/dev/sdb DEBUG=$(QEMU_DEBUG)
 EXTRA_KERNEL_CMDLINE := 
 QEMU_KERNEL_CMDLINE = $(KERNEL_DEFAULT_CMDLINE) $(EXTRA_KERNEL_CMDLINE)
 
@@ -365,12 +365,12 @@ qemu: $(QEMU_INITRD_FILE) $(QEMU_SYSTEM_FILE) $(QEMU_DATA_FILE)
 	-nic user,model=virtio-net-pci,mac=52:54:00:12:34:56,hostfwd=tcp::5555-:5555,hostfwd=tcp::5522-:22 \
 	-serial stdio -hda "$(QEMU_SYSTEM_FILE)" -hdb "$(QEMU_DATA_FILE)" \
 	-m "$(QEMU_MEM)" -smp 4 $(QEMU_KVM)
-qemu-iso: $(QEMU_DATA_FILE)
+qemu-iso:
 	qemu-system-x86_64 -cpu Broadwell -M q35 -device virtio-tablet-pci \
 	-drive if=pflash,format=raw,readonly=on,file=/usr/share/edk2/x64/OVMF_CODE.4m.fd \
 	-device virtio-vga-gl -display gtk,gl=on,zoom-to-fit=off \
 	-nic user,model=virtio-net-pci,mac=52:54:00:12:34:56,hostfwd=tcp::5555-:5555,hostfwd=tcp::5522-:22 \
-	-serial stdio -cdrom "$(ISO_FILE)" -hda "$(QEMU_DATA_FILE)" \
+	-serial stdio -cdrom "$(ISO_FILE)" \
 	-m "$(QEMU_MEM)" -smp 4 $(QEMU_KVM)
 mount_qemu_data: $(QEMU_DATA_FILE) umount_qemu_data
 	sudo guestmount -a "$<" -m /dev/sda "$(DATA_DIR)"

@@ -48,10 +48,10 @@ fi
 echo "Config build.prop done."
 
 echo "Config fstab ..."
-ROOT_FSTAB="fstab.android_x86_64"
+[ -f "fstab.android_x86_64" ] && ROOT_FSTAB="fstab.android_x86_64"
 [ -f "fstab.bliss_x86_64" ] && ROOT_FSTAB="fstab.bliss_x86_64"
 [ -f "fstab.lineage_x86_64_tablet" ] && ROOT_FSTAB="fstab.lineage_x86_64_tablet"
-sed -i '/mmc/d' "$ROOT_FSTAB"
+[ -n "$ROOT_FSTAB" ] && sed -i '/mmc/d' "$ROOT_FSTAB"
 VENDOR_FSTAB="system/vendor/etc/fstab.internal.x86"
 [ -f "$VENDOR_FSTAB" ] && sed -i '/mmc/d' "$VENDOR_FSTAB"
 echo "Config fstab done."
