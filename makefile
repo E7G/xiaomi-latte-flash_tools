@@ -21,6 +21,12 @@ endif
 NO_SUPPORT_EROFS_LIST := 17 5
 RAW_SYSTEM_IMAGE_LIST := 
 HAVE_DROPBEAR := n
+NEW_DATA_MOUNT_LIST := 17.2 18 21
+ifeq ($(filter $(VER),$(NEW_DATA_MOUNT_LIST)),)
+NEW_DATA_MOUNT := false
+else
+NEW_DATA_MOUNT := true
+endif
 
 UID := $(shell id -u)
 GID := $(shell id -g)
@@ -90,7 +96,7 @@ clean_kenrel:
 ifeq ($(VER),5)
 ISO_FILE := $(wildcard ProjectSakura-$(VER).*.iso)
 else
-ISO_FILE := $(wildcard *$(VER)*.iso)
+ISO_FILE := $(wildcard *$(VER)*-*.iso)
 endif
 ISO_FILE := $(firstword $(ISO_FILE))
 ISO_STAMP := $(ISO_DIR)/.stamp
@@ -110,7 +116,12 @@ $(DSDT_FILE): $(DEVICE_FILES_DIR)/dsdt.dsl
 
 INITRD_FILE := $(BUILD_DIR)/initrd-$(VER).cpio.gz
 INITRD_STAMP := $(BUILD_DIR)/.initrd-$(VER).stamp
+ifeq ($(NEW_DATA_MOUNT),true)
+INITRD_PATCH_FILE := $(DEVICE_FILES_DIR)/initrd-$(VER)-d.patch
+endif
+ifeq ($(wildcard $(INITRD_PATCH_FILE)),)
 INITRD_PATCH_FILE := $(DEVICE_FILES_DIR)/initrd-$(VER).patch
+endif
 ifeq ($(wildcard $(INITRD_PATCH_FILE)),)
 INITRD_PATCH_FILE := $(DEVICE_FILES_DIR)/initrd.patch
 endif
@@ -140,8 +151,9 @@ clean_initrd:
 	$(RM) "$(INITRD_DIR)" "$(INITRD_FILE)" "$(INITRD_STAMP)" "$(INITRD_PATCH_STAMP)"
 .PHONY: unpack_initrd patch_initrd pack_initrd
 
+GRUB_CFG_TEMPLATE := $(DEVICE_FILES_DIR)/grub.cfg
 BOOT_FILE := $(IMAGES_DIR)/boot.img
-$(BOOT_FILE): $(OVERLAY_BOOT_DIR) $(SHIM_GRUB_STAMP) $(INITRD_FILE) $(KERNEL_STAMP) | $(IMAGES_DIR) $(BOOT_DIR)
+$(BOOT_FILE): $(OVERLAY_BOOT_DIR) $(SHIM_GRUB_STAMP) $(INITRD_FILE) $(KERNEL_STAMP) $(GRUB_CFG_TEMPLATE) | $(IMAGES_DIR) $(BOOT_DIR)
 	echo "打包boot.img"
 	if grep -q "$(BOOT_DIR)" /proc/mounts;then $(UMOUNT) "$(BOOT_DIR)";fi
 	sudo truncate -s $(BOOT_SIZE)M "$@"
@@ -154,6 +166,7 @@ $(BOOT_FILE): $(OVERLAY_BOOT_DIR) $(SHIM_GRUB_STAMP) $(INITRD_FILE) $(KERNEL_STA
 	$(INSTALL) -D "$(INITRD_FILE)" "$(BOOT_DIR)/EFI/BlissOS/initrd.cpio.gz"
 	$(INSTALL) -D "$(KERNEL_DIR)"/vmlinuz-* "$(BOOT_DIR)/EFI/BlissOS/vmlinuz"
 	$(CP) -r "$(OVERLAY_BOOT_DIR)"/* "$(BOOT_DIR)"
+	new_data_mount=$(NEW_DATA_MOUNT) envsubst '$$new_data_mount' < "$(GRUB_CFG_TEMPLATE)" | sudo tee "$(BOOT_DIR)/EFI/BlissOS/grub.cfg" > /dev/null;
 	$(CHMOD) -R 644 "$(BOOT_DIR)/"
 	$(UMOUNT) "$(BOOT_DIR)"
 	echo "打包boot.img:" "完成"
@@ -333,14 +346,17 @@ ssh: $(SSH_KEY)
 
 QEMU_VIRGL := y
 QEMU_DEBUG := 0
-KERNEL_DEFAULT_CMDLINE := console=tty1 console=ttyS0,115200 androidboot.console=ttyS0 androidboot.enable_console=1 DATA=/dev/sdb DEBUG=$(QEMU_DEBUG)
+KERNEL_DEFAULT_CMDLINE := console=tty1 console=ttyS0,115200 androidboot.enable_console=1 SRC=. DEBUG=$(QEMU_DEBUG)
+ifeq ($(NEW_DATA_MOUNT),true)
+KERNEL_DEFAULT_CMDLINE += DATA=nodata data_part=/dev/vdb
+else
+KERNEL_DEFAULT_CMDLINE += DATA=/dev/vdb
+endif
 EXTRA_KERNEL_CMDLINE := 
 QEMU_KERNEL_CMDLINE = $(KERNEL_DEFAULT_CMDLINE) $(EXTRA_KERNEL_CMDLINE)
 
 ifeq ($(QEMU_VIRGL),n)
 	QEMU_KERNEL_CMDLINE += nomodeset HWACCEL=0
-else
-	QEMU_KERNEL_CMDLINE += 
 endif
 ifeq ($(QEMU_DEBUG),0)
 	QEMU_KERNEL_CMDLINE += quiet
@@ -350,7 +366,7 @@ QEMU_KVM :=
 ifeq ($(KVM),y)
 	QEMU_KVM := -enable-kvm
 endif
-QEMU_MEM := 1800
+QEMU_MEM := 2000
 QEMU_KERNEL_FILE := $(wildcard $(KERNEL_DIR)/vmlinuz-* )
 QEMU_INITRD_FILE := $(INITRD_FILE)
 QEMU_SYSTEM_FILE := $(SYSTEM_FILE)
@@ -358,20 +374,21 @@ QEMU_DATA_FILE := $(BUILD_DIR)/data.qcow2
 $(QEMU_DATA_FILE): $(DATA_FILE)
 	qemu-img convert -f raw -O qcow2 "$<" "$@"
 qemu: $(QEMU_INITRD_FILE) $(QEMU_SYSTEM_FILE) $(QEMU_DATA_FILE)
-	qemu-system-x86_64 -cpu Broadwell -M q35 -device virtio-tablet-pci \
+	qemu-system-x86_64 -cpu Broadwell -M q35 -serial stdio \
 	-kernel $(QEMU_KERNEL_FILE) -initrd "$(QEMU_INITRD_FILE)" -append "$(QEMU_KERNEL_CMDLINE)" \
 	-drive if=pflash,format=raw,readonly=on,file=/usr/share/edk2/x64/OVMF_CODE.4m.fd \
 	-device virtio-vga-gl -display gtk,gl=on,zoom-to-fit=off \
 	-nic user,model=virtio-net-pci,mac=52:54:00:12:34:56,hostfwd=tcp::5555-:5555,hostfwd=tcp::5522-:22 \
-	-serial stdio -hda "$(QEMU_SYSTEM_FILE)" -hdb "$(QEMU_DATA_FILE)" \
-	-m "$(QEMU_MEM)" -smp 4 $(QEMU_KVM)
+	-m "$(QEMU_MEM)" -smp 4 $(QEMU_KVM) \
+	-drive file="$(QEMU_SYSTEM_FILE)",format=raw,if=virtio,id=system \
+	-drive file="$(QEMU_DATA_FILE)",format=qcow2,if=virtio,id=data
 qemu-iso:
-	qemu-system-x86_64 -cpu Broadwell -M q35 -device virtio-tablet-pci \
+	qemu-system-x86_64 -cpu Broadwell -M q35 -serial stdio \
 	-drive if=pflash,format=raw,readonly=on,file=/usr/share/edk2/x64/OVMF_CODE.4m.fd \
 	-device virtio-vga-gl -display gtk,gl=on,zoom-to-fit=off \
 	-nic user,model=virtio-net-pci,mac=52:54:00:12:34:56,hostfwd=tcp::5555-:5555,hostfwd=tcp::5522-:22 \
-	-serial stdio -cdrom "$(ISO_FILE)" \
-	-m "$(QEMU_MEM)" -smp 4 $(QEMU_KVM)
+	-m "$(QEMU_MEM)" -smp 4 $(QEMU_KVM) \
+	-cdrom "$(ISO_FILE)" -hda "$(QEMU_DATA_FILE)"
 mount_qemu_data: $(QEMU_DATA_FILE) umount_qemu_data
 	sudo guestmount -a "$<" -m /dev/sda "$(DATA_DIR)"
 umount_qemu_data:

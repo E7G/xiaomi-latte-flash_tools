@@ -13,19 +13,6 @@
  	*TYPE=*) mount -o $RW,noatime $@ ;;
  	*) return 1 ;;
  	esac
-@@ -278,9 +284,9 @@
- 	setup_loop "/mnt/$SRC/misc.img" $ln_path/misc
- }
- 
--[ -z "$SRC" ] && [ "$BOOT_IMAGE" ] &&
--	# Avoid GRUB partition prefix
--	SRC=$(dirname "${BOOT_IMAGE#/}")
-+# [ -z "$SRC" ] && [ "$BOOT_IMAGE" ] &&
-+# 	# Avoid GRUB partition prefix
-+# 	SRC=$(dirname "${BOOT_IMAGE#/}")
- 
- # shellcheck disable=SC2013
- for c in $(cat /proc/cmdline); do
 @@ -310,7 +310,7 @@
  	if [ "$ISO" ]; then
  		ROOT_SEARCH_FILES="$ISO"
