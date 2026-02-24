@@ -1,6 +1,0 @@
-service udc /system/bin/swap.sh
-    class main
-    user root
-    group root
-    oneshot
-    disabled

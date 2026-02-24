@@ -27,6 +27,9 @@ NEW_DATA_MOUNT := false
 else
 NEW_DATA_MOUNT := true
 endif
+ifeq ($(NEW_DATA_MOUNT),y)
+NEW_DATA_MOUNT := true
+endif
 
 UID := $(shell id -u)
 GID := $(shell id -g)
@@ -39,7 +42,7 @@ CP := sudo cp
 RM := sudo rm -rf
 
 BOOT_SIZE ?= 64
-DATA_SIZE ?= 1024
+DATA_SIZE ?= 2048
 
 PWD = $(shell pwd)
 DEVICE_FILES_DIR := $(PWD)/device_files
@@ -226,7 +229,8 @@ $(DROPBEAR_FILE): $(DROPBEAR_ZIP) | $(BUILD_DIR)
 	touch $@
 
 EROFS :=
-SQUASHFS_COMP := -comp xz -Xdict-size 1M
+# SQUASHFS_COMP := -comp xz -Xdict-size 1M
+SQUASHFS_COMP := -comp zstd -Xcompression-level 15
 ifneq ($(filter $(VER),$(NO_SUPPORT_EROFS_LIST)),)
 EROFS := n
 SQUASHFS_COMP := -comp gzip
@@ -377,9 +381,9 @@ qemu: $(QEMU_INITRD_FILE) $(QEMU_SYSTEM_FILE) $(QEMU_DATA_FILE)
 	qemu-system-x86_64 -cpu Broadwell -M q35 -serial stdio \
 	-kernel $(QEMU_KERNEL_FILE) -initrd "$(QEMU_INITRD_FILE)" -append "$(QEMU_KERNEL_CMDLINE)" \
 	-drive if=pflash,format=raw,readonly=on,file=/usr/share/edk2/x64/OVMF_CODE.4m.fd \
-	-device virtio-vga-gl -display gtk,gl=on,zoom-to-fit=off \
+	-device virtio-vga-gl -display gtk,gl=on,zoom-to-fit=off,show-cursor=on \
 	-nic user,model=virtio-net-pci,mac=52:54:00:12:34:56,hostfwd=tcp::5555-:5555,hostfwd=tcp::5522-:22 \
-	-m "$(QEMU_MEM)" -smp 4 $(QEMU_KVM) \
+	-m "$(QEMU_MEM)" -smp 4 $(QEMU_KVM) -device virtio-tablet-pci \
 	-drive file="$(QEMU_SYSTEM_FILE)",format=raw,if=virtio,id=system \
 	-drive file="$(QEMU_DATA_FILE)",format=qcow2,if=virtio,id=data
 qemu-iso:
@@ -387,7 +391,7 @@ qemu-iso:
 	-drive if=pflash,format=raw,readonly=on,file=/usr/share/edk2/x64/OVMF_CODE.4m.fd \
 	-device virtio-vga-gl -display gtk,gl=on,zoom-to-fit=off \
 	-nic user,model=virtio-net-pci,mac=52:54:00:12:34:56,hostfwd=tcp::5555-:5555,hostfwd=tcp::5522-:22 \
-	-m "$(QEMU_MEM)" -smp 4 $(QEMU_KVM) \
+	-m "$(QEMU_MEM)" -smp 4 $(QEMU_KVM) -device virtio-tablet-pci \
 	-cdrom "$(ISO_FILE)" -hda "$(QEMU_DATA_FILE)"
 mount_qemu_data: $(QEMU_DATA_FILE) umount_qemu_data
 	sudo guestmount -a "$<" -m /dev/sda "$(DATA_DIR)"
