@@ -6,6 +6,8 @@ endif
 # LineageOS 21.1	为 Android 14 6.12.30-zenith
 # LineageOS 17.1	为 Android 10 5.8.0-android-x86_64-93451-g2eba2073e8a6
 # ProjectSakura-5.2	为 Android 11 5.10.61-GoogleLTS-xanmod1-pledge
+# BlissOS 14.10.3	为 Android 11 6.1.112-gloria-xanmod1
+# BlissOS 14.10.4	为 Android 11 6.6.102-crimson-xanmod1
 # BlissOS 15		为 Android 12 6.1.112-gloria-xanmod1
 # BlissOS 16		为 Android 13 6.1.112-gloria-xanmod1
 # BlissOS-Zenith 16	为 Android 13 6.9.9-zenith
@@ -168,6 +170,7 @@ $(BOOT_FILE): $(OVERLAY_BOOT_DIR) $(SHIM_GRUB_STAMP) $(INITRD_FILE) $(KERNEL_STA
 	$(INSTALL) -D "$(SHIM_GRUB_DIR)/boot/efi/EFI/fedora/grubx64.efi" "$(BOOT_DIR)/EFI/boot/grubx64.efi"
 	$(INSTALL) -D "$(INITRD_FILE)" "$(BOOT_DIR)/EFI/BlissOS/initrd.cpio.gz"
 	$(INSTALL) -D "$(KERNEL_DIR)"/vmlinuz-* "$(BOOT_DIR)/EFI/BlissOS/vmlinuz"
+	$(INSTALL) -D "$(ISO_DIR)"/ramdisk-recovery.img "$(BOOT_DIR)/EFI/BlissOS/ramdisk-recovery.img" || true
 	$(CP) -r "$(OVERLAY_BOOT_DIR)"/* "$(BOOT_DIR)"
 	new_data_mount=$(NEW_DATA_MOUNT) envsubst '$$new_data_mount' < "$(GRUB_CFG_TEMPLATE)" | sudo tee "$(BOOT_DIR)/EFI/BlissOS/grub.cfg" > /dev/null;
 	$(CHMOD) -R 644 "$(BOOT_DIR)/"
@@ -234,7 +237,7 @@ EROFS :=
 SQUASHFS_COMP := -comp lz4
 ifneq ($(filter $(VER),$(NO_SUPPORT_EROFS_LIST)),)
 EROFS := n
-SQUASHFS_COMP := -comp gzip
+SQUASHFS_COMP := -comp lz4
 else ifneq ($(filter $(VER),$(RAW_SYSTEM_IMAGE_LIST)),)
 EROFS := n
 SQUASHFS := n
@@ -287,7 +290,7 @@ $(SYSTEM_FILE): $(OVERLAY_SYSTEM_DIR) $(SYSTEM_UNCOMP_FILE) $(KERNEL_STAMP) $(KE
 	$(RM) "$(SYSTEM_UNCOMP_DIR)"/*.txt*;
 	if (command -v mkfs.erofs &> /dev/null) && [ -z "$(EROFS)" ];then \
         echo "erofs-utils found, using erofs for system image."; \
-        mkfs.erofs -L system -zlz4 "$@" "$(SYSTEM_UNCOMP_DIR)"; \
+        mkfs.erofs -L system -zzstd,level=1 "$@" "$(SYSTEM_UNCOMP_DIR)"; \
     elif (command -v mksquashfs &> /dev/null) && [ -z "$(SQUASHFS)" ];then \
         echo "squashfs-tools found, using squashfs for system image."; \
         mksquashfs "$(SYSTEM_UNCOMP_DIR)" "$@" -b 1M $(SQUASHFS_COMP) -noappend; \
