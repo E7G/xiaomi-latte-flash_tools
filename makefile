@@ -14,7 +14,7 @@ endif
 # BlissOS-Zenith17.2为 Android 14 6.7.10-zenith-xanmod1
 # BlissOS 18.4		为 Android 15 6.6.89-crimson-xanmod1
 VER_LIST := 17.1 5 14 15 16 17.2 18 21
-VER ?= 16
+VER ?= 14
 # 判断输入版本是否在范围内
 ifeq ($(filter $(VER),$(VER_LIST)),)
 $(error "VER must be one of $(VER_LIST)")
@@ -25,12 +25,9 @@ RAW_SYSTEM_IMAGE_LIST :=
 HAVE_DROPBEAR := n
 NEW_DATA_MOUNT_LIST := 17.2 18 21
 ifeq ($(filter $(VER),$(NEW_DATA_MOUNT_LIST)),)
-NEW_DATA_MOUNT := false
+NEW_DATA_MOUNT := n
 else
-NEW_DATA_MOUNT := true
-endif
-ifeq ($(NEW_DATA_MOUNT),y)
-NEW_DATA_MOUNT := true
+NEW_DATA_MOUNT := y
 endif
 
 UID := $(shell id -u)
@@ -121,7 +118,7 @@ $(DSDT_FILE): $(DEVICE_FILES_DIR)/dsdt.dsl
 
 INITRD_FILE := $(BUILD_DIR)/initrd-$(VER).cpio.gz
 INITRD_STAMP := $(BUILD_DIR)/.initrd-$(VER).stamp
-ifeq ($(NEW_DATA_MOUNT),true)
+ifeq ($(NEW_DATA_MOUNT),y)
 INITRD_PATCH_FILE := $(DEVICE_FILES_DIR)/initrd-$(VER)-d.patch
 endif
 ifeq ($(wildcard $(INITRD_PATCH_FILE)),)
@@ -194,7 +191,7 @@ $(DATA_FILE): $(OVERLAY_DATA_DIR) | $(IMAGES_DIR) $(DATA_DIR)
 	$(CHOWN) $(UID):$(GID) "$@"
 	if (command -v mkfs.f2fs &> /dev/null) && [ -z "$(F2FS)" ];then \
         echo "f2fs-tools found, using f2fs for data image."; \
-        sudo mkfs.f2fs -l userdata -f "$@"; \
+        sudo mkfs.f2fs -l userdata -O extra_attr,inode_checksum,sb_checksum,compression -f "$@"; \
     else \
         echo "f2fs-tools not found, using ext4 for data image."; \
         sudo mkfs.ext4 -L userdata -F "$@"; \
@@ -355,8 +352,9 @@ ssh: $(SSH_KEY)
 
 QEMU_VIRGL := y
 QEMU_DEBUG := 0
-KERNEL_DEFAULT_CMDLINE := console=tty1 console=ttyS0,115200 androidboot.enable_console=1 SRC=. DEBUG=$(QEMU_DEBUG)
-ifeq ($(NEW_DATA_MOUNT),true)
+KERNEL_DEFAULT_CMDLINE := console=tty1 console=ttyS0,115200 androidboot.enable_console=1 \
+	SRC=. DEBUG=$(QEMU_DEBUG) VIRT_WIFI=1 video=1280x720
+ifeq ($(NEW_DATA_MOUNT),y)
 KERNEL_DEFAULT_CMDLINE += DATA=nodata data_part=/dev/vdb
 else
 KERNEL_DEFAULT_CMDLINE += DATA=/dev/vdb
@@ -383,20 +381,22 @@ QEMU_DATA_FILE := $(BUILD_DIR)/data.qcow2
 $(QEMU_DATA_FILE): $(DATA_FILE)
 	qemu-img convert -f raw -O qcow2 "$<" "$@"
 qemu: $(QEMU_INITRD_FILE) $(QEMU_SYSTEM_FILE) $(QEMU_DATA_FILE)
-	qemu-system-x86_64 -cpu Broadwell -M q35 -serial stdio \
+	GDK_BACKEND=x11 qemu-system-x86_64 -cpu Broadwell -M q35 -serial stdio \
 	-kernel $(QEMU_KERNEL_FILE) -initrd "$(QEMU_INITRD_FILE)" -append "$(QEMU_KERNEL_CMDLINE)" \
-	-drive if=pflash,format=raw,readonly=on,file=/usr/share/edk2/x64/OVMF_CODE.4m.fd \
-	-device virtio-vga-gl -display gtk,gl=on,zoom-to-fit=off,show-cursor=on \
-	-nic user,model=virtio-net-pci,mac=52:54:00:12:34:56,hostfwd=tcp::5555-:5555,hostfwd=tcp::5522-:22 \
-	-m "$(QEMU_MEM)" -smp 4 $(QEMU_KVM) -device virtio-tablet-pci \
-	-drive file="$(QEMU_SYSTEM_FILE)",format=raw,if=virtio,id=system \
-	-drive file="$(QEMU_DATA_FILE)",format=qcow2,if=virtio,id=data
-qemu-iso:
-	qemu-system-x86_64 -cpu Broadwell -M q35 -serial stdio \
 	-drive if=pflash,format=raw,readonly=on,file=/usr/share/edk2/x64/OVMF_CODE.4m.fd \
 	-device virtio-vga-gl -display gtk,gl=on,zoom-to-fit=off \
 	-nic user,model=virtio-net-pci,mac=52:54:00:12:34:56,hostfwd=tcp::5555-:5555,hostfwd=tcp::5522-:22 \
-	-m "$(QEMU_MEM)" -smp 4 $(QEMU_KVM) -device virtio-tablet-pci \
+	-m "$(QEMU_MEM)" -smp 4 $(QEMU_KVM) -device virtio-mouse-pci \
+	-audiodev sdl,id=audio0 -device virtio-sound-pci,audiodev=audio0 \
+	-drive file="$(QEMU_SYSTEM_FILE)",format=raw,if=virtio,id=system \
+	-drive file="$(QEMU_DATA_FILE)",format=qcow2,if=virtio,id=data
+qemu-iso:
+	GDK_BACKEND=x11 qemu-system-x86_64 -cpu Broadwell -M q35 -serial stdio \
+	-drive if=pflash,format=raw,readonly=on,file=/usr/share/edk2/x64/OVMF_CODE.4m.fd \
+	-device virtio-vga-gl -display gtk,gl=on,zoom-to-fit=off \
+	-nic user,model=virtio-net-pci,mac=52:54:00:12:34:56,hostfwd=tcp::5555-:5555,hostfwd=tcp::5522-:22 \
+	-m "$(QEMU_MEM)" -smp 4 $(QEMU_KVM) -device virtio-mouse-pci \
+	-audiodev sdl,id=audio0 -device virtio-sound-pci,audiodev=audio0 \
 	-cdrom "$(ISO_FILE)" -hda "$(QEMU_DATA_FILE)"
 mount_qemu_data: $(QEMU_DATA_FILE) umount_qemu_data
 	sudo guestmount -a "$<" -m /dev/sda "$(DATA_DIR)"

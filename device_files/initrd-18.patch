@@ -29,7 +29,7 @@
  
 +if [ -n "$data_part" ];then
 +	ln -s /dev/block/`basename $data_part` /dev/block/by-name/userdata
-+	mount /dev/block/by-name/userdata /android/data
++	mount -o compress_algorithm=zstd:6,compress_chksum,atgc,gc_merge,lazytime /dev/block/by-name/userdata /android/data
 +fi
 +
  if [ 0"$DEBUG" -gt 1 ]; then

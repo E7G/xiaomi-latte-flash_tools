@@ -33,6 +33,7 @@ service dnsmasq_rndis /system/bin/dnsmasq \
 # 在 sys.boot_completed 后启动（更保险）
 on property:sys.boot_completed=1
     start mipad2_key_remap
-
+    # 修复 BlissOS14 浏览器无法使用问题
+    chmod 0755 /sys/kernel/debug
     # 系统启动完成后设置 captive portal URLs
     exec -- /system/bin/settings put global captive_portal_https_url https://connect.rom.miui.com/generate_204
