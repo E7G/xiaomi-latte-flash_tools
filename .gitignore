@@ -1,8 +1,8 @@
 build/
 device_files/id_rsa*
 *.img
-images/*.simg
-images/*.bin
+images*/*.simg
+images*/*.bin
 *.zip
 *.7z
 *.tar.*

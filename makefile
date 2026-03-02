@@ -23,6 +23,7 @@ endif
 NO_SUPPORT_EROFS_LIST := 17 5
 RAW_SYSTEM_IMAGE_LIST := 
 HAVE_DROPBEAR := n
+IMPORT_RECOVERY := n
 NEW_DATA_MOUNT_LIST := 17.2 18 21
 ifeq ($(filter $(VER),$(NEW_DATA_MOUNT_LIST)),)
 NEW_DATA_MOUNT := n
@@ -48,7 +49,7 @@ DEVICE_FILES_DIR := $(PWD)/device_files
 
 # 输出文件夹
 O := $(PWD)
-IMAGES_DIR := $(O)/images
+IMAGES_DIR := $(O)/images-$(VER)
 BUILD_DIR := $(O)/build
 SHIM_GRUB_DIR := $(BUILD_DIR)/shim_grub
 KERNEL_DIR := $(BUILD_DIR)/kernel
@@ -167,7 +168,7 @@ $(BOOT_FILE): $(OVERLAY_BOOT_DIR) $(SHIM_GRUB_STAMP) $(INITRD_FILE) $(KERNEL_STA
 	$(INSTALL) -D "$(SHIM_GRUB_DIR)/boot/efi/EFI/fedora/grubx64.efi" "$(BOOT_DIR)/EFI/boot/grubx64.efi"
 	$(INSTALL) -D "$(INITRD_FILE)" "$(BOOT_DIR)/EFI/BlissOS/initrd.cpio.gz"
 	$(INSTALL) -D "$(KERNEL_DIR)"/vmlinuz-* "$(BOOT_DIR)/EFI/BlissOS/vmlinuz"
-	$(INSTALL) -D "$(ISO_DIR)"/ramdisk-recovery.img "$(BOOT_DIR)/EFI/BlissOS/ramdisk-recovery.img" || true
+	[ "$(IMPORT_RECOVERY)" = "y" ] && $(INSTALL) -D "$(ISO_DIR)"/ramdisk-recovery.img "$(BOOT_DIR)/EFI/BlissOS/ramdisk-recovery.img" || true
 	$(CP) -r "$(OVERLAY_BOOT_DIR)"/* "$(BOOT_DIR)"
 	new_data_mount=$(NEW_DATA_MOUNT) envsubst '$$new_data_mount' < "$(GRUB_CFG_TEMPLATE)" | sudo tee "$(BOOT_DIR)/EFI/BlissOS/grub.cfg" > /dev/null;
 	$(CHMOD) -R 644 "$(BOOT_DIR)/"
@@ -317,7 +318,9 @@ clean: umount_boot umount_system umount_data
 	$(RM) $(BUILD_DIR)
 clean_images:
 	$(RM) $(IMAGES_DIR)
-clean_all: clean clean_images
+clean_images_all:
+	$(RM) $(O)/images*/
+clean_all: clean clean_images_all
 	$(RM) $(SHIM_FILE) $(GRUB2_EFI_FILE)
 	$(RM) $(DEVICE_FILES_DIR)/dsdt.{aml,hex}
 .PHONY: clean clean_images clean_all
