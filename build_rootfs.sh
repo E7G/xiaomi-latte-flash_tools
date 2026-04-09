@@ -14,6 +14,12 @@ rootfs_dev=/dev/nbd1
 mount_dir=./rootfs
 device_file=./device_files
 
+# 判断是否是root用户，如果不是则退出
+if [[ $EUID -ne 0 ]]; then
+   echo "This script must be run as root" 
+   exit 1
+fi
+
 # 判断文件夹是否存在，不存在则创建
 if [ ! -d $mount_dir ]; then
 	mkdir -p $mount_dir

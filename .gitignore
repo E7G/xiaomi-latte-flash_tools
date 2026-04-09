@@ -1,6 +1,7 @@
 EFI/
 tmp/
-images/*.img
-images/*.bin
+images/
 *.zip
 *.7z
+rootfs/
+linux-upstream-*-x86_64.pkg.tar.zst
