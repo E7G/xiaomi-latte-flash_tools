@@ -245,7 +245,7 @@ SectionUseCase."HiFi" {
 	Comment "Default"
 }
 EOF
-	cp $device_file/HiFi.conf $mount_dir/usr/share/alsa/ucm2/conf.d/cht-bsw-rt5659/HiFi.conf
+	install -Dm0644 $device_file/HiFi.conf $mount_dir/usr/share/alsa/ucm2/conf.d/cht-bsw-rt5659/HiFi.conf
 
 	echo 生成 fstab
 	genfstab -U $mount_dir >> $mount_dir/etc/fstab
@@ -375,6 +375,11 @@ config_grub(){
 	run grub-mkconfig -o /boot/grub/grub.cfg
 	kernel=`run sh -c 'ls /boot/vmlinuz*'`
 	cp -r ./EFI $mount_dir/boot/
+	chown -R root:root $mount_dir/boot/EFI
+	install -Dm0644 $device_file/MOK.cer $mount_dir/boot/
+	install -Dm0644 $device_file/MOK.key $mount_dir/boot/EFI/
+	install -Dm0644 $device_file/MOK.crt $mount_dir/boot/EFI/
+	install -Dm0644 $device_file/grub.cfg $mount_dir/boot/EFI/boot/grub.cfg
 	echo 签名内核
 	run sbsign --key /boot/EFI/MOK.key --cert /boot/EFI/MOK.crt --output $kernel $kernel
 }
