@@ -228,12 +228,12 @@ EOF
 
 config_packages() {
 	echo 复制 pacman 内核 hook
-	cp "${device_file}"/kernel.hook $mount_dir/etc/pacman.d/hooks/
+	install -Dm0644 "${device_file}"/kernel.hook $mount_dir/etc/pacman.d/hooks/
 	echo 复制 屏幕触控按键配置
-	cp "${device_file}"/61-keyboard.hwdb $mount_dir/usr/lib/udev/hwdb.d/
+	# install -Dm0644 "${device_file}"/61-keyboard.hwdb $mount_dir/usr/lib/udev/hwdb.d/
 	run udevadm hwdb --update
 	echo 复制 蓝牙固件
-	cp "${device_file}"/BCM4356A2.hcd $mount_dir/usr/lib/firmware/brcm/
+	install -Dm0644 "${device_file}"/BCM4356A2.hcd $mount_dir/usr/lib/firmware/brcm/
 	echo 创建 alsa 配置文件
 	run sh -c 'echo "snd_soc_rt5659" >> /etc/modules-load.d/modules.conf'
 	run mkdir -p /usr/share/alsa/ucm2/conf.d/cht-bsw-rt5659
