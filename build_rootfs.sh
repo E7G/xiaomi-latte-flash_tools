@@ -156,8 +156,8 @@ zram-generator
 )
 
 plasma=(
-# sddm
-sddm sddm-kcm # kde 控制模块
+# 替代sddm
+plasma-login-manager
 # Kde 最小安装
 plasma-{desktop,pa,nm,systemmonitor} breeze-gtk kde-gtk-config powerdevil kscreen kgamma kinfocenter konsole fcitx5-im kcm-fcitx5 fcitx5-chinese-addons kate dolphin colord-kde gpm ark kwalletmanager kdeconnect sshfs
 # 蓝牙
