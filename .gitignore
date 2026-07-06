@@ -3,6 +3,7 @@ device_files/id_rsa*
 *.img
 images*/*.simg
 images*/*.bin
+images*/*.part
 *.zip
 *.7z
 *.tar.*
