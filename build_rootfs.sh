@@ -18,7 +18,7 @@ boot_dev=/dev/nbd0
 rootfs_dev=/dev/nbd1
 mount_dir="$(realpath -m ./rootfs)"
 device_file="$(realpath -m ./device_files)"
-mkdir -p ./images
+mkdir -p ./images /var/lock
 
 # 判断是否是root用户，如果不是则退出
 if [[ $EUID -ne 0 ]]; then
