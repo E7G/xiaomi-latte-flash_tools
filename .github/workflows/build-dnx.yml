@@ -39,7 +39,7 @@ jobs:
 
       - name: Restore kernel package cache
         id: kernel-cache
-        uses: actions/cache@v4
+        uses: actions/cache/restore@v4
         with:
           path: kernel-output
           key: latte-kernel-${{ runner.os }}-${{ env.KERNEL_REF }}-${{ hashFiles('kernel/**', 'scripts/build_kernel_package.sh') }}
@@ -53,10 +53,18 @@ jobs:
             archlinux:base-devel \
             bash ./scripts/build_kernel_package.sh
 
+      - name: Save kernel package cache
+        if: steps.kernel-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: kernel-output
+          key: ${{ steps.kernel-cache.outputs.cache-primary-key }}
+
       - name: Verify kernel package
         run: |
-          sha256sum -c kernel-output/*.pkg.tar.zst.sha256
-          ls -lh kernel-output/*.pkg.tar.zst
+          cd kernel-output
+          sha256sum -c *.pkg.tar.zst.sha256
+          ls -lh *.pkg.tar.zst
 
       - name: Upload kernel package for DNX job
         uses: actions/upload-artifact@v4
@@ -102,8 +110,9 @@ jobs:
 
       - name: Verify archive
         run: |
-          sha256sum -c dist/*.sha256
-          ls -lh dist/*
+          cd dist
+          sha256sum -c *.sha256
+          ls -lh *
 
       - name: Upload DNX package
         uses: actions/upload-artifact@v4

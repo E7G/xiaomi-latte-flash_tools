@@ -30,5 +30,5 @@ install -m0644 README.md "${stage}/README.md"
 
 archive="${out}/xiaomi-latte-cachyos-dnx-${GITHUB_RUN_NUMBER:-local}.tar.zst"
 tar --sparse --zstd -cf "${archive}" -C "${stage}" .
-sha256sum "${archive}" > "${archive}.sha256"
+(cd "${out}" && sha256sum "$(basename "${archive}")" > "$(basename "${archive}").sha256")
 printf '%s\n' "${archive}" > "${out}/package-path"

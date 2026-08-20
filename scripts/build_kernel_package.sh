@@ -110,5 +110,5 @@ EOF
 package="${out_dir}/${pkgbase}-${pkgver}-${pkgrel}-x86_64.pkg.tar.zst"
 bsdtar --zstd -cf "${package}" -C "${work_dir}/pkg" .PKGINFO usr
 pacman -Qp "${package}"
-sha256sum "${package}" > "${package}.sha256"
+(cd "${out_dir}" && sha256sum "$(basename "${package}")" > "$(basename "${package}").sha256")
 printf '%s\n' "${package}" > "${out_dir}/package-path"
