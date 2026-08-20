@@ -5,3 +5,7 @@ images/
 *.7z
 rootfs/
 linux-upstream-*-x86_64.pkg.tar.zst
+device_files/linux-latte-cachyos-*.pkg.tar.zst
+kernel-output/
+dist/
+work/

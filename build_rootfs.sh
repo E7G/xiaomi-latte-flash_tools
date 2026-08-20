@@ -3,16 +3,20 @@ set -e
 # set -x
 shopt -s expand_aliases
 
-UserName="user"
-UserPasswd="123456"
-HostName="mipad2"
-desktop_type="gnome" # plasma or gnome
+UserName="${UserName:-user}"
+UserPasswd="${UserPasswd:-123456}"
+HostName="${HostName:-mipad2}"
+desktop_type="${desktop_type:-gnome}" # plasma or gnome
+ROOTFS_SIZE="${ROOTFS_SIZE:-8G}"
+KERNEL_PACKAGE="${KERNEL_PACKAGE:-}"
+KERNEL_PKGBASE="linux-latte-cachyos"
 
 modprobe nbd max_part=8
 boot_dev=/dev/nbd0
 rootfs_dev=/dev/nbd1
 mount_dir=./rootfs
 device_file=./device_files
+mkdir -p ./images
 
 # 判断是否是root用户，如果不是则退出
 if [[ $EUID -ne 0 ]]; then
@@ -35,9 +39,9 @@ convert() {
 	# qcow2 to img
 	pushd ./images
 	echo convert boot.qcow2 to xiaomi-latte-boot.img
-	qemu-img convert -f qcow2 -O raw boot.qcow2 xiaomi-latte-boot.img
+	qemu-img convert -p -f qcow2 -O raw -S 4k boot.qcow2 xiaomi-latte-boot.img
 	echo convert rootfs.qcow2 to xiaomi-latte-rootfs.img
-	qemu-img convert -f qcow2 -O raw rootfs.qcow2 xiaomi-latte-rootfs.img
+	qemu-img convert -p -f qcow2 -O raw -S 4k rootfs.qcow2 xiaomi-latte-rootfs.img
 	popd
 }
 
@@ -49,19 +53,19 @@ rm_img() {
 	umount_img
 	sleep 1
 	pushd ./images
-	rm -rf ./boot.qcow2 ./rootfs.qcow2
+	rm -f ./boot.qcow2 ./rootfs.qcow2 ./xiaomi-latte-boot.img ./xiaomi-latte-rootfs.img
 	popd
 }
 
 create_img() {
 	pushd ./images
 	qemu-img create -f qcow2 boot.qcow2 300M
-	qemu-img create -f qcow2 rootfs.qcow2 5G
+	qemu-img create -f qcow2 rootfs.qcow2 "$ROOTFS_SIZE"
 	popd
 }
 
-# 假定已经连接了镜像
-flag_connect=1
+# 初始状态没有连接镜像
+flag_connect=0
 connect_img() {
 	if [[ $flag_connect != 0 ]]; then
 		umount_img
@@ -80,10 +84,8 @@ disconnect_img() {
 	if [[ $flag_connect == 0 ]]; then
 		return
 	fi
-	pushd ./images
-    qemu-nbd -d $boot_dev
-	qemu-nbd -d $rootfs_dev
-	popd
+	qemu-nbd -d $boot_dev || true
+	qemu-nbd -d $rootfs_dev || true
 	flag_connect=0
 }
 
@@ -121,6 +123,7 @@ mount_img() {
 
 umount_img() {
 	if ! is_mount; then
+		disconnect_img
 		return
 	fi
     umount -R $mount_dir || true
@@ -139,7 +142,7 @@ packages=(
 base-devel
 # Shell
 bash-completion zsh-completions sudo reflector pkgfile less btop
-zsh-autocomplete zsh-syntax-highlighting
+zsh-autosuggestions zsh-syntax-highlighting
 vim
 # 字体
 noto-fonts-{cjk,emoji} ttf-cascadia-code
@@ -206,12 +209,27 @@ install_packages() {
 	# 安装基础包
 	pacstrap -C "${device_file}"/pacman.conf -c $mount_dir base iptables-nft ${firmware[@]} grub efibootmgr sbsigntools
 
-	echo Install linux-upstream-6.14.0-2-x86_64.pkg.tar.zst
-	pacstrap -C "${device_file}"/pacman.conf -U $mount_dir "${device_file}"/linux-upstream-6.14.0-2-x86_64.pkg.tar.zst
-	run sh -c 'cp /usr/lib/modules/*/vmlinuz /boot/vmlinuz-linux-upstream'
+	if [[ -z "$KERNEL_PACKAGE" ]]; then
+		KERNEL_PACKAGE="$(find "$device_file" -maxdepth 1 -name 'linux-latte-cachyos-*.pkg.tar.zst' -print -quit)"
+	fi
+	[[ -f "$KERNEL_PACKAGE" ]] || { echo "Kernel package not found: $KERNEL_PACKAGE" >&2; exit 1; }
+	echo "Install $KERNEL_PACKAGE"
+	pacstrap -C "${device_file}"/pacman.conf -U $mount_dir "$KERNEL_PACKAGE"
+	kernel_release="$(find "$mount_dir/usr/lib/modules" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | head -n1)"
+	[[ -n "$kernel_release" ]] || { echo 'Installed kernel modules not found' >&2; exit 1; }
+	install -Dm0644 "$mount_dir/usr/lib/modules/$kernel_release/vmlinuz" \
+		"$mount_dir/boot/vmlinuz-$KERNEL_PKGBASE"
 
 	declare -n desktop=$desktop_type
 	pacstrap -C "${device_file}"/pacman.conf -c $mount_dir ${packages[@]} ${desktop[@]} mkinitcpio
+	cat > "$mount_dir/etc/mkinitcpio.d/$KERNEL_PKGBASE.preset" <<EOF
+ALL_config="/etc/mkinitcpio.conf"
+ALL_kver="/usr/lib/modules/$kernel_release/vmlinuz"
+PRESETS=('default' 'fallback')
+default_image="/boot/initramfs-$KERNEL_PKGBASE.img"
+fallback_image="/boot/initramfs-$KERNEL_PKGBASE-fallback.img"
+fallback_options="-S autodetect"
+EOF
 
 	if ! grep -qs "archlinuxcn" $mount_dir/etc/pacman.conf;then
 		cat <<EOF >> $mount_dir/etc/pacman.conf
@@ -254,10 +272,12 @@ EOF
 	sed -i '/swapfile/d' $mount_dir/etc/fstab
 
 	echo 链接 vi 到 vim
-	run ln -s /usr/bin/vim /usr/bin/vi
+	run ln -sf /usr/bin/vim /usr/bin/vi
 
 	echo 配置 sudo
-	sed -i 's/# %wheel ALL=(ALL:ALL) N/%wheel ALL=(ALL:ALL) N/' $mount_dir/etc/sudoers
+	install -Dm0440 /dev/stdin "$mount_dir/etc/sudoers.d/10-wheel" <<'EOF'
+%wheel ALL=(ALL:ALL) NOPASSWD: ALL
+EOF
 
 	echo 配置 timezone
 	run ln -sf /usr/share/zoneinfo/Asia/Shanghai /etc/localtime
@@ -359,7 +379,7 @@ config_user() {
 	run sed -i 's|#[[:space:]]*ZSH_CUSTOM=.*|ZSH_CUSTOM=/usr/share/zsh|' /usr/share/oh-my-zsh/zshrc
 	run chmod -R 666 /usr/share/oh-my-zsh/zshrc
 	run cp /usr/share/oh-my-zsh/zshrc /home/$UserName/.zshrc
-	run su $UserName -c 'source ~/.zshrc;omz theme set ys;omz plugin enable sudo safe-paste extract command-not-found zsh-autocomplete zsh-syntax-highlighting'
+	run su $UserName -c 'source ~/.zshrc;omz theme set ys;omz plugin enable sudo safe-paste extract command-not-found zsh-autosuggestions zsh-syntax-highlighting'
 	run cp /home/$UserName/.zshrc /root/.zshrc
 	run chown root:root /root/.zshrc
 
@@ -370,11 +390,13 @@ config_user() {
 
 config_grub(){
 	# grub 不注册efi
-	run grub-install --target=x86_64-efi --efi-directory=/boot --bootloader-id=arch --removable
+	run grub-install --target=x86_64-efi --efi-directory=/boot --bootloader-id=arch --removable --no-nvram
 	run sed -i 's/GRUB_CMDLINE_LINUX_DEFAULT="loglevel=3 quiet"/GRUB_CMDLINE_LINUX_DEFAULT="loglevel=3 quiet splash plymouth.nolog"/' /etc/default/grub
 	run grub-mkconfig -o /boot/grub/grub.cfg
-	kernel=`run sh -c 'ls /boot/vmlinuz*'`
-	cp -r ./EFI $mount_dir/boot/
+	kernel="/boot/vmlinuz-$KERNEL_PKGBASE"
+	if [[ -d ./EFI ]]; then
+		cp -a ./EFI/. "$mount_dir/boot/EFI/"
+	fi
 	chown -R root:root $mount_dir/boot/EFI
 	install -Dm0644 $device_file/MOK.cer $mount_dir/boot/
 	install -Dm0644 $device_file/MOK.key $mount_dir/boot/EFI/
@@ -382,6 +404,10 @@ config_grub(){
 	install -Dm0644 $device_file/grub.cfg $mount_dir/boot/EFI/boot/grub.cfg
 	echo 签名内核
 	run sbsign --key /boot/EFI/MOK.key --cert /boot/EFI/MOK.crt --output $kernel $kernel
+}
+
+cleanup_rootfs() {
+	run sh -c 'rm -rf /var/cache/pacman/pkg/* /home/*/.cache/yay /tmp/*' || true
 }
 
 update_pkgfile() {
@@ -400,12 +426,15 @@ all() {
 	config_user
 	config_grub
 	update_pkgfile
+	cleanup_rootfs
 
-    umount_img
+	umount_img
+	convert
 }
 
 if [ -z $1 ];then
-    all
+	trap 'umount_img || true; disconnect_img || true' EXIT
+	all
 else
     $1
 fi
