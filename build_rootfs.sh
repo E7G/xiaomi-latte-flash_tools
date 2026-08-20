@@ -11,11 +11,13 @@ ROOTFS_SIZE="${ROOTFS_SIZE:-8G}"
 KERNEL_PACKAGE="${KERNEL_PACKAGE:-}"
 KERNEL_PKGBASE="linux-latte-cachyos"
 
-modprobe nbd max_part=8
+if [[ ! -d /sys/module/nbd ]]; then
+	modprobe nbd max_part=8
+fi
 boot_dev=/dev/nbd0
 rootfs_dev=/dev/nbd1
-mount_dir=./rootfs
-device_file=./device_files
+mount_dir="$(realpath -m ./rootfs)"
+device_file="$(realpath -m ./device_files)"
 mkdir -p ./images
 
 # 判断是否是root用户，如果不是则退出
@@ -30,8 +32,7 @@ if [ ! -d $mount_dir ]; then
 fi
 
 is_mount() {
-	mount | grep $mount_dir &>/dev/null
-	return $?
+	findmnt --mountpoint "$mount_dir" &>/dev/null
 }
 
 convert() {
@@ -359,6 +360,8 @@ EOF
 	echo 'options i915 enable_fbc=1' > $mount_dir/etc/modprobe.d/i915.conf
 	echo 配置 plymouth mkinitramfs.conf hooks
 	run sed -i 's/^HOOKS=(\([^)]*\))/HOOKS=(\1 plymouth)/' /etc/mkinitcpio.conf
+	# Action runner is not Mi Pad 2: do not let autodetect drop tablet modules.
+	run sed -i 's/[[:space:]]autodetect//g' /etc/mkinitcpio.conf
 	# mkinitcpio 某些版本默认启用sd_vconsole hook导致报错修复
 	echo "KEYMAP=us" > $mount_dir/etc/vconsole.conf
 	run mkinitcpio -P
