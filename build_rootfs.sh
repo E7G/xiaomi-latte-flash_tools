@@ -235,6 +235,7 @@ EOF
 	if ! grep -qs "archlinuxcn" $mount_dir/etc/pacman.conf;then
 		cat <<EOF >> $mount_dir/etc/pacman.conf
 [archlinuxcn]
+SigLevel = Optional TrustAll
 Server = https://mirrors.cernet.edu.cn/archlinuxcn/\$arch
 
 EOF
