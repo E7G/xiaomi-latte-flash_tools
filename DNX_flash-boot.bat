@@ -1,28 +1,34 @@
 @echo off
-Title  * ONE KEY TO FLASH
-::setup the window size
-mode con:cols=80 lines=35
-::setup background and foreground color
-cls
-
-set debug=0
-
-fastboot boot %~dp0device_files\fastboot.efi
-
+setlocal EnableExtensions
+title Xiaomi Mi Pad 2 Arch Linux - Boot Partition Flash
 color 0A
-fastboot getvar product
-fastboot getvar product 2>&1 | findstr /r /c:"^product: *latte" || echo Missmatching image and device || Timeout 10
-fastboot getvar product 2>&1 | findstr /r /c:"^product: *latte" || exit /B 1
 
+where fastboot.exe >nul 2>&1 || (
+  echo ERROR: fastboot.exe not found in PATH.
+  goto :fail
+)
+if not exist "%~dp0device_files\fastboot.efi" goto :missing
+if not exist "%~dp0images\xiaomi-latte-boot.img" goto :missing
+
+fastboot boot "%~dp0device_files\fastboot.efi" || goto :fail
+fastboot getvar product 2>"%TEMP%\xiaomi-latte-product.txt"
+findstr /r /c:"product: *latte" "%TEMP%\xiaomi-latte-product.txt" >nul || (
+  echo ERROR: connected device is not Xiaomi Mi Pad 2 ^(latte^).
+  goto :fail
+)
 fastboot oem unlock
-if %debug% == 1  Pause
+fastboot flash boot "%~dp0images\xiaomi-latte-boot.img" || goto :fail
+fastboot reboot || goto :fail
 
-fastboot flash boot  %~dp0images\xiaomi-latte-boot.img
-if %debug% == 1  Pause
+del "%TEMP%\xiaomi-latte-product.txt" >nul 2>&1
+echo Boot partition flash complete.
+pause
+exit /b 0
 
-fastboot reboot
-
-@Echo Done!
-
-Pause
-
+:missing
+echo ERROR: required boot image is missing.
+:fail
+del "%TEMP%\xiaomi-latte-product.txt" >nul 2>&1
+echo Flash stopped because a required step failed.
+pause
+exit /b 1

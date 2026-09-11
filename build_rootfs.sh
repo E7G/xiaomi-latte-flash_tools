@@ -134,6 +134,7 @@ umount_img() {
 firmware=(
 	linux-firmware-broadcom
 	linux-firmware-intel
+	wireless-regdb
 	libva-intel-driver
 	intel-ucode
 	vulkan-intel
@@ -156,7 +157,7 @@ networkmanager
 # 蓝牙
 bluez-utils
 # 视频
-mpv
+mpv v4l-utils i2c-tools
 # 电源配置
 power-profiles-daemon
 # 线程优化
@@ -208,7 +209,7 @@ snapshot
 alias run="arch-chroot $mount_dir"
 install_packages() {
 	# 安装基础包
-	pacstrap -C "${device_file}"/pacman.conf -c $mount_dir base iptables-nft ${firmware[@]} grub efibootmgr sbsigntools
+	pacstrap -C "${device_file}"/pacman.conf -c $mount_dir base iptables-nft ${firmware[@]} grub efibootmgr
 
 	if [[ -z "$KERNEL_PACKAGE" ]]; then
 		KERNEL_PACKAGE="$(find "$device_file" -maxdepth 1 -name 'linux-latte-cachyos-*.pkg.tar.zst' -print -quit)"
@@ -247,31 +248,22 @@ EOF
 }
 
 config_packages() {
-	echo 复制 pacman 内核 hook
-	install -Dm0644 "${device_file}"/kernel.hook $mount_dir/etc/pacman.d/hooks/
-	echo 复制 屏幕触控按键配置
-	# install -Dm0644 "${device_file}"/61-keyboard.hwdb $mount_dir/usr/lib/udev/hwdb.d/
+	echo 更新 udev hwdb
 	run udevadm hwdb --update
-	echo 复制 蓝牙固件
-	install -Dm0644 "${device_file}"/BCM4356A2.hcd $mount_dir/usr/lib/firmware/brcm/
-	echo 创建 alsa 配置文件
-	run sh -c 'echo "snd_soc_rt5659" >> /etc/modules-load.d/modules.conf'
-	run mkdir -p /usr/share/alsa/ucm2/conf.d/cht-bsw-rt5659
-	cat <<EOF > $mount_dir/usr/share/alsa/ucm2/conf.d/cht-bsw-rt5659/cht-bsw-rt5659.conf
-Syntax 3
-
-SectionUseCase."HiFi" {
-	File "HiFi.conf"
-	Comment "Default"
-}
-EOF
-	install -Dm0644 $device_file/HiFi.conf $mount_dir/usr/share/alsa/ucm2/conf.d/cht-bsw-rt5659/HiFi.conf
 
 	echo 生成 fstab
-	genfstab -U $mount_dir >> $mount_dir/etc/fstab
+	genfstab -U $mount_dir > $mount_dir/etc/fstab
 	# fix fstab
 	sed -i 's/\\0[^ \t]*//' $mount_dir/etc/fstab
 	sed -i '/swapfile/d' $mount_dir/etc/fstab
+	grep -Eq '^[^#]+[[:space:]]+/boot[[:space:]]+vfat[[:space:]]' $mount_dir/etc/fstab || {
+		echo 'Generated fstab has no valid /boot vfat mount' >&2
+		return 1
+	}
+	if [[ ! -L $mount_dir/lib || $(readlink "$mount_dir/lib") != usr/lib ]]; then
+		echo '/lib must be the standard usr/lib symlink' >&2
+		return 1
+	fi
 
 	echo 链接 vi 到 vim
 	run ln -sf /usr/bin/vim /usr/bin/vi
@@ -353,6 +345,13 @@ EOF
 	fi
 
 	run $enable bluetooth
+	run $enable mipad2-usb-serial.service
+	mkdir -p "$mount_dir/etc/systemd/system/serial-getty@ttyGS0.service.d"
+	cat > "$mount_dir/etc/systemd/system/serial-getty@ttyGS0.service.d/autologin.conf" <<EOF
+[Service]
+ExecStart=
+ExecStart=-/sbin/agetty --autologin $UserName --noclear %I \$TERM
+EOF
 
 	echo 配置 包管理器
 	run sed -i 's/#Color/Color/' /etc/pacman.conf
@@ -371,6 +370,7 @@ EOF
 	cat <<EOF >> $mount_dir/etc/environment
 # intel vulkan 视频加速
 ANV_DEBUG=video-decode,video-encode
+LIBVA_DRIVER_NAME=i965
 
 EOF
 }
@@ -397,17 +397,11 @@ config_grub(){
 	run grub-install --target=x86_64-efi --efi-directory=/boot --bootloader-id=arch --removable --no-nvram
 	run sed -i 's/GRUB_CMDLINE_LINUX_DEFAULT="loglevel=3 quiet"/GRUB_CMDLINE_LINUX_DEFAULT="loglevel=3 quiet splash plymouth.nolog"/' /etc/default/grub
 	run grub-mkconfig -o /boot/grub/grub.cfg
-	kernel="/boot/vmlinuz-$KERNEL_PKGBASE"
 	if [[ -d ./EFI ]]; then
 		cp -a ./EFI/. "$mount_dir/boot/EFI/"
 	fi
 	chown -R root:root $mount_dir/boot/EFI
-	install -Dm0644 $device_file/MOK.cer $mount_dir/boot/
-	install -Dm0644 $device_file/MOK.key $mount_dir/boot/EFI/
-	install -Dm0644 $device_file/MOK.crt $mount_dir/boot/EFI/
 	install -Dm0644 $device_file/grub.cfg $mount_dir/boot/EFI/boot/grub.cfg
-	echo 签名内核
-	run sbsign --key /boot/EFI/MOK.key --cert /boot/EFI/MOK.crt --output $kernel $kernel
 }
 
 cleanup_rootfs() {

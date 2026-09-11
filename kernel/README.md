@@ -5,3 +5,7 @@
 - `latte-cachyos.config`: Mi Pad 2-specific config fragment layered on `xiaomipad2_defconfig`.
 
 `linux_latte` already carries the newer EEVDF `RUN_TO_PARITY` condition. The conflicting BORE hunk is omitted from `0002`; `scripts/build_kernel_package.sh` applies its equivalent to that newer condition before configuration.
+
+The source is pinned to the same `E7G/linux_latte` revision tested on hardware.
+The generated kernel package also carries the matching AtomISP firmware, ALSA
+UCM, BCM4356 board data, USB serial debugger, recovery helpers, and smoke test.

@@ -1,34 +1,49 @@
 @echo off
-Title  * ONE KEY TO FLASH
-::setup the window size
-mode con:cols=80 lines=35
-::setup background and foreground color
-cls
-
-set debug=0
-
-fastboot boot %~dp0device_files\fastboot.efi
-
+setlocal EnableExtensions
+title Xiaomi Mi Pad 2 Arch Linux - Full Flash
 color 0A
-fastboot getvar product
-fastboot getvar product 2>&1 | findstr /r /c:"^product: *latte" || echo Missmatching image and device || Timeout 10
-fastboot getvar product 2>&1 | findstr /r /c:"^product: *latte" || exit /B 1
+
+where fastboot.exe >nul 2>&1 || (
+  echo ERROR: fastboot.exe not found in PATH.
+  goto :fail
+)
+
+for %%F in (
+  "device_files\fastboot.efi"
+  "device_files\oemvars.txt"
+  "device_files\oemvars-battery-config-fake-disabled.txt"
+  "device_files\oemvars-battery-config-fake.txt"
+  "images\gpt.bin"
+  "images\xiaomi-latte-boot.img"
+  "images\xiaomi-latte-rootfs.img"
+) do if not exist "%~dp0%%~F" (
+  echo ERROR: missing %%~F
+  goto :fail
+)
+
+fastboot boot "%~dp0device_files\fastboot.efi" || goto :fail
+fastboot getvar product 2>"%TEMP%\xiaomi-latte-product.txt"
+findstr /r /c:"product: *latte" "%TEMP%\xiaomi-latte-product.txt" >nul || (
+  echo ERROR: connected device is not Xiaomi Mi Pad 2 ^(latte^).
+  goto :fail
+)
 
 fastboot oem unlock
-if %debug% == 1  Pause
+fastboot flash oemvars "%~dp0device_files\oemvars.txt" || goto :fail
+fastboot flash oemvars "%~dp0device_files\oemvars-battery-config-fake-disabled.txt" || goto :fail
+fastboot flash oemvars "%~dp0device_files\oemvars-battery-config-fake.txt" || goto :fail
+fastboot flash gpt "%~dp0images\gpt.bin" || goto :fail
+fastboot flash boot "%~dp0images\xiaomi-latte-boot.img" || goto :fail
+fastboot flash system "%~dp0images\xiaomi-latte-rootfs.img" || goto :fail
+fastboot reboot || goto :fail
 
-fastboot flash oemvars %~dp0device_files\oemvars.txt
-fastboot flash oemvars %~dp0device_files\oemvars-battery-config-fake-disabled.txt
-fastboot flash oemvars %~dp0device_files\oemvars-battery-config-fake.txt
+del "%TEMP%\xiaomi-latte-product.txt" >nul 2>&1
+echo Flash complete.
+pause
+exit /b 0
 
-fastboot flash gpt %~dp0images\gpt.bin
-fastboot flash boot  %~dp0images\xiaomi-latte-boot.img
-fastboot flash system  %~dp0images\xiaomi-latte-rootfs.img
-if %debug% == 1  Pause
-
-fastboot reboot
-
-@Echo Done!
-
-Pause
-
+:fail
+del "%TEMP%\xiaomi-latte-product.txt" >nul 2>&1
+echo Flash stopped because a required step failed.
+pause
+exit /b 1

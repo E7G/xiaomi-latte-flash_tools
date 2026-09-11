@@ -4,8 +4,8 @@ set -Eeuo pipefail
 repo_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 work_dir="${repo_root}/work/kernel"
 out_dir="${repo_root}/kernel-output"
-source_repo="${KERNEL_REPO:-xiaomi-latte-dev/linux_latte}"
-source_ref="${KERNEL_REF:-e89ea264f5ca311c9dca9088d964b80ec40472b4}"
+source_repo="${KERNEL_REPO:-E7G/linux_latte}"
+source_ref="${KERNEL_REF:-bc851227257b9d96f9d098459454d9bcc73e70e8}"
 pkgbase="linux-latte-cachyos"
 
 pacman -Syu --noconfirm --needed \
@@ -69,6 +69,16 @@ required=(
   'CONFIG_LTO_CLANG_THIN=y'
   'CONFIG_IOSCHED_BFQ=y'
   'CONFIG_LRU_GEN_ENABLED=y'
+  'CONFIG_BRCMFMAC=m'
+  'CONFIG_BT_BCM=m'
+  'CONFIG_VIDEO_OV5693=m'
+  'CONFIG_VIDEO_T4KA3=m'
+  'CONFIG_VIDEO_DW9719=m'
+  'CONFIG_VIDEO_ATOMISP=m'
+  'CONFIG_USB_CONFIGFS_ACM=y'
+  'CONFIG_VFAT_FS=y'
+  'CONFIG_NLS_CODEPAGE_437=y'
+  'CONFIG_NLS_ASCII=y'
 )
 for option in "${required[@]}"; do
   grep -Fqx "${option}" .config || {
@@ -88,9 +98,41 @@ install -Dm0644 "$(make -s "${build_flags[@]}" image_name)" "${mod_dir}/vmlinuz"
 printf '%s\n' "${pkgbase}" > "${mod_dir}/pkgbase"
 rm -f "${mod_dir}/build" "${mod_dir}/source"
 
+# Ship the exact support payload validated with this kernel.  Keeping this in
+# the same package prevents a fresh DNX image from booting a new kernel with
+# stale camera firmware, UCM routes, or USB debug helpers.
+install -Dm0644 fix_file/packages/mipad2-camera-support/src/intel/ipu/shisp_2401a0_v21.bin \
+  "${work_dir}/pkg/usr/lib/firmware/intel/ipu/shisp_2401a0_v21.bin"
+install -Dm0644 fix_file/packages/mipad2-camera-support/src/mipad2-camera.conf \
+  "${work_dir}/pkg/etc/modules-load.d/mipad2-camera.conf"
+install -Dm0644 fix_file/brcmfmac4356-pcie.Xiaomi\ Inc-Mipad2.txt \
+  "${work_dir}/pkg/usr/lib/firmware/brcm/brcmfmac4356-pcie.Xiaomi Inc-Mipad2.txt"
+install -Dm0644 fix_file/BCM4356A2.hcd \
+  "${work_dir}/pkg/usr/lib/firmware/brcm/BCM4356A2.hcd"
+
+install -Dm0644 fix_file/packages/mipad2-alsa-ucm/src/cht-bsw-rt5659/cht-bsw-rt5659.conf \
+  "${work_dir}/pkg/usr/share/alsa/ucm2/conf.d/cht-bsw-rt5659/cht-bsw-rt5659.conf"
+install -Dm0644 fix_file/packages/mipad2-alsa-ucm/src/cht-bsw-rt5659/HiFi.conf \
+  "${work_dir}/pkg/usr/share/alsa/ucm2/conf.d/cht-bsw-rt5659/HiFi.conf"
+
+install -Dm0755 fix_file/packages/mipad2-usb-serial/src/mipad2-usb-serial \
+  "${work_dir}/pkg/usr/local/libexec/mipad2-usb-serial"
+install -Dm0644 fix_file/packages/mipad2-usb-serial/src/mipad2-usb-serial.service \
+  "${work_dir}/pkg/etc/systemd/system/mipad2-usb-serial.service"
+install -Dm0755 fix_file/packages/mipad2-recovery/src/mp2-backup \
+  "${work_dir}/pkg/usr/local/sbin/mp2-backup"
+install -Dm0755 fix_file/packages/mipad2-recovery/src/mp2-recover \
+  "${work_dir}/pkg/usr/local/sbin/mp2-recover"
+install -Dm0755 fix_file/packages/mipad2-test-no-idle/src/mp2-test-no-idle \
+  "${work_dir}/pkg/usr/local/sbin/mp2-test-no-idle"
+install -Dm0644 fix_file/packages/mipad2-test-no-idle/src/mipad2-test-no-idle.service \
+  "${work_dir}/pkg/etc/systemd/system/mipad2-test-no-idle.service"
+install -Dm0755 fix_file/tests/mipad2-hardware-smoke.sh \
+  "${work_dir}/pkg/usr/local/libexec/mipad2-hardware-smoke"
+
 pkgver="${kernel_release//-/_}"
 pkgrel=1
-installed_size="$(du -sb "${work_dir}/pkg/usr" | cut -f1)"
+installed_size="$(du -sb "${work_dir}/pkg" | cut -f1)"
 cat > "${work_dir}/pkg/.PKGINFO" <<EOF
 pkgname = ${pkgbase}
 pkgbase = ${pkgbase}
@@ -105,10 +147,12 @@ license = GPL-2.0-only
 depend = coreutils
 depend = kmod
 optdepend = wireless-regdb: regulatory database
+optdepend = timeshift: mp2-backup snapshot support
+optdepend = v4l-utils: camera topology and smoke tests
 EOF
 
 package="${out_dir}/${pkgbase}-${pkgver}-${pkgrel}-x86_64.pkg.tar.zst"
-bsdtar --zstd -cf "${package}" -C "${work_dir}/pkg" .PKGINFO usr
+bsdtar --zstd -cf "${package}" -C "${work_dir}/pkg" .PKGINFO etc usr
 pacman -Qp "${package}"
 (cd "${out_dir}" && sha256sum "$(basename "${package}")" > "$(basename "${package}").sha256")
 printf '%s\n' "${package}" > "${out_dir}/package-path"

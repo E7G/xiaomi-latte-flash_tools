@@ -21,7 +21,8 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  KERNEL_REF: e89ea264f5ca311c9dca9088d964b80ec40472b4
+  KERNEL_REPO: E7G/linux_latte
+  KERNEL_REF: bc851227257b9d96f9d098459454d9bcc73e70e8
   KERNEL_JOBS: '4'
   ROOTFS_SIZE: 8G
 
@@ -48,7 +49,7 @@ jobs:
         if: steps.kernel-cache.outputs.cache-hit != 'true'
         run: |
           docker run --rm \
-            -e KERNEL_REF -e KERNEL_JOBS \
+            -e KERNEL_REPO -e KERNEL_REF -e KERNEL_JOBS \
             -v "$PWD:/workspace" -w /workspace \
             archlinux:base-devel \
             bash ./scripts/build_kernel_package.sh
@@ -64,6 +65,9 @@ jobs:
         run: |
           cd kernel-output
           sha256sum -c *.pkg.tar.zst.sha256
+          bsdtar -tf *.pkg.tar.zst | grep -q 'usr/lib/firmware/intel/ipu/shisp_2401a0_v21.bin'
+          bsdtar -tf *.pkg.tar.zst | grep -q 'usr/local/libexec/mipad2-usb-serial'
+          bsdtar -tf *.pkg.tar.zst | grep -q 'usr/local/libexec/mipad2-hardware-smoke'
           ls -lh *.pkg.tar.zst
 
       - name: Upload kernel package for DNX job
