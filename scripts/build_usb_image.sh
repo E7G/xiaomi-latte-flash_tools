@@ -10,6 +10,8 @@ root_image=images/xiaomi-latte-rootfs.img
   echo 'Boot/root filesystem images are missing' >&2
   exit 1
 }
+fsck.fat -vn "$boot_image"
+btrfs check --readonly "$root_image"
 
 out_dir=${USB_IMAGE_OUT_DIR:-dist}
 name="xiaomi-latte-cachyos-kde-${GITHUB_RUN_NUMBER:-local}"

@@ -16,6 +16,7 @@ CachyOS 优化。默认桌面为精简 KDE Plasma Wayland。
 - Timeshift/Btrfs 一键备份恢复脚本与硬件 smoke test
 - VFAT CP437/ASCII 启动分区支持
 - 使用原项目 MOK 证书签名内核，避免更换证书导致 Secure Boot 验证变化
+- EFI GRUB 内置 FAT/Btrfs/GPT 模块，并使用 ESP UUID 定位配置，避免进入 `grub rescue`
 
 Secure Boot 和 suspend/resume 不作为本分支验收项。测试防息屏工具已安装，
 但默认不启用：

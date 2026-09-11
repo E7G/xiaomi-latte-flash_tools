@@ -230,10 +230,17 @@ config_packages() {
 	run udevadm hwdb --update
 
 	echo 生成 fstab
-	genfstab -U $mount_dir > $mount_dir/etc/fstab
-	# fix fstab
-	sed -i 's/\\0[^ \t]*//' $mount_dir/etc/fstab
-	sed -i '/swapfile/d' $mount_dir/etc/fstab
+	boot_uuid=$(blkid -s UUID -o value "$boot_dev")
+	root_uuid=$(blkid -s UUID -o value "$rootfs_dev")
+	[[ -n $boot_uuid && -n $root_uuid ]] || {
+		echo 'Unable to read filesystem UUIDs' >&2
+		return 1
+	}
+	cat > "$mount_dir/etc/fstab" <<EOF
+UUID=$root_uuid / btrfs rw,relatime,compress=zstd:3,ssd,discard=async,space_cache=v2,subvol=/@ 0 0
+UUID=$boot_uuid /boot vfat rw,relatime,fmask=0022,dmask=0022,codepage=437,iocharset=ascii,shortname=mixed,utf8,errors=remount-ro 0 2
+UUID=$root_uuid /home btrfs rw,relatime,compress=zstd:3,ssd,discard=async,space_cache=v2,subvol=/@home 0 0
+EOF
 	grep -Eq '^[^#]+[[:space:]]+/boot[[:space:]]+vfat[[:space:]]' $mount_dir/etc/fstab || {
 		echo 'Generated fstab has no valid /boot vfat mount' >&2
 		return 1
@@ -375,17 +382,26 @@ EOF
 
 config_grub(){
 	# grub 不注册efi
-	run grub-install --target=x86_64-efi --efi-directory=/boot --bootloader-id=arch --removable --no-nvram
+	run grub-install --target=x86_64-efi --efi-directory=/boot --bootloader-id=arch \
+		--removable --no-nvram \
+		--modules="part_gpt fat btrfs search search_fs_uuid configfile normal linux"
 	run sed -i 's/GRUB_CMDLINE_LINUX_DEFAULT="loglevel=3 quiet"/GRUB_CMDLINE_LINUX_DEFAULT="loglevel=3 quiet splash plymouth.nolog"/' /etc/default/grub
 	run grub-mkconfig -o /boot/grub/grub.cfg
 	if [[ -d ./EFI ]]; then
 		cp -a ./EFI/. "$mount_dir/boot/EFI/"
 	fi
 	chown -R root:root $mount_dir/boot/EFI
+	boot_uuid=$(blkid -s UUID -o value "$boot_dev")
+	cat > "$mount_dir/boot/EFI/BOOT/grub.cfg" <<EOF
+insmod part_gpt
+insmod fat
+search --no-floppy --fs-uuid --set=esp $boot_uuid
+set prefix=(\$esp)/grub
+configfile \$prefix/grub.cfg
+EOF
 	install -Dm0644 $device_file/MOK.cer $mount_dir/boot/
 	install -Dm0600 $device_file/MOK.key $mount_dir/boot/EFI/
 	install -Dm0644 $device_file/MOK.crt $mount_dir/boot/EFI/
-	install -Dm0644 $device_file/grub.cfg $mount_dir/boot/EFI/boot/grub.cfg
 	echo 使用原项目 MOK 证书签名 EFI 和内核
 	run sh -ec 'find /boot/EFI -type f -iname "*.efi" -print0 | while IFS= read -r -d "" efi; do sbsign --key /boot/EFI/MOK.key --cert /boot/EFI/MOK.crt --output "$efi.signed" "$efi"; mv "$efi.signed" "$efi"; done'
 	run sbsign --key /boot/EFI/MOK.key --cert /boot/EFI/MOK.crt \
@@ -394,6 +410,8 @@ config_grub(){
 	if [[ -f $mount_dir/boot/EFI/BOOT/BOOTX64.EFI ]]; then
 		run sbverify --list /boot/EFI/BOOT/BOOTX64.EFI
 	fi
+	run grub-script-check /boot/EFI/BOOT/grub.cfg
+	run grub-script-check /boot/grub/grub.cfg
 }
 
 cleanup_rootfs() {
