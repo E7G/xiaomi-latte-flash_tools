@@ -65,9 +65,10 @@ jobs:
         run: |
           cd kernel-output
           sha256sum -c *.pkg.tar.zst.sha256
-          bsdtar -tf *.pkg.tar.zst | grep -q 'usr/lib/firmware/intel/ipu/shisp_2401a0_v21.bin'
-          bsdtar -tf *.pkg.tar.zst | grep -q 'usr/local/libexec/mipad2-usb-serial'
-          bsdtar -tf *.pkg.tar.zst | grep -q 'usr/local/libexec/mipad2-hardware-smoke'
+          tar -tf *.pkg.tar.zst > package-contents.txt
+          grep -q 'usr/lib/firmware/intel/ipu/shisp_2401a0_v21.bin' package-contents.txt
+          grep -q 'usr/local/libexec/mipad2-usb-serial' package-contents.txt
+          grep -q 'usr/local/libexec/mipad2-hardware-smoke' package-contents.txt
           ls -lh *.pkg.tar.zst
 
       - name: Upload kernel package for DNX job
@@ -110,12 +111,14 @@ jobs:
             -e ROOTFS_SIZE -e GITHUB_RUN_NUMBER \
             -v "$PWD:/workspace" -w /workspace \
             archlinux:base-devel \
-            bash -lc 'pacman -Sy --noconfirm arch-install-scripts btrfs-progs dosfstools qemu-img zstd && bash ./scripts/build_dnx_package.sh'
+            bash -lc 'pacman -Sy --noconfirm arch-install-scripts btrfs-progs dosfstools gptfdisk qemu-img xz zstd && bash ./scripts/build_dnx_package.sh'
 
       - name: Verify archive
         run: |
           cd dist
           sha256sum -c *.sha256
+          xz -t *.img.xz
+          openssl x509 -in ../device_files/MOK.crt -noout -fingerprint -sha256
           ls -lh *
 
       - name: Upload DNX package
@@ -124,6 +127,7 @@ jobs:
           name: xiaomi-latte-cachyos-dnx
           path: |
             dist/*.tar.zst
+            dist/*.img.xz
             dist/*.sha256
           if-no-files-found: error
           compression-level: 0

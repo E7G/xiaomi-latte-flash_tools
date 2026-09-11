@@ -1,0 +1,16 @@
+#!/bin/sh
+set -eu
+
+marker="$HOME/.config/mipad2-display-configured"
+[ -e "$marker" ] && exit 0
+
+i=0
+while [ "$i" -lt 30 ]; do
+    if kscreen-doctor output.DSI-1.scale.2 >/dev/null 2>&1; then
+        : > "$marker"
+        exit 0
+    fi
+    i=$((i + 1))
+    sleep 1
+done
+exit 1

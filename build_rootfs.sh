@@ -6,7 +6,7 @@ shopt -s expand_aliases
 UserName="${UserName:-user}"
 UserPasswd="${UserPasswd:-123456}"
 HostName="${HostName:-mipad2}"
-desktop_type="${desktop_type:-gnome}" # plasma or gnome
+desktop_type="${desktop_type:-plasma}"
 ROOTFS_SIZE="${ROOTFS_SIZE:-8G}"
 KERNEL_PACKAGE="${KERNEL_PACKAGE:-}"
 KERNEL_PKGBASE="linux-latte-cachyos"
@@ -60,7 +60,8 @@ rm_img() {
 
 create_img() {
 	pushd ./images
-	qemu-img create -f qcow2 boot.qcow2 300M
+	# Must match gpt.ini and the USB image ESP exactly.
+	qemu-img create -f qcow2 boot.qcow2 256M
 	qemu-img create -f qcow2 rootfs.qcow2 "$ROOTFS_SIZE"
 	popd
 }
@@ -146,6 +147,8 @@ base-devel
 bash-completion zsh-completions sudo reflector pkgfile less btop
 zsh-autosuggestions zsh-syntax-highlighting
 vim
+# 日用浏览器
+firefox
 # 字体
 noto-fonts-{cjk,emoji} ttf-cascadia-code
 # 音频
@@ -167,49 +170,22 @@ zram-generator
 )
 
 plasma=(
-# 替代sddm
-plasma-login-manager
-# Kde 最小安装
-plasma-{desktop,pa,nm,systemmonitor} breeze-gtk kde-gtk-config powerdevil kscreen kgamma kinfocenter konsole fcitx5-im kcm-fcitx5 fcitx5-chinese-addons kate dolphin colord-kde gpm ark kwalletmanager kdeconnect sshfs
+# 精简 Plasma Wayland 桌面和原生登录管理器
+plasma-{desktop,pa,nm,systemmonitor} plasma-login-manager breeze-gtk kde-gtk-config
+powerdevil kscreen kinfocenter systemsettings
+# 日用组件
+konsole dolphin kate ark okular gwenview spectacle kcalc kamoso kdeconnect sshfs
+# 中文输入法、屏幕键盘、自动旋转
+fcitx5-im kcm-fcitx5 fcitx5-chinese-addons plasma-keyboard iio-sensor-proxy
 # 蓝牙
 bluedevil
-# 屏幕跟随传感器旋转
-iio-sensor-proxy
-
 plasma-wayland-protocols
-krdp
-)
-
-# gnome 最小安装
-gnome=(
-# 显示器管理器
-gdm
-# 桌面环境
-gnome-shell gnome-shell-extension-appindicator gnome-backgrounds adw-gtk-theme
-# 设置
-gnome-control-center gnome-tweaks dconf-editor
-# 文件管理器
-nautilus gvfs-smb
-# 终端
-gnome-console
-# 文本编辑器
-gnome-text-editor
-# 任务管理器
-gnome-system-monitor
-# 密钥管理器
-seahorse
-# 输入法
-ibus ibus-libpinyin
-# 远程桌面服务器
-gnome-remote-desktop
-# 摄像头
-snapshot
 )
 
 alias run="arch-chroot $mount_dir"
 install_packages() {
 	# 安装基础包
-	pacstrap -C "${device_file}"/pacman.conf -c $mount_dir base iptables-nft ${firmware[@]} grub efibootmgr
+	pacstrap -C "${device_file}"/pacman.conf -c $mount_dir base iptables-nft ${firmware[@]} grub efibootmgr sbsigntools
 
 	if [[ -z "$KERNEL_PACKAGE" ]]; then
 		KERNEL_PACKAGE="$(find "$device_file" -maxdepth 1 -name 'linux-latte-cachyos-*.pkg.tar.zst' -print -quit)"
@@ -248,6 +224,8 @@ EOF
 }
 
 config_packages() {
+	echo 安装 pacman 内核签名 hook
+	install -Dm0644 "${device_file}"/kernel.hook $mount_dir/etc/pacman.d/hooks/
 	echo 更新 udev hwdb
 	run udevadm hwdb --update
 
@@ -300,34 +278,16 @@ EOF
 	run $enable systemd-zram-setup@zram0.service
 	run $enable irqbalance
 	run $enable NetworkManager
-	if [[ $desktop_type == 'gnome' ]];then
-		run $enable gdm
-	fi
 	if [[ $desktop_type =~ 'plasma' ]];then
-		run $enable sddm
-		balooctl=`run sh -c 'ls /usr/bin/balooctl*'`
-		run $balooctl suspend
-		run $balooctl disable
-			echo 配置 sddm
-		mkdir $mount_dir/etc/sddm.conf.d
-
-		cat <<EOF > $mount_dir/etc/sddm.conf.d/autologin.conf
-[General]
-Numlock=on
+		run $enable plasmalogin.service
+		run sh -c 'command -v balooctl6 >/dev/null && balooctl6 suspend || true'
+		run sh -c 'command -v balooctl6 >/dev/null && balooctl6 disable || true'
+		echo 配置 Plasma Login Manager
+		mkdir -p $mount_dir/etc/plasmalogin.conf.d
+		cat <<EOF > $mount_dir/etc/plasmalogin.conf.d/autologin.conf
 [Autologin]
-Relogin=false
-Session=plasma
 User=$UserName
-[Theme]
-Current=breeze
-EOF
-		cat <<EOF > $mount_dir/etc/sddm.conf.d/10-wayland.conf
-[General]
-DisplayServer=wayland
-GreeterEnvironment=QT_WAYLAND_SHELL_INTEGRATION=layer-shell
-
-[Wayland]
-CompositorCommand=kwin_wayland --drm --no-lockscreen --no-global-shortcuts --locale1 --inputmethod maliit-keyboard
+Session=plasma.desktop
 EOF
 
 		echo 修复 dolphin ntfs报错
@@ -341,6 +301,7 @@ EOF
 XMODIFIERS=@im=fcitx
 SDL_IM_MODULE=fcitx
 GLFW_IM_MODULE=ibus
+KWIN_IM_SHOW_ALWAYS=1
 EOF
 	fi
 
@@ -386,6 +347,26 @@ config_user() {
 	run su $UserName -c 'source ~/.zshrc;omz theme set ys;omz plugin enable sudo safe-paste extract command-not-found zsh-autosuggestions zsh-syntax-highlighting'
 	run cp /home/$UserName/.zshrc /root/.zshrc
 	run chown root:root /root/.zshrc
+	mkdir -p "$mount_dir/home/$UserName/.config/autostart"
+	cat > "$mount_dir/home/$UserName/.config/kwinrc" <<'EOF'
+[Wayland]
+InputMethod[$e]=/usr/share/applications/org.kde.plasma.keyboard.desktop
+VirtualKeyboardEnabled=true
+
+[Xwayland]
+Scale=2
+EOF
+	cat > "$mount_dir/home/$UserName/.config/autostart/mipad2-display.desktop" <<'EOF'
+[Desktop Entry]
+Type=Application
+Name=Mi Pad 2 display scale
+Exec=/usr/local/libexec/mipad2-plasma-display
+OnlyShowIn=KDE;
+X-KDE-autostart-phase=1
+EOF
+	install -Dm0755 "$device_file/mipad2-plasma-display" \
+		"$mount_dir/usr/local/libexec/mipad2-plasma-display"
+	run chown -R $UserName:$UserName /home/$UserName/.config
 
 	echo 设置 密码
 	run bash -c "echo root:$UserPasswd|chpasswd"
@@ -401,7 +382,18 @@ config_grub(){
 		cp -a ./EFI/. "$mount_dir/boot/EFI/"
 	fi
 	chown -R root:root $mount_dir/boot/EFI
+	install -Dm0644 $device_file/MOK.cer $mount_dir/boot/
+	install -Dm0600 $device_file/MOK.key $mount_dir/boot/EFI/
+	install -Dm0644 $device_file/MOK.crt $mount_dir/boot/EFI/
 	install -Dm0644 $device_file/grub.cfg $mount_dir/boot/EFI/boot/grub.cfg
+	echo 使用原项目 MOK 证书签名 EFI 和内核
+	run sh -ec 'find /boot/EFI -type f -iname "*.efi" -print0 | while IFS= read -r -d "" efi; do sbsign --key /boot/EFI/MOK.key --cert /boot/EFI/MOK.crt --output "$efi.signed" "$efi"; mv "$efi.signed" "$efi"; done'
+	run sbsign --key /boot/EFI/MOK.key --cert /boot/EFI/MOK.crt \
+		--output /boot/vmlinuz-$KERNEL_PKGBASE /boot/vmlinuz-$KERNEL_PKGBASE
+	run sbverify --list /boot/vmlinuz-$KERNEL_PKGBASE
+	if [[ -f $mount_dir/boot/EFI/BOOT/BOOTX64.EFI ]]; then
+		run sbverify --list /boot/EFI/BOOT/BOOTX64.EFI
+	fi
 }
 
 cleanup_rootfs() {
