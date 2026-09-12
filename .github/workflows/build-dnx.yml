@@ -8,6 +8,8 @@ on:
       - '.github/workflows/build-dnx.yml'
       - 'kernel/**'
       - 'scripts/**'
+      - '*.bat'
+      - '*.ps1'
       - 'build_rootfs.sh'
       - 'device_files/**'
       - 'gpt.ini'
@@ -105,7 +107,7 @@ jobs:
           sudo modprobe nbd max_part=8
           ls -l /dev/nbd0 /dev/nbd1
 
-      - name: Build rootfs and DNX archive
+      - name: Build rootfs and one-click package
         run: |
           docker run --rm --privileged \
             -e ROOTFS_SIZE -e GITHUB_RUN_NUMBER \
@@ -113,15 +115,59 @@ jobs:
             archlinux:base-devel \
             bash -lc 'pacman -Sy --noconfirm arch-install-scripts btrfs-progs dosfstools gptfdisk qemu-img xz zstd && bash ./scripts/build_dnx_package.sh'
 
-      - name: Verify archive
+      - name: Verify generated packages
         run: |
           cd dist
           sha256sum -c *.sha256
           xz -t *.img.xz
           openssl x509 -in ../device_files/MOK.crt -noout -fingerprint -sha256
-          echo '4c89145e958cf592a6f16552eadf112ef2c1c525e2435c2761e6a99fa88188b3  ../device_files/shimx64.efi' | sha256sum -c -
-          echo '5f9fc41db3dfe3b581fc20cae696af82c5ca21e96071ec9c4c28ee4a15f989d8  ../device_files/mmx64.efi' | sha256sum -c -
+          echo '9c8af8e2c75d0b5d7887a2f70eea56f8cea9f4fe8b3af1070ccc74408b811df1  ../device_files/MOK.cer' | sha256sum -c -
+          echo 'e5018d78f66c269d3f51ca16ca532028fe62cd29740bae61bcf954848192f400  ../device_files/MOK.crt' | sha256sum -c -
+          echo 'af677ea5fb0ff1e70b34d18118a55b7dad70325c8d3920000b58427ae22a7c3d  ../device_files/fastboot.efi' | sha256sum -c -
+          echo '81085cbd7c9c0be303176eb9fa499ec04071477e3cdf1046ccb60a61a1f60e41  ../device_files/shimx64.efi' | sha256sum -c -
+          echo 'ccdf43c9e1b67e59341abde2632ac621309634f7d75548649dcda94c3e7328b8  ../device_files/mmx64.efi' | sha256sum -c -
           ls -lh *
+          cd ../work/dnx-package
+          sha256sum -c SHA256SUMS
+          test -f ONE_KEY_FLASH.bat
+          test -f flash-one-click.ps1
+          test -f platform-tools/fastboot.exe
+          test -f images/gpt.bin
+          test -f images/xiaomi-latte-boot.img
+          test -f images/xiaomi-latte-rootfs.img
+
+      - name: Verify boot image layout
+        run: |
+          set -Eeuo pipefail
+          esp="$(mktemp -d)"
+          cleanup() {
+            mountpoint -q "$esp" && sudo umount "$esp" || true
+            rmdir "$esp" || true
+          }
+          trap cleanup EXIT
+          sudo mount -o loop,ro work/dnx-package/images/xiaomi-latte-boot.img "$esp"
+          test -s "$esp/EFI/BOOT/BOOTX64.EFI"
+          test -s "$esp/EFI/BOOT/grubx64.efi"
+          test -s "$esp/EFI/BOOT/mmx64.efi"
+          test -s "$esp/EFI/BOOT/grub.cfg"
+          test -s "$esp/grub/grub.cfg"
+          grep -q 'configfile.*grub.cfg' "$esp/EFI/BOOT/grub.cfg"
+          cmp device_files/shimx64.efi "$esp/EFI/BOOT/BOOTX64.EFI"
+
+      - name: Validate Windows flasher syntax
+        shell: pwsh
+        run: |
+          $tokens = $null
+          $errors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile(
+            (Resolve-Path './flash-one-click.ps1').Path,
+            [ref]$tokens,
+            [ref]$errors
+          ) | Out-Null
+          if ($errors.Count -gt 0) {
+            $errors | ForEach-Object { Write-Error $_ }
+            exit 1
+          }
 
       - name: Upload USB image only
         uses: actions/upload-artifact@v4
@@ -134,13 +180,11 @@ jobs:
           compression-level: 0
           retention-days: 30
 
-      - name: Upload DNX package only
+      - name: Upload ready-to-run one-click flash package
         uses: actions/upload-artifact@v4
         with:
-          name: xiaomi-latte-cachyos-dnx
-          path: |
-            dist/*.tar.zst
-            dist/*.tar.zst.sha256
+          name: xiaomi-latte-cachyos-one-click
+          path: work/dnx-package/
           if-no-files-found: error
-          compression-level: 0
+          compression-level: 6
           retention-days: 30

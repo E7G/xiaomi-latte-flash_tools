@@ -1,72 +1,86 @@
-# 小米平板 2 Arch Linux DNX 刷机包
+# 小米平板 2 CachyOS 一键刷机包
 
-基于 [`E7G/linux_latte`](https://github.com/E7G/linux_latte) 的 Mi Pad 2
-Linux 6.14 完整内核，并叠加适合 Cherry Trail/Airmont、2 GiB 内存设备的
-CachyOS 优化。默认桌面为精简 KDE Plasma Wayland。
+面向 Xiaomi Mi Pad 2（`latte`）的 CachyOS/Arch Linux 镜像。默认桌面为精简
+KDE Plasma Wayland，内核来自 [`E7G/linux_latte`](https://github.com/E7G/linux_latte)。
 
-## 已集成
+## 一键刷机
 
-- 屏幕、背光、触摸、底部三键及按键灯
-- BQ27520 电池、BQ25890 充电、KTD2026 RGB LED
-- BCM4356 Wi-Fi 与 BCM4356A2 蓝牙固件
-- RT5659、双 TFA9890 的 ALSA UCM
-- OV5693 前摄、T4KA3 后摄、DW9761 对焦、AtomISP firmware
-- 传感器及自动旋转
-- USB ACM 串口调试；Wi-Fi 故障时仍可通过 USB 登录
-- Timeshift/Btrfs 一键备份恢复脚本与硬件 smoke test
-- VFAT CP437/ASCII 启动分区支持
-- 使用原项目 MOK 证书签名内核，避免更换证书导致 Secure Boot 验证变化
-- EFI GRUB 内置 FAT/Btrfs/GPT 模块，并使用 ESP UUID 定位配置，避免进入 `grub rescue`
+1. 在 GitHub Actions 下载 `xiaomi-latte-cachyos-one-click`。
+2. 完整解压 ZIP，不能在压缩包预览界面中运行。
+3. 平板进入 DNX/Fastboot 模式并用 USB 连接电脑。
+4. 双击 `ONE_KEY_FLASH.bat`。
 
-Secure Boot 和 suspend/resume 不作为本分支验收项。测试防息屏工具已安装，
-但默认不启用：
+包内已经包含 Google 官方 Windows Platform-Tools，不需要安装或配置
+`fastboot.exe`。脚本会自动：
+
+1. 校验所有刷机镜像的 SHA256；
+2. 等待 fastboot 设备；
+3. 启动原版 `fastboot.efi`；
+4. 验证设备代号必须为 `latte`；
+5. 写入原版 OEM 变量和 GPT；
+6. 写入 boot 与 CachyOS KDE system；
+7. 自动重启。
+
+任一步失败都会立即停止，不会继续写入后续分区。
+
+只修复启动分区可运行：
+
+```text
+DNX_flash-boot.bat
+```
+
+## 生成物
+
+### Windows 一键刷机
+
+```text
+xiaomi-latte-cachyos-one-click
+├── ONE_KEY_FLASH.bat
+├── flash-one-click.ps1
+├── platform-tools/fastboot.exe
+├── images/gpt.bin
+├── images/xiaomi-latte-boot.img
+├── images/xiaomi-latte-rootfs.img
+├── device_files/fastboot.efi
+└── SHA256SUMS
+```
+
+### U 盘镜像
+
+`xiaomi-latte-cachyos-usb-imgxz` 只包含 `.img.xz` 和对应 SHA256，不再与
+一键刷机包混装。
+
+## 启动链
+
+启动分区同时提供：
+
+- 从当前可启动系统逐字节提取的 Proxmox shim/mm 组合；shim 的
+  `BOOTX64.EFI` 仍由 Microsoft UEFI CA 2011 链签名；
+- 原项目 MOK 签名的独立 `grubx64.efi`；
+- 内嵌 ESP UUID/标签搜索逻辑的 GRUB bootstrap；
+- 外置 `EFI/BOOT/grub.cfg` 和 `EFI/arch/grub.cfg` 双重回退；
+- 原项目 MOK 签名的内核。
+
+Mi Pad 2 不同 BIOS 的 Secure Boot 数据库并不一致。原版 DNX 包本身使用的
+`BOOTX64.EFI` 是未签名 GRUB，并不具备 Secure Boot 能力。若固件不信任
+Microsoft UEFI CA 2011，只能使用 BIOS 中已经登记的证书或关闭 Secure Boot；
+重新使用相同 MOK 证书不能让固件自动信任 shim。
+
+## 首次启动
+
+首次启动会自动执行 `btrfs filesystem resize max /`，让 system 分区使用
+GPT 分配的全部剩余空间。
+
+默认账户：
+
+```text
+用户名：user
+密码：123456
+```
+
+测试防息屏默认不启用，需要时执行：
 
 ```bash
 sudo mp2-test-no-idle enable
 sudo mp2-test-no-idle disable
 ```
-
-硬件检查：
-
-```bash
-sudo /usr/local/libexec/mipad2-hardware-smoke
-```
-
-## GitHub Actions 构建
-
-打开 **Actions → Build CachyOS DNX package → Run workflow**。成功后下载
-`xiaomi-latte-cachyos-dnx` artifact。包内包含：
-
-```text
-images/gpt.bin
-images/xiaomi-latte-boot.img
-images/xiaomi-latte-rootfs.img
-device_files/fastboot.efi
-DNX_flash_all.bat
-DNX_flash-boot.bat
-SHA256SUMS
-xiaomi-latte-cachyos-kde-*.img.xz
-```
-
-## 刷入
-
-Windows 管理员终端运行 `DNX_flash_all.bat`。脚本会先核对文件、fastboot 和
-设备代号 `latte`，任何刷写步骤失败都会立即停止。
-
-写入 U 盘可使用 Rufus、balenaEtcher，或在 Linux 下执行：
-
-```bash
-xzcat xiaomi-latte-cachyos-kde-*.img.xz | sudo dd of=/dev/sdX bs=8M status=progress conv=fsync
-```
-
-Linux 可手动执行：
-
-```bash
-fastboot boot device_files/fastboot.efi
-fastboot flash gpt images/gpt.bin
-fastboot flash boot images/xiaomi-latte-boot.img
-fastboot flash system images/xiaomi-latte-rootfs.img
-fastboot reboot
-```
-
-默认用户：`user`；默认密码：`123456`。首次启动后应立即修改密码。

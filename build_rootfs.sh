@@ -314,6 +314,11 @@ EOF
 
 	run $enable bluetooth
 	run $enable mipad2-usb-serial.service
+	install -Dm0755 "$device_file/mipad2-grow-root" \
+		"$mount_dir/usr/local/libexec/mipad2-grow-root"
+	install -Dm0644 "$device_file/mipad2-grow-root.service" \
+		"$mount_dir/etc/systemd/system/mipad2-grow-root.service"
+	run $enable mipad2-grow-root.service
 	mkdir -p "$mount_dir/etc/systemd/system/serial-getty@ttyGS0.service.d"
 	cat > "$mount_dir/etc/systemd/system/serial-getty@ttyGS0.service.d/autologin.conf" <<EOF
 [Service]
@@ -384,7 +389,7 @@ config_grub(){
 	# grub 不注册efi
 	run grub-install --target=x86_64-efi --efi-directory=/boot --bootloader-id=arch \
 		--removable --no-nvram \
-		--modules="part_gpt fat btrfs search search_fs_uuid configfile normal linux"
+		--modules="part_gpt fat btrfs search search_fs_uuid search_label test configfile normal linux"
 	run sed -i 's/GRUB_CMDLINE_LINUX_DEFAULT="loglevel=3 quiet"/GRUB_CMDLINE_LINUX_DEFAULT="loglevel=3 quiet splash plymouth.nolog"/' /etc/default/grub
 	run grub-mkconfig -o /boot/grub/grub.cfg
 	if [[ -d ./EFI ]]; then
@@ -392,13 +397,21 @@ config_grub(){
 	fi
 	chown -R root:root $mount_dir/boot/EFI
 	boot_uuid=$(blkid -s UUID -o value "$boot_dev")
-	cat > "$mount_dir/boot/EFI/BOOT/grub.cfg" <<EOF
+	cat > "$mount_dir/tmp/mipad2-grub-bootstrap.cfg" <<EOF
 insmod part_gpt
 insmod fat
+insmod btrfs
 search --no-floppy --fs-uuid --set=esp $boot_uuid
+if [ -z "\$esp" ]; then
+  search --no-floppy --label --set=esp boot
+fi
 set prefix=(\$esp)/grub
 configfile \$prefix/grub.cfg
 EOF
+	install -Dm0644 "$mount_dir/tmp/mipad2-grub-bootstrap.cfg" \
+		"$mount_dir/boot/EFI/BOOT/grub.cfg"
+	install -Dm0644 "$mount_dir/tmp/mipad2-grub-bootstrap.cfg" \
+		"$mount_dir/boot/EFI/arch/grub.cfg"
 	install -Dm0644 $device_file/MOK.cer $mount_dir/boot/
 	install -Dm0600 $device_file/MOK.key $mount_dir/boot/EFI/
 	install -Dm0644 $device_file/MOK.crt $mount_dir/boot/EFI/
@@ -406,8 +419,12 @@ EOF
 	# Firmware trusts Microsoft's UEFI CA, not a user MOK directly.  Keep the
 	# Microsoft-signed shim byte-for-byte intact and let it validate the GRUB
 	# binary with the already-enrolled, original project MOK certificate.
-	# Ubuntu shim looks for grubx64.efi and mmx64.efi in its own directory.
-	run mv /boot/EFI/BOOT/BOOTX64.EFI /boot/EFI/BOOT/grubx64.efi
+	# Keep the exact Proxmox shim/mm pair from the tablet's previously working
+	# boot partition.  This shim looks for grubx64.efi in its own directory.
+	run grub-mkstandalone --format=x86_64-efi \
+		--output=/boot/EFI/BOOT/grubx64.efi \
+		--modules="part_gpt fat btrfs search search_fs_uuid search_label test configfile normal linux" \
+		boot/grub/grub.cfg=/tmp/mipad2-grub-bootstrap.cfg
 	install -Dm0644 $device_file/shimx64.efi $mount_dir/boot/EFI/BOOT/BOOTX64.EFI
 	install -Dm0644 $device_file/mmx64.efi $mount_dir/boot/EFI/BOOT/mmx64.efi
 	echo 使用 Microsoft 签名 shim 和原项目 MOK 签名 GRUB/内核
@@ -423,6 +440,7 @@ EOF
 	run sh -ec 'sbverify --list /boot/EFI/BOOT/grubx64.efi 2>&1 | grep -F "my Machine Owner Key"'
 	run sh -ec 'sbverify --list /boot/vmlinuz-'$KERNEL_PKGBASE' 2>&1 | grep -F "my Machine Owner Key"'
 	cmp $device_file/shimx64.efi $mount_dir/boot/EFI/BOOT/BOOTX64.EFI
+	run grub-script-check /tmp/mipad2-grub-bootstrap.cfg
 	run grub-script-check /boot/EFI/BOOT/grub.cfg
 	run grub-script-check /boot/grub/grub.cfg
 }

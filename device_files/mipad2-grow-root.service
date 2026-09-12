@@ -1,0 +1,11 @@
+[Unit]
+Description=Expand Mi Pad 2 root filesystem after full-device flashing
+After=local-fs.target
+ConditionPathExists=!/var/lib/mipad2/root-expanded
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/libexec/mipad2-grow-root
+
+[Install]
+WantedBy=multi-user.target

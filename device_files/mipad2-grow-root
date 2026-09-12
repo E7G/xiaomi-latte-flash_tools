@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+marker=/var/lib/mipad2/root-expanded
+mkdir -p "${marker%/*}"
+
+if [[ $(findmnt -n -o FSTYPE /) == btrfs ]]; then
+	btrfs filesystem resize max /
+fi
+
+touch "$marker"
