@@ -123,14 +123,24 @@ jobs:
           echo '5f9fc41db3dfe3b581fc20cae696af82c5ca21e96071ec9c4c28ee4a15f989d8  ../device_files/mmx64.efi' | sha256sum -c -
           ls -lh *
 
-      - name: Upload DNX package
+      - name: Upload USB image only
+        uses: actions/upload-artifact@v4
+        with:
+          name: xiaomi-latte-cachyos-usb-imgxz
+          path: |
+            dist/*.img.xz
+            dist/*.img.xz.sha256
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 30
+
+      - name: Upload DNX package only
         uses: actions/upload-artifact@v4
         with:
           name: xiaomi-latte-cachyos-dnx
           path: |
             dist/*.tar.zst
-            dist/*.img.xz
-            dist/*.sha256
+            dist/*.tar.zst.sha256
           if-no-files-found: error
           compression-level: 0
           retention-days: 30
