@@ -120,9 +120,8 @@ jobs:
           cd dist
           sha256sum -c *.sha256
           xz -t *.img.xz
-          openssl x509 -in ../device_files/MOK.crt -noout -fingerprint -sha256
+          test "$(openssl x509 -in ../device_files/MOK.crt -noout -fingerprint -sha256 | tr -d ':' | cut -d= -f2)" = '9C8AF8E2C75D0B5D7887A2F70EEA56F8CEA9F4FE8B3AF1070CCC74408B811DF1'
           echo '9c8af8e2c75d0b5d7887a2f70eea56f8cea9f4fe8b3af1070ccc74408b811df1  ../device_files/MOK.cer' | sha256sum -c -
-          echo 'e5018d78f66c269d3f51ca16ca532028fe62cd29740bae61bcf954848192f400  ../device_files/MOK.crt' | sha256sum -c -
           echo 'af677ea5fb0ff1e70b34d18118a55b7dad70325c8d3920000b58427ae22a7c3d  ../device_files/fastboot.efi' | sha256sum -c -
           echo '81085cbd7c9c0be303176eb9fa499ec04071477e3cdf1046ccb60a61a1f60e41  ../device_files/shimx64.efi' | sha256sum -c -
           echo 'ccdf43c9e1b67e59341abde2632ac621309634f7d75548649dcda94c3e7328b8  ../device_files/mmx64.efi' | sha256sum -c -
