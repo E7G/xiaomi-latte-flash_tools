@@ -402,14 +402,27 @@ EOF
 	install -Dm0644 $device_file/MOK.cer $mount_dir/boot/
 	install -Dm0600 $device_file/MOK.key $mount_dir/boot/EFI/
 	install -Dm0644 $device_file/MOK.crt $mount_dir/boot/EFI/
-	echo 使用原项目 MOK 证书签名 EFI 和内核
-	run sh -ec 'find /boot/EFI -type f -iname "*.efi" -print0 | while IFS= read -r -d "" efi; do sbsign --key /boot/EFI/MOK.key --cert /boot/EFI/MOK.crt --output "$efi.signed" "$efi"; mv "$efi.signed" "$efi"; done'
+
+	# Firmware trusts Microsoft's UEFI CA, not a user MOK directly.  Keep the
+	# Microsoft-signed shim byte-for-byte intact and let it validate the GRUB
+	# binary with the already-enrolled, original project MOK certificate.
+	# Ubuntu shim looks for grubx64.efi and mmx64.efi in its own directory.
+	run mv /boot/EFI/BOOT/BOOTX64.EFI /boot/EFI/BOOT/grubx64.efi
+	install -Dm0644 $device_file/shimx64.efi $mount_dir/boot/EFI/BOOT/BOOTX64.EFI
+	install -Dm0644 $device_file/mmx64.efi $mount_dir/boot/EFI/BOOT/mmx64.efi
+	echo 使用 Microsoft 签名 shim 和原项目 MOK 签名 GRUB/内核
+	run sbsign --key /boot/EFI/MOK.key --cert /boot/EFI/MOK.crt \
+		--output /boot/EFI/BOOT/grubx64.efi.signed /boot/EFI/BOOT/grubx64.efi
+	run mv /boot/EFI/BOOT/grubx64.efi.signed /boot/EFI/BOOT/grubx64.efi
 	run sbsign --key /boot/EFI/MOK.key --cert /boot/EFI/MOK.crt \
 		--output /boot/vmlinuz-$KERNEL_PKGBASE /boot/vmlinuz-$KERNEL_PKGBASE
 	run sbverify --list /boot/vmlinuz-$KERNEL_PKGBASE
-	if [[ -f $mount_dir/boot/EFI/BOOT/BOOTX64.EFI ]]; then
-		run sbverify --list /boot/EFI/BOOT/BOOTX64.EFI
-	fi
+	run sbverify --list /boot/EFI/BOOT/BOOTX64.EFI
+	run sbverify --list /boot/EFI/BOOT/grubx64.efi
+	run sh -ec 'sbverify --list /boot/EFI/BOOT/BOOTX64.EFI 2>&1 | grep -F "Microsoft Corporation UEFI CA 2011"'
+	run sh -ec 'sbverify --list /boot/EFI/BOOT/grubx64.efi 2>&1 | grep -F "my Machine Owner Key"'
+	run sh -ec 'sbverify --list /boot/vmlinuz-'$KERNEL_PKGBASE' 2>&1 | grep -F "my Machine Owner Key"'
+	cmp $device_file/shimx64.efi $mount_dir/boot/EFI/BOOT/BOOTX64.EFI
 	run grub-script-check /boot/EFI/BOOT/grub.cfg
 	run grub-script-check /boot/grub/grub.cfg
 }

@@ -119,6 +119,8 @@ jobs:
           sha256sum -c *.sha256
           xz -t *.img.xz
           openssl x509 -in ../device_files/MOK.crt -noout -fingerprint -sha256
+          echo '4c89145e958cf592a6f16552eadf112ef2c1c525e2435c2761e6a99fa88188b3  ../device_files/shimx64.efi' | sha256sum -c -
+          echo '5f9fc41db3dfe3b581fc20cae696af82c5ca21e96071ec9c4c28ee4a15f989d8  ../device_files/mmx64.efi' | sha256sum -c -
           ls -lh *
 
       - name: Upload DNX package
