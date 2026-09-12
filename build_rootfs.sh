@@ -397,7 +397,7 @@ config_grub(){
 	fi
 	chown -R root:root $mount_dir/boot/EFI
 	boot_uuid=$(blkid -s UUID -o value "$boot_dev")
-	cat > "$mount_dir/tmp/mipad2-grub-bootstrap.cfg" <<EOF
+	cat > "$mount_dir/boot/EFI/BOOT/grub.cfg" <<EOF
 insmod part_gpt
 insmod fat
 insmod btrfs
@@ -408,9 +408,7 @@ fi
 set prefix=(\$esp)/grub
 configfile \$prefix/grub.cfg
 EOF
-	install -Dm0644 "$mount_dir/tmp/mipad2-grub-bootstrap.cfg" \
-		"$mount_dir/boot/EFI/BOOT/grub.cfg"
-	install -Dm0644 "$mount_dir/tmp/mipad2-grub-bootstrap.cfg" \
+	install -Dm0644 "$mount_dir/boot/EFI/BOOT/grub.cfg" \
 		"$mount_dir/boot/EFI/arch/grub.cfg"
 	install -Dm0644 $device_file/MOK.cer $mount_dir/boot/
 	install -Dm0600 $device_file/MOK.key $mount_dir/boot/EFI/
@@ -424,7 +422,7 @@ EOF
 	run grub-mkstandalone --format=x86_64-efi \
 		--output=/boot/EFI/BOOT/grubx64.efi \
 		--modules="part_gpt fat btrfs search search_fs_uuid search_label test configfile normal linux" \
-		boot/grub/grub.cfg=/tmp/mipad2-grub-bootstrap.cfg
+		boot/grub/grub.cfg=/boot/EFI/BOOT/grub.cfg
 	install -Dm0644 $device_file/shimx64.efi $mount_dir/boot/EFI/BOOT/BOOTX64.EFI
 	install -Dm0644 $device_file/mmx64.efi $mount_dir/boot/EFI/BOOT/mmx64.efi
 	echo 使用 Microsoft 签名 shim 和原项目 MOK 签名 GRUB/内核
@@ -440,7 +438,6 @@ EOF
 	run sh -ec 'sbverify --list /boot/EFI/BOOT/grubx64.efi 2>&1 | grep -F "my Machine Owner Key"'
 	run sh -ec 'sbverify --list /boot/vmlinuz-'$KERNEL_PKGBASE' 2>&1 | grep -F "my Machine Owner Key"'
 	cmp $device_file/shimx64.efi $mount_dir/boot/EFI/BOOT/BOOTX64.EFI
-	run grub-script-check /tmp/mipad2-grub-bootstrap.cfg
 	run grub-script-check /boot/EFI/BOOT/grub.cfg
 	run grub-script-check /boot/grub/grub.cfg
 }
