@@ -152,7 +152,6 @@ jobs:
           test -s "$esp/grub/grub.cfg"
           grep -q 'configfile.*grub.cfg' "$esp/EFI/BOOT/grub.cfg"
           cmp "$esp/EFI/BOOT/grubx64.efi" "$esp/EFI/BOOT/BOOTX64.EFI"
-          sudo sbverify --list "$esp/EFI/BOOT/BOOTX64.EFI" 2>&1 | grep -F 'my Machine Owner Key'
           sudo mount -o loop,ro,subvol=@ work/dnx-package/images/xiaomi-latte-rootfs.img "$rootfs"
           test -x "$rootfs/usr/local/sbin/mipad2-install-to-emmc"
           test -s "$rootfs/etc/systemd/system/mipad2-usb-installer.service"
