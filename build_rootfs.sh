@@ -421,30 +421,28 @@ EOF
 	install -Dm0600 $device_file/MOK.key $mount_dir/boot/EFI/
 	install -Dm0644 $device_file/MOK.crt $mount_dir/boot/EFI/
 
-	# Firmware trusts Microsoft's UEFI CA, not a user MOK directly.  Keep the
-	# Microsoft-signed shim byte-for-byte intact and let it validate the GRUB
-	# binary with the already-enrolled, original project MOK certificate.
-	# Keep the exact Proxmox shim/mm pair from the tablet's previously working
-	# boot partition.  This shim looks for grubx64.efi in its own directory.
+	# Mi Pad 2's USB fallback path is verified directly by its firmware.  Its
+	# factory db does not accept the third-party Microsoft UEFI CA used by shim,
+	# while this project's original MOK is already enrolled on the target tablet.
+	# Therefore BOOTX64.EFI itself must carry the original project signature.
 	run grub-mkstandalone --format=x86_64-efi \
 		--output=/boot/EFI/BOOT/grubx64.efi \
 		--modules="part_gpt fat btrfs search search_fs_uuid search_label test configfile normal linux" \
 		boot/grub/grub.cfg=/boot/EFI/BOOT/grub.cfg
-	install -Dm0644 $device_file/shimx64.efi $mount_dir/boot/EFI/BOOT/BOOTX64.EFI
-	install -Dm0644 $device_file/mmx64.efi $mount_dir/boot/EFI/BOOT/mmx64.efi
-	echo 使用 Microsoft 签名 shim 和原项目 MOK 签名 GRUB/内核
+	echo 使用原项目 MOK 直接签名 U 盘入口、GRUB 和内核
 	run sbsign --key /boot/EFI/MOK.key --cert /boot/EFI/MOK.crt \
 		--output /boot/EFI/BOOT/grubx64.efi.signed /boot/EFI/BOOT/grubx64.efi
 	run mv /boot/EFI/BOOT/grubx64.efi.signed /boot/EFI/BOOT/grubx64.efi
+	run cp /boot/EFI/BOOT/grubx64.efi /boot/EFI/BOOT/BOOTX64.EFI
 	run sbsign --key /boot/EFI/MOK.key --cert /boot/EFI/MOK.crt \
 		--output /boot/vmlinuz-$KERNEL_PKGBASE /boot/vmlinuz-$KERNEL_PKGBASE
 	run sbverify --list /boot/vmlinuz-$KERNEL_PKGBASE
 	run sbverify --list /boot/EFI/BOOT/BOOTX64.EFI
 	run sbverify --list /boot/EFI/BOOT/grubx64.efi
-	run sh -ec 'sbverify --list /boot/EFI/BOOT/BOOTX64.EFI 2>&1 | grep -F "Microsoft Corporation UEFI CA 2011"'
+	run sh -ec 'sbverify --list /boot/EFI/BOOT/BOOTX64.EFI 2>&1 | grep -F "my Machine Owner Key"'
 	run sh -ec 'sbverify --list /boot/EFI/BOOT/grubx64.efi 2>&1 | grep -F "my Machine Owner Key"'
 	run sh -ec 'sbverify --list /boot/vmlinuz-'$KERNEL_PKGBASE' 2>&1 | grep -F "my Machine Owner Key"'
-	cmp $device_file/shimx64.efi $mount_dir/boot/EFI/BOOT/BOOTX64.EFI
+	cmp $mount_dir/boot/EFI/BOOT/grubx64.efi $mount_dir/boot/EFI/BOOT/BOOTX64.EFI
 	run grub-script-check /boot/EFI/BOOT/grub.cfg
 	run grub-script-check /boot/grub/grub.cfg
 }

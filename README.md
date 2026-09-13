@@ -63,19 +63,17 @@ SHA256，不再与 Windows 一键刷机包混装。
 
 ## 启动链
 
-启动分区同时提供：
+启动分区提供：
 
-- 从当前可启动系统逐字节提取的 Proxmox shim/mm 组合；shim 的
-  `BOOTX64.EFI` 仍由 Microsoft UEFI CA 2011 链签名；
-- 原项目 MOK 签名的独立 `grubx64.efi`；
+- 使用原项目 MOK 直接签名的 U 盘入口 `BOOTX64.EFI`；
+- 内容相同、使用原项目 MOK 签名的 `grubx64.efi`；
 - 内嵌 ESP UUID/标签搜索逻辑的 GRUB bootstrap；
 - 外置 `EFI/BOOT/grub.cfg` 和 `EFI/arch/grub.cfg` 双重回退；
 - 原项目 MOK 签名的内核。
 
-Mi Pad 2 不同 BIOS 的 Secure Boot 数据库并不一致。原版 DNX 包本身使用的
-`BOOTX64.EFI` 是未签名 GRUB，并不具备 Secure Boot 能力。若固件不信任
-Microsoft UEFI CA 2011，只能使用 BIOS 中已经登记的证书或关闭 Secure Boot；
-重新使用相同 MOK 证书不能让固件自动信任 shim。
+Mi Pad 2 的固件会在进入 GRUB 前直接校验 U 盘回退入口，并拒绝第三方
+Microsoft UEFI CA 签名的 shim。因此 U 盘入口不再使用 shim，而是直接复用
+原系统已经登记的项目 MOK 证书。
 
 ## 首次启动
 
