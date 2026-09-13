@@ -1,0 +1,14 @@
+[Unit]
+Description=Automatically install Mi Pad 2 CachyOS USB image to internal eMMC
+After=local-fs.target
+Before=plasmalogin.service graphical.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/mipad2-install-to-emmc
+StandardOutput=journal+console
+StandardError=journal+console
+TimeoutStartSec=infinity
+
+[Install]
+WantedBy=multi-user.target

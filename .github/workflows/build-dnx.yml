@@ -157,8 +157,8 @@ jobs:
           cmp device_files/shimx64.efi "$esp/EFI/BOOT/BOOTX64.EFI"
           sudo mount -o loop,ro,subvol=@ work/dnx-package/images/xiaomi-latte-rootfs.img "$rootfs"
           test -x "$rootfs/usr/local/sbin/mipad2-install-to-emmc"
-          test -x "$rootfs/usr/local/libexec/mipad2-usb-installer-launcher"
-          test -s "$rootfs/etc/xdg/autostart/mipad2-usb-installer.desktop"
+          test -s "$rootfs/etc/systemd/system/mipad2-usb-installer.service"
+          test -L "$rootfs/etc/systemd/system/multi-user.target.wants/mipad2-usb-installer.service"
 
       - name: Validate Windows flasher syntax
         shell: pwsh

@@ -50,7 +50,10 @@ boot_disk=/dev/$(lsblk -ndo PKNAME "$source_boot")
 [[ -b $source_root && -b $source_boot && -b $source_disk ]] || \
 	die "无法识别 U 盘启动分区"
 [[ $source_disk == "$boot_disk" ]] || die "启动分区和系统分区不在同一个 U 盘"
-[[ $source_disk != "$target" ]] || die "当前系统已经从内部 eMMC 启动，拒绝覆盖自身"
+if [[ $source_disk == "$target" ]]; then
+	echo "当前系统从内部 eMMC 启动，安装器自动跳过。"
+	exit 0
+fi
 [[ $(findmnt -n -o FSTYPE /) == btrfs ]] || die "U 盘系统分区不是 Btrfs"
 [[ $(findmnt -n -o FSTYPE /boot) == vfat ]] || die "U 盘启动分区不是 FAT32"
 
@@ -59,7 +62,6 @@ target_bytes=$(blockdev --getsize64 "$target")
 (( target_bytes > source_bytes + 512 * 1024 * 1024 )) || \
 	die "内部 eMMC 容量不足"
 
-clear
 cat <<EOF
 小米平板 2 CachyOS 一键安装
 
@@ -69,9 +71,8 @@ cat <<EOF
 接下来会清空内部 eMMC，并安装当前 U 盘中的完整系统。
 U 盘本身不会被修改；安装完成关机后拔掉 U 盘即可启动。
 EOF
-echo
-read -r -p '输入 FLASH 并按回车开始：' answer
-[[ $answer == FLASH ]] || die "已取消"
+echo '5 秒后自动开始，无需任何操作。'
+sleep 5
 
 echo '[1/7] 创建一致的系统快照'
 mkdir -p "$source_top" "$target_top" "$target_mnt"
@@ -136,8 +137,6 @@ chroot "$target_mnt" grub-mkconfig -o /boot/grub/grub.cfg
 btrfs filesystem resize max "$target_mnt"
 mkdir -p "$target_mnt/var/lib/mipad2"
 touch "$target_mnt/var/lib/mipad2/root-expanded"
-rm -f "$target_mnt/etc/xdg/autostart/mipad2-usb-installer.desktop"
-
 echo '[7/7] 同步并校验'
 sync
 grub-script-check "$target_mnt/boot/grub/grub.cfg"

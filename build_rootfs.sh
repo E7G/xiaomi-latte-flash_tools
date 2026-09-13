@@ -321,12 +321,9 @@ EOF
 	run $enable mipad2-grow-root.service
 	install -Dm0755 "$device_file/mipad2-install-to-emmc" \
 		"$mount_dir/usr/local/sbin/mipad2-install-to-emmc"
-	install -Dm0755 "$device_file/mipad2-usb-installer-launcher" \
-		"$mount_dir/usr/local/libexec/mipad2-usb-installer-launcher"
-	install -Dm0644 "$device_file/mipad2-usb-installer.desktop" \
-		"$mount_dir/etc/xdg/autostart/mipad2-usb-installer.desktop"
-	install -Dm0644 "$device_file/mipad2-usb-installer.desktop" \
-		"$mount_dir/usr/share/applications/mipad2-usb-installer.desktop"
+	install -Dm0644 "$device_file/mipad2-usb-installer.service" \
+		"$mount_dir/etc/systemd/system/mipad2-usb-installer.service"
+	run $enable mipad2-usb-installer.service
 	mkdir -p "$mount_dir/etc/systemd/system/serial-getty@ttyGS0.service.d"
 	cat > "$mount_dir/etc/systemd/system/serial-getty@ttyGS0.service.d/autologin.conf" <<EOF
 [Service]
