@@ -111,8 +111,10 @@ mount_img() {
 	if is_mount; then
 		return
 	fi
-	connect_img
-	sleep 1
+	if [[ $flag_connect == 0 ]]; then
+		connect_img
+		sleep 1
+	fi
 
 	echo mount rootfs
     mount -t btrfs -o compress=zstd,subvol=@ $rootfs_dev $mount_dir
