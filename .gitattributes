@@ -2,4 +2,5 @@
 *.yml text eol=lf
 *.yaml text eol=lf
 *.patch text eol=lf
+device_files/mipad2-* text eol=lf
 

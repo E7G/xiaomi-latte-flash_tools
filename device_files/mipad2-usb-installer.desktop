@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=安装 CachyOS 到小米平板 2
+Comment=从当前 U 盘一键安装到内部 eMMC
+Exec=/usr/local/libexec/mipad2-usb-installer-launcher
+Icon=drive-harddisk
+Terminal=false
+OnlyShowIn=KDE;
+X-KDE-autostart-phase=2

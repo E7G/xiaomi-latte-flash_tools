@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+sleep 3
+root_majmin=$(findmnt -n -o MAJ:MIN /)
+root_dev=$(readlink -f "/dev/block/$root_majmin")
+root_disk=/dev/$(lsblk -ndo PKNAME "$root_dev")
+
+# Installed system: do not show the USB installer again.
+[[ $root_disk == /dev/mmcblk0 ]] && exit 0
+
+exec konsole --hold -e sudo /usr/local/sbin/mipad2-install-to-emmc

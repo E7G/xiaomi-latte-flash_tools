@@ -1,0 +1,152 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+target=/dev/mmcblk0
+target_boot=${target}p1
+target_root=${target}p2
+system_guid=CC8CF58C-D70B-4BEB-ADB4-944040EAC3B0
+
+work=/run/mipad2-installer
+source_top=$work/source
+target_top=$work/target-top
+target_mnt=$work/target
+root_snap=.mipad2-install-root-$$
+home_snap=.mipad2-install-home-$$
+
+cleanup() {
+	set +e
+	for path in \
+		"$target_mnt/run" "$target_mnt/sys" "$target_mnt/proc" \
+		"$target_mnt/dev" "$target_mnt/boot" "$target_mnt/home" \
+		"$target_mnt" "$target_top"; do
+		mountpoint -q "$path" && umount -R "$path"
+	done
+	if mountpoint -q "$source_top"; then
+		btrfs subvolume delete "$source_top/$root_snap" >/dev/null 2>&1 || true
+		btrfs subvolume delete "$source_top/$home_snap" >/dev/null 2>&1 || true
+		umount "$source_top"
+	fi
+}
+trap cleanup EXIT
+
+die() {
+	echo
+	echo "错误：$*" >&2
+	exit 1
+}
+
+[[ $EUID -eq 0 ]] || die "必须以 root 运行"
+[[ -b $target ]] || die "没有找到内部 eMMC：$target"
+[[ $(cat /sys/block/mmcblk0/removable 2>/dev/null) == 0 ]] || \
+	die "目标不是不可移动的内部 eMMC"
+
+root_majmin=$(findmnt -n -o MAJ:MIN /)
+boot_majmin=$(findmnt -n -o MAJ:MIN /boot)
+source_root=$(readlink -f "/dev/block/$root_majmin")
+source_boot=$(readlink -f "/dev/block/$boot_majmin")
+source_disk=/dev/$(lsblk -ndo PKNAME "$source_root")
+boot_disk=/dev/$(lsblk -ndo PKNAME "$source_boot")
+
+[[ -b $source_root && -b $source_boot && -b $source_disk ]] || \
+	die "无法识别 U 盘启动分区"
+[[ $source_disk == "$boot_disk" ]] || die "启动分区和系统分区不在同一个 U 盘"
+[[ $source_disk != "$target" ]] || die "当前系统已经从内部 eMMC 启动，拒绝覆盖自身"
+[[ $(findmnt -n -o FSTYPE /) == btrfs ]] || die "U 盘系统分区不是 Btrfs"
+[[ $(findmnt -n -o FSTYPE /boot) == vfat ]] || die "U 盘启动分区不是 FAT32"
+
+source_bytes=$(blockdev --getsize64 "$source_root")
+target_bytes=$(blockdev --getsize64 "$target")
+(( target_bytes > source_bytes + 512 * 1024 * 1024 )) || \
+	die "内部 eMMC 容量不足"
+
+clear
+cat <<EOF
+小米平板 2 CachyOS 一键安装
+
+来源 U 盘：$source_disk
+内部 eMMC：$target
+
+接下来会清空内部 eMMC，并安装当前 U 盘中的完整系统。
+U 盘本身不会被修改；安装完成关机后拔掉 U 盘即可启动。
+EOF
+echo
+read -r -p '输入 FLASH 并按回车开始：' answer
+[[ $answer == FLASH ]] || die "已取消"
+
+echo '[1/7] 创建一致的系统快照'
+mkdir -p "$source_top" "$target_top" "$target_mnt"
+mount -o subvolid=5 "$source_root" "$source_top"
+[[ -d $source_top/@ && -d $source_top/@home ]] || die "缺少 @ 或 @home 子卷"
+btrfs filesystem sync "$source_top"
+btrfs subvolume snapshot -r "$source_top/@" "$source_top/$root_snap"
+btrfs subvolume snapshot -r "$source_top/@home" "$source_top/$home_snap"
+
+echo '[2/7] 清理内部 eMMC'
+swapoff "$target_boot" "$target_root" 2>/dev/null || true
+while read -r mounted; do
+	[[ -n $mounted ]] && umount -R "$mounted"
+done < <(lsblk -nrpo MOUNTPOINT "$target" | awk 'NF')
+sgdisk --zap-all "$target"
+sgdisk \
+	--new=1:2048:+256M --typecode=1:ef00 --change-name=1:boot \
+	--new=2:0:0 --typecode=2:8300 --change-name=2:system \
+	--partition-guid=2:$system_guid "$target"
+sgdisk --verify "$target"
+blockdev --rereadpt "$target"
+udevadm settle
+[[ -b $target_boot && -b $target_root ]] || die "eMMC 分区创建失败"
+
+echo '[3/7] 写入已签名 EFI 启动分区'
+dd if="$source_boot" of="$target_boot" bs=16M conv=fsync status=progress
+fsck.fat -a "$target_boot"
+
+echo '[4/7] 创建内部 Btrfs 系统分区'
+mkfs.btrfs -f -L rootfs "$target_root"
+mount -o subvolid=5 "$target_root" "$target_top"
+
+echo '[5/7] 复制系统和用户数据'
+btrfs send "$source_top/$root_snap" | btrfs receive "$target_top"
+btrfs send "$source_top/$home_snap" | btrfs receive "$target_top"
+btrfs property set -ts "$target_top/$root_snap" ro false
+btrfs property set -ts "$target_top/$home_snap" ro false
+mv "$target_top/$root_snap" "$target_top/@"
+mv "$target_top/$home_snap" "$target_top/@home"
+root_id=$(btrfs subvolume show "$target_top/@" | awk '/Subvolume ID:/ {print $3; exit}')
+btrfs subvolume set-default "$root_id" "$target_top"
+umount "$target_top"
+
+echo '[6/7] 更新 UUID 和 GRUB'
+mount -o compress=zstd:3,ssd,discard=async,subvol=@ "$target_root" "$target_mnt"
+mkdir -p "$target_mnt/boot" "$target_mnt/home"
+mount "$target_boot" "$target_mnt/boot"
+mount -o compress=zstd:3,ssd,discard=async,subvol=@home "$target_root" "$target_mnt/home"
+root_uuid=$(blkid -s UUID -o value "$target_root")
+boot_uuid=$(blkid -s UUID -o value "$target_boot")
+cat > "$target_mnt/etc/fstab" <<EOF
+UUID=$root_uuid / btrfs rw,relatime,compress=zstd:3,ssd,discard=async,space_cache=v2,subvol=/@ 0 0
+UUID=$boot_uuid /boot vfat rw,relatime,fmask=0022,dmask=0022,codepage=437,iocharset=ascii,shortname=mixed,utf8,errors=remount-ro 0 2
+UUID=$root_uuid /home btrfs rw,relatime,compress=zstd:3,ssd,discard=async,space_cache=v2,subvol=/@home 0 0
+EOF
+
+for path in dev proc sys run; do
+	mount --rbind "/$path" "$target_mnt/$path"
+	mount --make-rslave "$target_mnt/$path"
+done
+chroot "$target_mnt" grub-mkconfig -o /boot/grub/grub.cfg
+btrfs filesystem resize max "$target_mnt"
+mkdir -p "$target_mnt/var/lib/mipad2"
+touch "$target_mnt/var/lib/mipad2/root-expanded"
+rm -f "$target_mnt/etc/xdg/autostart/mipad2-usb-installer.desktop"
+
+echo '[7/7] 同步并校验'
+sync
+grub-script-check "$target_mnt/boot/grub/grub.cfg"
+test -s "$target_mnt/boot/EFI/BOOT/BOOTX64.EFI"
+test -s "$target_mnt/boot/EFI/BOOT/grubx64.efi"
+
+cleanup
+trap - EXIT
+echo
+echo '安装完成。现在将关机；关机后拔掉 U 盘，再按电源键启动。'
+sleep 5
+systemctl poweroff

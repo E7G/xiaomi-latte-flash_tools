@@ -14,7 +14,7 @@ fsck.fat -vn "$boot_image"
 btrfs check --readonly "$root_image"
 
 out_dir=${USB_IMAGE_OUT_DIR:-dist}
-name="xiaomi-latte-cachyos-kde-${GITHUB_RUN_NUMBER:-local}"
+name="xiaomi-latte-cachyos-usb-installer-${GITHUB_RUN_NUMBER:-local}"
 raw="${out_dir}/${name}.img"
 compressed="${raw}.xz"
 mkdir -p "$out_dir"

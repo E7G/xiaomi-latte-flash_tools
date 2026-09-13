@@ -139,8 +139,11 @@ jobs:
         run: |
           set -Eeuo pipefail
           esp="$(mktemp -d)"
+          rootfs="$(mktemp -d)"
           cleanup() {
+            mountpoint -q "$rootfs" && sudo umount "$rootfs" || true
             mountpoint -q "$esp" && sudo umount "$esp" || true
+            rmdir "$rootfs" || true
             rmdir "$esp" || true
           }
           trap cleanup EXIT
@@ -152,6 +155,10 @@ jobs:
           test -s "$esp/grub/grub.cfg"
           grep -q 'configfile.*grub.cfg' "$esp/EFI/BOOT/grub.cfg"
           cmp device_files/shimx64.efi "$esp/EFI/BOOT/BOOTX64.EFI"
+          sudo mount -o loop,ro,subvol=@ work/dnx-package/images/xiaomi-latte-rootfs.img "$rootfs"
+          test -x "$rootfs/usr/local/sbin/mipad2-install-to-emmc"
+          test -x "$rootfs/usr/local/libexec/mipad2-usb-installer-launcher"
+          test -s "$rootfs/etc/xdg/autostart/mipad2-usb-installer.desktop"
 
       - name: Validate Windows flasher syntax
         shell: pwsh
@@ -168,7 +175,7 @@ jobs:
             exit 1
           }
 
-      - name: Upload USB image only
+      - name: Upload one-click USB installer image
         uses: actions/upload-artifact@v4
         with:
           name: xiaomi-latte-cachyos-usb-imgxz

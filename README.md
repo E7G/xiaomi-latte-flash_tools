@@ -45,10 +45,20 @@ xiaomi-latte-cachyos-one-click
 └── SHA256SUMS
 ```
 
-### U 盘镜像
+### 一键 U 盘安装盘
 
-`xiaomi-latte-cachyos-usb-imgxz` 只包含 `.img.xz` 和对应 SHA256，不再与
-一键刷机包混装。
+`xiaomi-latte-cachyos-usb-imgxz` 只包含 U 盘安装镜像 `.img.xz` 和对应
+SHA256，不再与 Windows 一键刷机包混装。
+
+1. 用 Rufus、balenaEtcher 或 `xzcat | dd` 把 `.img.xz` 写入整个 U 盘；
+2. 小米平板 2 从该 U 盘启动；
+3. KDE 自动登录后会自动打开安装窗口；
+4. 输入 `FLASH`，安装器会清空内部 `/dev/mmcblk0`，复制当前完整系统、
+   写入同一套签名 EFI、更新 UUID/GRUB 并自动关机；
+5. 拔掉 U 盘，再开机即可进入内部 eMMC 上的系统。
+
+安装器会验证启动源不是内部 eMMC、校验目标容量，并使用 Btrfs 只读快照复制
+系统和用户数据；不会把运行中的可变文件系统直接 `dd` 到内部存储。
 
 ## 启动链
 
