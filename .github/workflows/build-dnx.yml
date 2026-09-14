@@ -78,10 +78,11 @@ jobs:
         run: |
           cd kernel-output
           sha256sum -c *.pkg.tar.zst.sha256
-          tar -tf *.pkg.tar.zst > package-contents.txt
-          grep -q 'usr/lib/firmware/intel/ipu/shisp_2401a0_v21.bin' package-contents.txt
-          grep -q 'usr/local/libexec/mipad2-usb-serial' package-contents.txt
-          grep -q 'usr/local/libexec/mipad2-hardware-smoke' package-contents.txt
+          contents="${RUNNER_TEMP}/latte-kernel-package-contents.txt"
+          tar -tf *.pkg.tar.zst > "$contents"
+          grep -q 'usr/lib/firmware/intel/ipu/shisp_2401a0_v21.bin' "$contents"
+          grep -q 'usr/local/libexec/mipad2-usb-serial' "$contents"
+          grep -q 'usr/local/libexec/mipad2-hardware-smoke' "$contents"
           ls -lh *.pkg.tar.zst
 
       - name: Upload kernel package for DNX job
