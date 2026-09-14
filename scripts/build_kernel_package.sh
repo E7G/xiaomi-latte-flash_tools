@@ -5,7 +5,7 @@ repo_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 work_dir="${repo_root}/work/kernel"
 out_dir="${repo_root}/kernel-output"
 source_repo="${KERNEL_REPO:-E7G/linux_latte}"
-source_ref="${KERNEL_REF:-bc851227257b9d96f9d098459454d9bcc73e70e8}"
+source_ref="${KERNEL_COMMIT:-${KERNEL_REF:-cachyos-mipad2}}"
 pkgbase="linux-latte-cachyos"
 
 pacman -Syu --noconfirm --needed \
@@ -20,47 +20,20 @@ curl --fail --location --retry 5 \
   | tar -xz --strip-components=1 -C "${work_dir}/src"
 
 cd "${work_dir}/src"
-git apply --check "${repo_root}/kernel/0001-cachyos-base-6.14.patch"
-git apply "${repo_root}/kernel/0001-cachyos-base-6.14.patch"
-git apply --check "${repo_root}/kernel/0002-bore-cachy-6.14.patch"
-git apply "${repo_root}/kernel/0002-bore-cachy-6.14.patch"
-
-# linux_latte carries the newer RUN_TO_PARITY condition than vanilla 6.14.
-# Port the one BORE hunk that therefore cannot be kept in the upstream patch.
-python3 - <<'PY'
-from pathlib import Path
-
-path = Path("kernel/sched/fair.c")
-text = path.read_text()
-old = """\
-\tif (sched_feat(RUN_TO_PARITY) && curr && curr->vlag == curr->deadline)
-\t\treturn curr;
-"""
-new = """\
-\tif (sched_feat(RUN_TO_PARITY) && curr && curr->vlag == curr->deadline)
-#ifdef CONFIG_SCHED_BORE
-\t\tif (!(likely(sched_bore) && likely(sched_burst_parity_threshold) &&
-\t\t\tsched_burst_parity_threshold < cfs_rq->nr_queued))
-#endif // CONFIG_SCHED_BORE
-\t\treturn curr;
-"""
-if text.count(old) != 1:
-    raise SystemExit("Unexpected linux_latte RUN_TO_PARITY implementation")
-path.write_text(text.replace(old, new), newline="\n")
-PY
-
-cp arch/x86/configs/xiaomipad2_defconfig .config
-scripts/kconfig/merge_config.sh -m .config "${repo_root}/kernel/latte-cachyos.config"
-
 export KBUILD_BUILD_USER=github-actions
 export KBUILD_BUILD_HOST=archlinux
 export KBUILD_BUILD_TIMESTAMP="$(date -u -d "@${SOURCE_DATE_EPOCH:-0}" '+%a %b %d %T UTC %Y')"
 build_flags=(LLVM=1 LLVM_IAS=1)
 
+# CachyOS/BORE source and the Mi Pad 2 profile live in linux_latte's
+# cachyos-mipad2 branch. Build it directly; applying another patch/config
+# overlay here would create an untracked second kernel variant.
+make "${build_flags[@]}" xiaomipad2_defconfig
+
 make "${build_flags[@]}" olddefconfig
 
 required=(
-  'CONFIG_LOCALVERSION="-latte-cachyos"'
+  'CONFIG_LOCALVERSION="-mipad2-cachyos"'
   'CONFIG_MSILVERMONT=y'
   'CONFIG_CC_OPTIMIZE_FOR_PERFORMANCE_O3=y'
   'CONFIG_SCHED_BORE=y'

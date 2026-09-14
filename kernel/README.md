@@ -1,11 +1,13 @@
-# Kernel patch provenance
+# Kernel source
 
-- `0001-cachyos-base-6.14.patch`: `[PATCH 5/9] cachy`, extracted unchanged from CachyOS `kernel-patches/6.14/all/0001-cachyos-base-all.patch`.
-- `0002-bore-cachy-6.14.patch`: CachyOS `kernel-patches/6.14/sched/0001-bore-cachy.patch`.
-- `latte-cachyos.config`: Mi Pad 2-specific config fragment layered on `xiaomipad2_defconfig`.
+Kernel patches and the optimized defconfig live in the
+[`E7G/linux_latte` `cachyos-mipad2`](https://github.com/E7G/linux_latte/tree/cachyos-mipad2)
+branch.
 
-`linux_latte` already carries the newer EEVDF `RUN_TO_PARITY` condition. The conflicting BORE hunk is omitted from `0002`; `scripts/build_kernel_package.sh` applies its equivalent to that newer condition before configuration.
+This image repository resolves that branch to an exact commit, uses the
+commit in the build cache key, and compiles `xiaomipad2_defconfig` directly.
+Do not add a second kernel patch or config overlay here.
 
-The source is pinned to the same `E7G/linux_latte` revision tested on hardware.
-The generated kernel package also carries the matching AtomISP firmware, ALSA
-UCM, BCM4356 board data, USB serial debugger, recovery helpers, and smoke test.
+The generated kernel package also carries the matching AtomISP firmware,
+ALSA UCM, BCM4356 board data, USB serial debugger, recovery helpers, and
+hardware smoke test from the same source commit.

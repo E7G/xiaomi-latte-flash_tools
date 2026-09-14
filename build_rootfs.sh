@@ -337,7 +337,9 @@ EOF
 	run sed -i 's/#Color/Color/' /etc/pacman.conf
 
 	echo 配置 i915
-	echo 'options i915 enable_fbc=1' > $mount_dir/etc/modprobe.d/i915.conf
+	# i915 is built in. Keep the file for module builds, while the same
+	# conservative Cherry Trail settings are also added to the kernel command line.
+	echo 'options i915 enable_fbc=0 enable_psr=0' > $mount_dir/etc/modprobe.d/i915.conf
 	echo 配置 plymouth mkinitramfs.conf hooks
 	run sed -i 's/^HOOKS=(\([^)]*\))/HOOKS=(\1 plymouth)/' /etc/mkinitcpio.conf
 	# Action runner is not Mi Pad 2: do not let autodetect drop tablet modules.
@@ -397,7 +399,7 @@ config_grub(){
 	run grub-install --target=x86_64-efi --efi-directory=/boot --bootloader-id=arch \
 		--removable --no-nvram \
 		--modules="part_gpt fat btrfs search search_fs_uuid search_label test configfile normal linux"
-	run sed -i 's/GRUB_CMDLINE_LINUX_DEFAULT="loglevel=3 quiet"/GRUB_CMDLINE_LINUX_DEFAULT="loglevel=3 quiet splash plymouth.nolog"/' /etc/default/grub
+	run sed -i 's/GRUB_CMDLINE_LINUX_DEFAULT="loglevel=3 quiet"/GRUB_CMDLINE_LINUX_DEFAULT="loglevel=3 quiet splash plymouth.nolog i915.enable_fbc=0 i915.enable_psr=0"/' /etc/default/grub
 	run grub-mkconfig -o /boot/grub/grub.cfg
 	if [[ -d ./EFI ]]; then
 		cp -a ./EFI/. "$mount_dir/boot/EFI/"
