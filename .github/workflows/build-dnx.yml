@@ -83,6 +83,16 @@ jobs:
           grep -q 'usr/lib/firmware/intel/ipu/shisp_2401a0_v21.bin' "$contents"
           grep -q 'usr/local/libexec/mipad2-usb-serial' "$contents"
           grep -q 'usr/local/libexec/mipad2-hardware-smoke' "$contents"
+          grep -q 'etc/systemd/system/mipad2-hardware-audit.service' "$contents"
+          grep -Eq 'usr/lib/modules/[^/]+/config$' "$contents"
+          grep -Eq 'usr/lib/modules/[^/]+/kernel/drivers/net/wireless/broadcom/brcm80211/brcmfmac/brcmfmac\.ko' "$contents"
+          grep -Eq 'usr/lib/modules/[^/]+/kernel/drivers/bluetooth/btbcm\.ko' "$contents"
+          grep -Eq 'usr/lib/modules/[^/]+/kernel/drivers/media/i2c/ov5693\.ko' "$contents"
+          grep -Eq 'usr/lib/modules/[^/]+/kernel/drivers/media/i2c/t4ka3\.ko' "$contents"
+          grep -Eq 'usr/lib/modules/[^/]+/kernel/drivers/media/i2c/dw9719\.ko' "$contents"
+          grep -q 'usr/lib/firmware/brcm/brcmfmac4356-pcie.Xiaomi Inc-Mipad2.txt' "$contents"
+          grep -q 'usr/lib/firmware/brcm/BCM4356A2.hcd' "$contents"
+          grep -q 'usr/share/alsa/ucm2/conf.d/cht-bsw-rt5659/HiFi.conf' "$contents"
           ls -lh *.pkg.tar.zst
 
       - name: Upload kernel package for DNX job
@@ -168,6 +178,14 @@ jobs:
           test -x "$rootfs/usr/local/sbin/mipad2-install-to-emmc"
           test -s "$rootfs/etc/systemd/system/mipad2-usb-installer.service"
           test -L "$rootfs/etc/systemd/system/multi-user.target.wants/mipad2-usb-installer.service"
+          test -L "$rootfs/etc/systemd/system/multi-user.target.wants/mipad2-hardware-audit.service"
+          kernel_release="$(find "$rootfs/usr/lib/modules" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | head -n1)"
+          test -n "$kernel_release"
+          test -s "$rootfs/usr/lib/modules/$kernel_release/modules.dep"
+          test -s "$rootfs/usr/lib/modules/$kernel_release/config"
+          test -s "$rootfs/usr/lib/firmware/brcm/brcmfmac4356-pcie.Xiaomi Inc-Mipad2.txt"
+          test -s "$rootfs/usr/lib/firmware/brcm/BCM4356A2.hcd"
+          test -s "$rootfs/usr/share/alsa/ucm2/conf.d/cht-bsw-rt5659/HiFi.conf"
 
       - name: Validate Windows flasher syntax
         shell: pwsh

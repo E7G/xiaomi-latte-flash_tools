@@ -32,6 +32,8 @@ make "${build_flags[@]}" xiaomipad2_defconfig
 
 make "${build_flags[@]}" olddefconfig
 
+sh fix_file/tests/mipad2-kernel-config-audit.sh .config
+
 required=(
   'CONFIG_LOCALVERSION="-mipad2-cachyos"'
   'CONFIG_MSILVERMONT=y'
@@ -68,6 +70,7 @@ mod_dir="${work_dir}/pkg/usr/lib/modules/${kernel_release}"
 make "${build_flags[@]}" INSTALL_MOD_PATH="${work_dir}/pkg/usr" \
   INSTALL_MOD_STRIP=1 DEPMOD=true modules_install
 install -Dm0644 "$(make -s "${build_flags[@]}" image_name)" "${mod_dir}/vmlinuz"
+install -Dm0644 .config "${mod_dir}/config"
 printf '%s\n' "${pkgbase}" > "${mod_dir}/pkgbase"
 rm -f "${mod_dir}/build" "${mod_dir}/source"
 
@@ -102,6 +105,8 @@ install -Dm0644 fix_file/packages/mipad2-test-no-idle/src/mipad2-test-no-idle.se
   "${work_dir}/pkg/etc/systemd/system/mipad2-test-no-idle.service"
 install -Dm0755 fix_file/tests/mipad2-hardware-smoke.sh \
   "${work_dir}/pkg/usr/local/libexec/mipad2-hardware-smoke"
+install -Dm0644 fix_file/tests/mipad2-hardware-audit.service \
+  "${work_dir}/pkg/etc/systemd/system/mipad2-hardware-audit.service"
 
 pkgver="${kernel_release//-/_}"
 pkgrel=1

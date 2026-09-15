@@ -316,6 +316,7 @@ EOF
 
 	run $enable bluetooth
 	run $enable mipad2-usb-serial.service
+	run $enable mipad2-hardware-audit.service
 	install -Dm0755 "$device_file/mipad2-grow-root" \
 		"$mount_dir/usr/local/libexec/mipad2-grow-root"
 	install -Dm0644 "$device_file/mipad2-grow-root.service" \
