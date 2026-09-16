@@ -227,6 +227,7 @@ EOF
 
 config_packages() {
 	echo 安装 pacman 内核签名 hook
+	install -Dm0755 "${device_file}"/mipad2-kernel-install $mount_dir/usr/local/sbin/mipad2-kernel-install
 	install -Dm0644 "${device_file}"/kernel.hook $mount_dir/etc/pacman.d/hooks/
 	echo 更新 udev hwdb
 	run udevadm hwdb --update

@@ -139,6 +139,8 @@ jobs:
 
       - name: Verify generated packages
         run: |
+          bash -n device_files/mipad2-kernel-install
+          grep -q 'Exec = /usr/local/sbin/mipad2-kernel-install' device_files/kernel.hook
           cd dist
           sha256sum -c *.sha256
           xz -t *.img.xz
@@ -183,6 +185,8 @@ jobs:
           test -n "$kernel_release"
           test -s "$rootfs/usr/lib/modules/$kernel_release/modules.dep"
           test -s "$rootfs/usr/lib/modules/$kernel_release/config"
+          test -x "$rootfs/usr/local/sbin/mipad2-kernel-install"
+          grep -q 'Exec = /usr/local/sbin/mipad2-kernel-install' "$rootfs/etc/pacman.d/hooks/kernel.hook"
           test -s "$rootfs/usr/lib/firmware/brcm/brcmfmac4356-pcie.Xiaomi Inc-Mipad2.txt"
           test -s "$rootfs/usr/lib/firmware/brcm/BCM4356A2.hcd"
           test -s "$rootfs/usr/share/alsa/ucm2/conf.d/cht-bsw-rt5659/HiFi.conf"

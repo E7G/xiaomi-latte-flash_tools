@@ -1,0 +1,41 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+pkgbase="linux-latte-cachyos"
+boot_image="/boot/vmlinuz-linux-latte-cachyos"
+mok_key="/boot/EFI/MOK.key"
+mok_cert="/boot/EFI/MOK.crt"
+
+matches=()
+for pkgbase_file in /usr/lib/modules/*/pkgbase; do
+  [[ -f "${pkgbase_file}" ]] || continue
+  [[ "$(<"${pkgbase_file}")" == "${pkgbase}" ]] || continue
+  candidate="${pkgbase_file%/pkgbase}/vmlinuz"
+  [[ -s "${candidate}" ]] || continue
+  matches+=("${candidate}")
+done
+
+if (( ${#matches[@]} != 1 )); then
+  echo "Expected exactly one installed ${pkgbase} kernel image, found ${#matches[@]}" >&2
+  exit 1
+fi
+
+[[ -s "${mok_key}" ]] || { echo "Missing MOK key: ${mok_key}" >&2; exit 1; }
+[[ -s "${mok_cert}" ]] || { echo "Missing MOK certificate: ${mok_cert}" >&2; exit 1; }
+
+source_image="${matches[0]}"
+tmp_image="${boot_image}.new"
+trap 'rm -f "${tmp_image}"' EXIT
+
+/usr/bin/sbsign \
+  --key "${mok_key}" \
+  --cert "${mok_cert}" \
+  --output "${tmp_image}" \
+  "${source_image}"
+
+/usr/bin/sbverify --list "${tmp_image}" >/dev/null
+chmod 0755 "${tmp_image}"
+mv -f "${tmp_image}" "${boot_image}"
+trap - EXIT
+
+echo "Installed and signed ${source_image} -> ${boot_image}"
