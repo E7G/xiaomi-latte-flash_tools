@@ -142,7 +142,10 @@ jobs:
           bash -n build_rootfs.sh
           bash -n device_files/mipad2-kernel-install
           grep -q 'desktop_type="${desktop_type:-gnome}"' build_rootfs.sh
-          grep -q 'snapshot iio-sensor-proxy' build_rootfs.sh
+          grep -q 'qt6-base qt6-wayland qt6-5compat iio-sensor-proxy' build_rootfs.sh
+          grep -q 'org.gnome.desktop.session idle-delay 0' build_rootfs.sh
+          grep -q "sleep-inactive-ac-type 'nothing'" build_rootfs.sh
+          grep -q "sleep-inactive-battery-type 'nothing'" build_rootfs.sh
           grep -q 'Exec = /usr/local/sbin/mipad2-kernel-install' device_files/kernel.hook
           cd dist
           sha256sum -c *.sha256
@@ -194,7 +197,12 @@ jobs:
           test -x "$rootfs/usr/local/sbin/mipad2-kernel-install"
           grep -q 'Exec = /usr/local/sbin/mipad2-kernel-install' "$rootfs/etc/pacman.d/hooks/kernel.hook"
           test -x "$rootfs/usr/bin/gnome-shell"
-          test -x "$rootfs/usr/bin/snapshot"
+          test -x "$rootfs/usr/bin/qv4l2"
+          test ! -x "$rootfs/usr/bin/snapshot"
+          test -e "$rootfs/usr/lib/libQt6Core.so.6"
+          test -s "$rootfs/home/user/.local/share/applications/mipad2-camera.desktop"
+          grep -q '^Exec=qv4l2 -d /dev/video0$' "$rootfs/home/user/.local/share/applications/mipad2-camera.desktop"
+          grep -q '^Hidden=true$' "$rootfs/home/user/.local/share/applications/qv4l2.desktop"
           test -L "$rootfs/etc/systemd/system/display-manager.service"
           test "$(readlink "$rootfs/etc/systemd/system/display-manager.service")" = '/usr/lib/systemd/system/gdm.service'
           grep -q '^AutomaticLoginEnable=True$' "$rootfs/etc/gdm/custom.conf"

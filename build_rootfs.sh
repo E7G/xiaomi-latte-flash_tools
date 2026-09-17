@@ -155,7 +155,7 @@ firefox
 # 字体
 noto-fonts-{cjk,emoji} ttf-cascadia-code
 # 音频
-alsa-utils pipewire-{alsa,audio,pulse}
+alsa-utils pipewire-{alsa,audio,pulse} gst-plugins-base gst-plugin-pipewire
 # 文件系统
 btrfs-progs exfatprogs gptfdisk
 # 网络
@@ -190,8 +190,8 @@ gnome=(
 gdm gnome-shell gnome-session gnome-control-center
 nautilus gnome-console gnome-text-editor gnome-system-monitor
 gnome-keyring xdg-desktop-portal-gnome
-# Touch-friendly camera app and tablet integration
-snapshot iio-sensor-proxy
+# V4L2 camera UI with native input switching and tablet integration
+qt6-base qt6-wayland qt6-5compat iio-sensor-proxy
 # Chinese input through GNOME-native IBus
 ibus ibus-libpinyin
 )
@@ -430,6 +430,13 @@ EOF
 	if [[ $desktop_type == 'gnome' ]]; then
 		run su $UserName -c 'dbus-run-session gsettings set org.gnome.desktop.interface enable-animations false'
 		run su $UserName -c 'dbus-run-session gsettings set org.gnome.desktop.a11y.applications screen-keyboard-enabled true'
+		run su $UserName -c 'dbus-run-session gsettings set org.gnome.desktop.session idle-delay 0'
+		run su $UserName -c "dbus-run-session gsettings set org.gnome.settings-daemon.plugins.power sleep-inactive-ac-type 'nothing'"
+		run su $UserName -c "dbus-run-session gsettings set org.gnome.settings-daemon.plugins.power sleep-inactive-battery-type 'nothing'"
+		install -d -m0755 "$mount_dir/home/$UserName/.local/share/applications"
+		install -m0644 "$device_file/mipad2-camera.desktop" "$mount_dir/home/$UserName/.local/share/applications/mipad2-camera.desktop"
+		install -m0644 "$device_file/qv4l2.desktop" "$mount_dir/home/$UserName/.local/share/applications/qv4l2.desktop"
+		run chown -R $UserName:$UserName /home/$UserName/.local
 	fi
 
 	echo 设置 密码

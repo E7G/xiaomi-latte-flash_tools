@@ -1,0 +1,11 @@
+[Desktop Entry]
+Name=相机
+Name[en]=Camera
+Comment=Mi Pad 2 front/rear camera
+Exec=qv4l2 -d /dev/video0
+Icon=qv4l2
+Terminal=false
+Type=Application
+Categories=AudioVideo;Video;Camera;
+Keywords=camera;video;V4L2;
+StartupNotify=true
