@@ -146,6 +146,7 @@ firmware=(
 packages=(
 base-devel
 # Shell
+python
 bash-completion zsh-completions sudo reflector pkgfile less btop
 zsh-autosuggestions zsh-syntax-highlighting
 vim
@@ -344,6 +345,11 @@ EOF
 	fi
 
 	run $enable bluetooth
+	install -Dm0755 "$device_file/mipad2-navkeys.py" \
+		"$mount_dir/usr/local/libexec/mipad2-navkeys.py"
+	install -Dm0644 "$device_file/mipad2-navkeys.service" \
+		"$mount_dir/etc/systemd/system/mipad2-navkeys.service"
+	run $enable mipad2-navkeys.service
 	run $enable mipad2-usb-serial.service
 	run $enable mipad2-hardware-audit.service
 	install -Dm0755 "$device_file/mipad2-grow-root" \
