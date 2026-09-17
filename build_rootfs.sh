@@ -6,7 +6,7 @@ shopt -s expand_aliases
 UserName="${UserName:-user}"
 UserPasswd="${UserPasswd:-123456}"
 HostName="${HostName:-mipad2}"
-desktop_type="${desktop_type:-plasma}"
+desktop_type="${desktop_type:-gnome}"
 ROOTFS_SIZE="${ROOTFS_SIZE:-8G}"
 KERNEL_PACKAGE="${KERNEL_PACKAGE:-}"
 KERNEL_PKGBASE="linux-latte-cachyos"
@@ -184,6 +184,17 @@ bluedevil
 plasma-wayland-protocols
 )
 
+gnome=(
+# Minimal GNOME Wayland tablet desktop
+gdm gnome-shell gnome-session gnome-control-center
+nautilus gnome-console gnome-text-editor gnome-system-monitor
+gnome-keyring xdg-desktop-portal-gnome
+# Touch-friendly camera app and tablet integration
+snapshot iio-sensor-proxy
+# Chinese input through GNOME-native IBus
+ibus ibus-libpinyin
+)
+
 alias run="arch-chroot $mount_dir"
 install_packages() {
 	# 安装基础包
@@ -288,6 +299,23 @@ EOF
 	run $enable systemd-zram-setup@zram0.service
 	run $enable irqbalance
 	run $enable NetworkManager
+	if [[ $desktop_type == 'gnome' ]];then
+		run $enable gdm.service
+		mkdir -p $mount_dir/etc/gdm
+		cat <<EOF > $mount_dir/etc/gdm/custom.conf
+[daemon]
+AutomaticLoginEnable=True
+AutomaticLogin=$UserName
+
+[security]
+
+[xdmcp]
+
+[chooser]
+
+[debug]
+EOF
+	fi
 	if [[ $desktop_type =~ 'plasma' ]];then
 		run $enable plasmalogin.service
 		run sh -c 'command -v balooctl6 >/dev/null && balooctl6 suspend || true'
@@ -371,7 +399,8 @@ config_user() {
 	run cp /home/$UserName/.zshrc /root/.zshrc
 	run chown root:root /root/.zshrc
 	mkdir -p "$mount_dir/home/$UserName/.config/autostart"
-	cat > "$mount_dir/home/$UserName/.config/kwinrc" <<'EOF'
+	if [[ $desktop_type =~ 'plasma' ]]; then
+		cat > "$mount_dir/home/$UserName/.config/kwinrc" <<'EOF'
 [Wayland]
 InputMethod[$e]=/usr/share/applications/org.kde.plasma.keyboard.desktop
 VirtualKeyboardEnabled=true
@@ -379,7 +408,7 @@ VirtualKeyboardEnabled=true
 [Xwayland]
 Scale=2
 EOF
-	cat > "$mount_dir/home/$UserName/.config/autostart/mipad2-display.desktop" <<'EOF'
+		cat > "$mount_dir/home/$UserName/.config/autostart/mipad2-display.desktop" <<'EOF'
 [Desktop Entry]
 Type=Application
 Name=Mi Pad 2 display scale
@@ -387,9 +416,15 @@ Exec=/usr/local/libexec/mipad2-plasma-display
 OnlyShowIn=KDE;
 X-KDE-autostart-phase=1
 EOF
-	install -Dm0755 "$device_file/mipad2-plasma-display" \
-		"$mount_dir/usr/local/libexec/mipad2-plasma-display"
+		install -Dm0755 "$device_file/mipad2-plasma-display" \
+			"$mount_dir/usr/local/libexec/mipad2-plasma-display"
+	fi
 	run chown -R $UserName:$UserName /home/$UserName/.config
+
+	if [[ $desktop_type == 'gnome' ]]; then
+		run su $UserName -c 'dbus-run-session gsettings set org.gnome.desktop.interface enable-animations false'
+		run su $UserName -c 'dbus-run-session gsettings set org.gnome.desktop.a11y.applications screen-keyboard-enabled true'
+	fi
 
 	echo 设置 密码
 	run bash -c "echo root:$UserPasswd|chpasswd"
