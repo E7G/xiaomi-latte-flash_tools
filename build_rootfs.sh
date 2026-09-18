@@ -88,6 +88,22 @@ disconnect_img() {
 	fi
 	qemu-nbd -d $boot_dev || true
 	qemu-nbd -d $rootfs_dev || true
+
+	# qemu-nbd disconnect is asynchronous on GitHub runners.  Wait until
+	# the kernel no longer reports an attached NBD process before qemu-img
+	# reopens the qcow2 files, otherwise conversion can race the old lock.
+	for dev in "$boot_dev" "$rootfs_dev"; do
+		block="${dev##*/}"
+		for _ in {1..50}; do
+			pid_file="/sys/block/$block/pid"
+			[[ ! -r "$pid_file" ]] && break
+			pid="$(cat "$pid_file" 2>/dev/null || true)"
+			[[ -z "$pid" || "$pid" == 0 ]] && break
+			sleep 0.1
+		done
+	done
+	udevadm settle --timeout=5 || true
+	sync
 	flag_connect=0
 }
 
