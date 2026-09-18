@@ -143,6 +143,15 @@ jobs:
           bash -n device_files/mipad2-kernel-install
           grep -q 'desktop_type="${desktop_type:-gnome}"' build_rootfs.sh
           grep -q 'qt6-base qt6-wayland qt6-5compat iio-sensor-proxy' build_rootfs.sh
+          grep -q 'brave-bin' build_rootfs.sh
+          grep -q 'zram-size = ram \* 3 / 4' build_rootfs.sh
+          grep -q 'compression-algorithm = lz4' build_rootfs.sh
+          grep -q 'mipad2-gnome-osk-patch' build_rootfs.sh
+          python -m py_compile device_files/mipad2-gnome-osk-patch
+          python -m json.tool device_files/brave-lean-policy.json >/dev/null
+          grep -q '^wifi.powersave=2$' device_files/20-mipad2-wifi-powersave.conf
+          grep -q '^vm.swappiness = 60$' device_files/99-mipad2-lowlatency.conf
+          grep -q 'AcceleratedVideoDecodeLinuxGL,VaapiIgnoreDriverChecks' device_files/brave-flags.conf
           grep -q 'org.gnome.desktop.session idle-delay 0' build_rootfs.sh
           grep -q "sleep-inactive-ac-type 'nothing'" build_rootfs.sh
           grep -q "sleep-inactive-battery-type 'nothing'" build_rootfs.sh
@@ -197,6 +206,21 @@ jobs:
           test -x "$rootfs/usr/local/sbin/mipad2-kernel-install"
           grep -q 'Exec = /usr/local/sbin/mipad2-kernel-install' "$rootfs/etc/pacman.d/hooks/kernel.hook"
           test -x "$rootfs/usr/bin/gnome-shell"
+          test -x "$rootfs/usr/bin/brave"
+          test ! -x "$rootfs/usr/bin/firefox"
+          test -x "$rootfs/usr/lib/rtkit-daemon"
+          test -x "$rootfs/usr/local/sbin/mipad2-gnome-osk-patch"
+          test -s "$rootfs/etc/pacman.d/hooks/95-mipad2-gnome-osk.hook"
+          test -s "$rootfs/etc/brave/policies/managed/lean-browser.json"
+          test -s "$rootfs/home/user/.config/brave-flags.conf"
+          grep -q '^wifi.powersave=2$' "$rootfs/etc/NetworkManager/conf.d/20-mipad2-wifi-powersave.conf"
+          grep -q '^vm.swappiness = 60$' "$rootfs/etc/sysctl.d/99-mipad2-lowlatency.conf"
+          grep -q '^vm.page-cluster = 0$' "$rootfs/etc/sysctl.d/99-mipad2-lowlatency.conf"
+          grep -q '^zram-size = ram \* 3 / 4$' "$rootfs/etc/systemd/zram-generator.conf"
+          grep -q '^compression-algorithm = lz4$' "$rootfs/etc/systemd/zram-generator.conf"
+          grep -q '^swap-priority = 100$' "$rootfs/etc/systemd/zram-generator.conf"
+          grep -q 'AcceleratedVideoDecodeLinuxGL,VaapiIgnoreDriverChecks' "$rootfs/home/user/.config/brave-flags.conf"
+          grep -q '^x-scheme-handler/https=brave-browser.desktop$' "$rootfs/home/user/.config/mimeapps.list"
           test -x "$rootfs/usr/bin/qv4l2"
           test ! -x "$rootfs/usr/bin/snapshot"
           test -e "$rootfs/usr/lib/libQt6Core.so.6"

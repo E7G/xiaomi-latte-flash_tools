@@ -144,14 +144,13 @@ firmware=(
 )
 
 packages=(
-base-devel
 # Shell
 python
 bash-completion zsh-completions sudo reflector pkgfile less btop
 zsh-autosuggestions zsh-syntax-highlighting
 vim
 # 日用浏览器
-firefox
+xdg-utils rtkit
 # 字体
 noto-fonts-{cjk,emoji} ttf-cascadia-code
 # 音频
@@ -234,7 +233,7 @@ EOF
 
 	# 添加源后必须立马更新，不让报错
 	run pacman -Sy archlinuxcn-keyring --noconfirm
-	run pacman -S yay timeshift pamac-aur plymouth --noconfirm
+	run pacman -S yay timeshift pamac-aur plymouth brave-bin --noconfirm
 }
 
 config_packages() {
@@ -287,9 +286,16 @@ EOF
 	echo 配置 zram
 	cat <<EOF > $mount_dir/etc/systemd/zram-generator.conf
 [zram0]
-zram-size = min(ram / 2, 4096)
-compression-algorithm = zstd
+zram-size = ram * 3 / 4
+compression-algorithm = lz4
+swap-priority = 100
 EOF
+
+	# Low-latency memory and Wi-Fi defaults measured on the 2 GiB Mi Pad 2.
+	install -Dm0644 "$device_file/99-mipad2-lowlatency.conf" \
+		"$mount_dir/etc/sysctl.d/99-mipad2-lowlatency.conf"
+	install -Dm0644 "$device_file/20-mipad2-wifi-powersave.conf" \
+		"$mount_dir/etc/NetworkManager/conf.d/20-mipad2-wifi-powersave.conf"
 
 	echo 配置 service
 	enable="systemctl enable"
@@ -301,6 +307,23 @@ EOF
 	run $enable irqbalance
 	run $enable NetworkManager
 	if [[ $desktop_type == 'gnome' ]];then
+		# Native GNOME 50 OSK tuned for the tablet: compact 4-row extended
+		# layout, full-width keys and tighter candidate spacing.
+		install -Dm0755 "$device_file/mipad2-gnome-osk-patch" \
+			"$mount_dir/usr/local/sbin/mipad2-gnome-osk-patch"
+		install -Dm0644 "$device_file/95-mipad2-gnome-osk.hook" \
+			"$mount_dir/etc/pacman.d/hooks/95-mipad2-gnome-osk.hook"
+		run /usr/local/sbin/mipad2-gnome-osk-patch
+
+		# Keep Brave lean and use the VA-API path verified on Cherry Trail.
+		install -Dm0644 "$device_file/brave-lean-policy.json" \
+			"$mount_dir/etc/brave/policies/managed/lean-browser.json"
+
+		# Hardware absent on Mi Pad 2: keep GNOME dependencies installed but
+		# stop their background services from consuming RAM.
+		run sh -c 'systemctl mask bolt.service >/dev/null 2>&1 || true'
+		run sh -c 'for unit in org.gnome.SettingsDaemon.PrintNotifications.service org.gnome.SettingsDaemon.Smartcard.service org.gnome.SettingsDaemon.Wwan.service org.gnome.SettingsDaemon.Sharing.service; do systemctl --global mask "$unit" >/dev/null 2>&1 || true; done'
+
 		run $enable gdm.service
 		mkdir -p $mount_dir/etc/gdm
 		cat <<EOF > $mount_dir/etc/gdm/custom.conf
@@ -396,7 +419,7 @@ EOF
 config_user() {
 	echo 添加 $UserName 用户
 	run useradd -m -G wheel,lp -s '/usr/bin/zsh' $UserName
-	run su $UserName -c 'yay -S oh-my-zsh-git --noconfirm'
+	run pacman -S oh-my-zsh-git --noconfirm
 
 	run sed -i 's|#[[:space:]]*ZSH_CUSTOM=.*|ZSH_CUSTOM=/usr/share/zsh|' /usr/share/oh-my-zsh/zshrc
 	run chmod -R 666 /usr/share/oh-my-zsh/zshrc
@@ -430,13 +453,27 @@ EOF
 	if [[ $desktop_type == 'gnome' ]]; then
 		run su $UserName -c 'dbus-run-session gsettings set org.gnome.desktop.interface enable-animations false'
 		run su $UserName -c 'dbus-run-session gsettings set org.gnome.desktop.a11y.applications screen-keyboard-enabled true'
+		run su "$UserName" -c "dbus-run-session gsettings set org.gnome.desktop.input-sources sources \"[('xkb', 'us'), ('ibus', 'libpinyin')]\""
 		run su $UserName -c 'dbus-run-session gsettings set org.gnome.desktop.session idle-delay 0'
 		run su $UserName -c "dbus-run-session gsettings set org.gnome.settings-daemon.plugins.power sleep-inactive-ac-type 'nothing'"
 		run su $UserName -c "dbus-run-session gsettings set org.gnome.settings-daemon.plugins.power sleep-inactive-battery-type 'nothing'"
 		install -d -m0755 "$mount_dir/home/$UserName/.local/share/applications"
+		install -d -m0755 "$mount_dir/home/$UserName/.config"
+		install -m0644 "$device_file/brave-flags.conf" "$mount_dir/home/$UserName/.config/brave-flags.conf"
+		cat > "$mount_dir/home/$UserName/.config/mimeapps.list" <<'EOF'
+[Default Applications]
+text/html=brave-browser.desktop
+x-scheme-handler/http=brave-browser.desktop
+x-scheme-handler/https=brave-browser.desktop
+
+[Added Associations]
+text/html=brave-browser.desktop;
+x-scheme-handler/http=brave-browser.desktop;
+x-scheme-handler/https=brave-browser.desktop;
+EOF
 		install -m0644 "$device_file/mipad2-camera.desktop" "$mount_dir/home/$UserName/.local/share/applications/mipad2-camera.desktop"
 		install -m0644 "$device_file/qv4l2.desktop" "$mount_dir/home/$UserName/.local/share/applications/qv4l2.desktop"
-		run chown -R $UserName:$UserName /home/$UserName/.local
+		run chown -R $UserName:$UserName /home/$UserName/.config /home/$UserName/.local
 	fi
 
 	echo 设置 密码

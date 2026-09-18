@@ -1,0 +1,10 @@
+[Trigger]
+Operation = Install
+Operation = Upgrade
+Type = Package
+Target = gnome-shell
+
+[Action]
+Description = Reapplying Mi Pad 2 compact GNOME OSK...
+When = PostTransaction
+Exec = /usr/local/sbin/mipad2-gnome-osk-patch

@@ -93,3 +93,19 @@ GPT 分配的全部剩余空间。
 sudo mp2-test-no-idle enable
 sudo mp2-test-no-idle disable
 ```
+
+## Mi Pad 2 默认体验优化
+
+`arch_linux` 镜像构建时会直接应用以下平板优化，无需首次启动后再手工配置：
+
+- GNOME 50 原生屏幕键盘使用紧凑 4 行 extended 布局，保留 Tab、Ctrl、Alt 和方向键，并缩小按键/候选栏间距；
+- GNOME 更新到新的 50.x 版本后通过 Pacman hook 自动重新应用 OSK 补丁；跨 GNOME 大版本会安全跳过；
+- zram 使用 `lz4`、容量为内存的 75%，并使用 `vm.swappiness=60`、`vm.page-cluster=0`；
+- NetworkManager 默认关闭 Wi-Fi powersave，减少流媒体和交互时的短暂停顿；
+- 默认安装 `rtkit`，供 PipeWire/WirePlumber 获取实时调度；
+- 默认浏览器使用 Brave，启用经 Mi Pad 2 实机验证的 Wayland/VA-API 参数，并关闭 VP9/AV1 软件解码路径；
+- Brave 默认关闭 Rewards、Wallet、VPN、Talk、AI Chat、News、Tor、IPFS、后台模式和遥测；
+- GNOME 保留 `IBus + libpinyin`，默认输入源为 US + Intelligent Pinyin；
+- Mi Pad 2 不具备的 Thunderbolt、WWAN、打印、Smartcard 和 Sharing 后台服务会被屏蔽，以减少常驻内存。
+
+这些优化不修改自定义 GRUB 菜单或 GRUB 字体，也不包含 Snapshot 相机源码；相机应用的 Mi Pad 2 专用修复继续由 `E7G/snapshot` 维护。
