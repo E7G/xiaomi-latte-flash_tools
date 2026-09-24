@@ -176,6 +176,7 @@ jobs:
       - name: Verify boot image layout
         run: |
           set -Eeuo pipefail
+          set -x
           esp="$(mktemp -d)"
           rootfs="$(mktemp -d)"
           cleanup() {
