@@ -179,13 +179,13 @@ jobs:
           esp="$(mktemp -d)"
           rootfs="$(mktemp -d)"
           cleanup() {
-            mountpoint -q "$rootfs" && sudo umount "$rootfs" || true
+            mountpoint -q "$rootfs/home" && sudo umount "$rootfs/home" || true
+          mountpoint -q "$rootfs" && sudo umount "$rootfs" || true
             mountpoint -q "$esp" && sudo umount "$esp" || true
             rmdir "$rootfs" || true
             rmdir "$esp" || true
           }
           trap cleanup EXIT
-          set -x
           sudo mount -o loop,ro work/dnx-package/images/xiaomi-latte-boot.img "$esp"
           test -s "$esp/EFI/BOOT/BOOTX64.EFI"
           test -s "$esp/EFI/BOOT/grubx64.efi"
@@ -195,7 +195,7 @@ jobs:
           grep -q 'configfile.*grub.cfg' "$esp/EFI/BOOT/grub.cfg"
           cmp "$esp/EFI/BOOT/grubx64.efi" "$esp/EFI/BOOT/BOOTX64.EFI"
           sudo mount -o loop,ro,subvol=@ work/dnx-package/images/xiaomi-latte-rootfs.img "$rootfs"
-          ls -la "$rootfs/home/user/.config" || true
+          sudo mount -o loop,ro,subvol=@home work/dnx-package/images/xiaomi-latte-rootfs.img "$rootfs/home"
           test -s "$rootfs/var/lib/mipad2/secureboot/MOK.key"
           test "$(stat -c %a "$rootfs/var/lib/mipad2/secureboot/MOK.key")" = 600
           test -x "$rootfs/usr/local/sbin/mipad2-install-to-emmc"
