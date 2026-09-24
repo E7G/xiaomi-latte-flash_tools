@@ -476,6 +476,9 @@ EOF
 		install -d -m0755 "$mount_dir/home/$UserName/.local/share/applications"
 		install -d -m0755 "$mount_dir/home/$UserName/.config"
 		install -m0644 "$device_file/brave-flags.conf" "$mount_dir/home/$UserName/.config/brave-flags.conf"
+		echo "CONFIG_DIAG UserName=$UserName desktop_type=$desktop_type mount_dir=$mount_dir"
+		ls -ld "$mount_dir/home/$UserName/.config"
+		ls -l "$mount_dir/home/$UserName/.config/brave-flags.conf"
 		cat > "$mount_dir/home/$UserName/.config/mimeapps.list" <<'EOF'
 [Default Applications]
 text/html=brave-browser.desktop
