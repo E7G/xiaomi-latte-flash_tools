@@ -242,7 +242,10 @@ EOF
 		cat <<EOF >> $mount_dir/etc/pacman.conf
 [archlinuxcn]
 SigLevel = Optional TrustAll
+Server = https://repo.archlinuxcn.org/\$arch
 Server = https://mirrors.cernet.edu.cn/archlinuxcn/\$arch
+Server = https://mirrors.bfsu.edu.cn/archlinuxcn/\$arch
+Server = https://mirrors.pku.edu.cn/archlinuxcn/\$arch
 
 EOF
 	fi
