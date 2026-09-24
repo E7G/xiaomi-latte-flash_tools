@@ -198,6 +198,7 @@ jobs:
           sudo mount -o loop,ro,subvol=@ work/dnx-package/images/xiaomi-latte-rootfs.img "$rootfs"
           mkdir -p "$rootfs/home"
           sudo mount -o loop,ro,subvol=@home work/dnx-package/images/xiaomi-latte-rootfs.img "$rootfs/home"
+          find "$rootfs/home" -maxdepth 4 -printf "%M %p\n" | sort | head -100
           test -s "$rootfs/var/lib/mipad2/secureboot/MOK.key"
           test "$(stat -c %a "$rootfs/var/lib/mipad2/secureboot/MOK.key")" = 600
           test -x "$rootfs/usr/local/sbin/mipad2-install-to-emmc"
