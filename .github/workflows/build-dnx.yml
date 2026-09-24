@@ -171,6 +171,7 @@ jobs:
           test -f images/gpt.bin
           test -f images/xiaomi-latte-boot.img
           test -f images/xiaomi-latte-rootfs.img
+          test ! -e device_files/MOK.key
 
       - name: Verify boot image layout
         run: |
@@ -189,9 +190,12 @@ jobs:
           test -s "$esp/EFI/BOOT/grubx64.efi"
           test -s "$esp/EFI/BOOT/grub.cfg"
           test -s "$esp/grub/grub.cfg"
+          test ! -e "$esp/EFI/MOK.key"
           grep -q 'configfile.*grub.cfg' "$esp/EFI/BOOT/grub.cfg"
           cmp "$esp/EFI/BOOT/grubx64.efi" "$esp/EFI/BOOT/BOOTX64.EFI"
           sudo mount -o loop,ro,subvol=@ work/dnx-package/images/xiaomi-latte-rootfs.img "$rootfs"
+          test -s "$rootfs/var/lib/mipad2/secureboot/MOK.key"
+          test "$(stat -c %a "$rootfs/var/lib/mipad2/secureboot/MOK.key")" = 600
           test -x "$rootfs/usr/local/sbin/mipad2-install-to-emmc"
           test -s "$rootfs/etc/systemd/system/mipad2-usb-installer.service"
           test -L "$rootfs/etc/systemd/system/multi-user.target.wants/mipad2-usb-installer.service"

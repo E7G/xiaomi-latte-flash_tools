@@ -523,7 +523,8 @@ EOF
 	install -Dm0644 "$mount_dir/boot/EFI/BOOT/grub.cfg" \
 		"$mount_dir/boot/EFI/arch/grub.cfg"
 	install -Dm0644 $device_file/MOK.cer $mount_dir/boot/
-	install -Dm0600 $device_file/MOK.key $mount_dir/boot/EFI/
+	# FAT ESP ignores Unix file modes; keep the signing key on the rootfs.
+	install -Dm0600 "$device_file/MOK.key" "$mount_dir/var/lib/mipad2/secureboot/MOK.key"
 	install -Dm0644 $device_file/MOK.crt $mount_dir/boot/EFI/
 
 	# Mi Pad 2's USB fallback path is verified directly by its firmware.  Its
@@ -535,11 +536,11 @@ EOF
 		--modules="part_gpt fat btrfs search search_fs_uuid search_label test configfile normal linux" \
 		boot/grub/grub.cfg=/boot/EFI/BOOT/grub.cfg
 	echo 使用原项目 MOK 直接签名 U 盘入口、GRUB 和内核
-	run sbsign --key /boot/EFI/MOK.key --cert /boot/EFI/MOK.crt \
+	run sbsign --key /var/lib/mipad2/secureboot/MOK.key --cert /boot/EFI/MOK.crt \
 		--output /boot/EFI/BOOT/grubx64.efi.signed /boot/EFI/BOOT/grubx64.efi
 	run mv /boot/EFI/BOOT/grubx64.efi.signed /boot/EFI/BOOT/grubx64.efi
 	run cp /boot/EFI/BOOT/grubx64.efi /boot/EFI/BOOT/BOOTX64.EFI
-	run sbsign --key /boot/EFI/MOK.key --cert /boot/EFI/MOK.crt \
+	run sbsign --key /var/lib/mipad2/secureboot/MOK.key --cert /boot/EFI/MOK.crt \
 		--output /boot/vmlinuz-$KERNEL_PKGBASE /boot/vmlinuz-$KERNEL_PKGBASE
 	run sbverify --list /boot/vmlinuz-$KERNEL_PKGBASE
 	run sbverify --list /boot/EFI/BOOT/BOOTX64.EFI

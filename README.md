@@ -75,6 +75,13 @@ Mi Pad 2 的固件会在进入 GRUB 前直接校验 U 盘回退入口，并拒�
 Microsoft UEFI CA 签名的 shim。因此 U 盘入口不再使用 shim，而是直接复用
 原系统已经登记的项目 MOK 证书。
 
+私钥只存放于 rootfs 的 `/var/lib/mipad2/secureboot/MOK.key`（`0600`），
+不再复制到无法可靠执行 Unix 权限的 FAT ESP，也不纳入一键刷机包的文件目录。
+升级内核时的签名 hook 从
+rootfs 读取私钥。**这不是密钥轮换**：仓库历史已公开该旧私钥，继续使用它
+无法恢复安全启动信任链。完整修复还需生成设备专用密钥、登记新证书、更新
+固件信任项并撤销旧证书；该步骤需要在设备旁验证后进行。
+
 ## 首次启动
 
 首次启动会自动执行 `btrfs filesystem resize max /`，让 system 分区使用
