@@ -185,6 +185,7 @@ jobs:
             rmdir "$esp" || true
           }
           trap cleanup EXIT
+          set -x
           sudo mount -o loop,ro work/dnx-package/images/xiaomi-latte-boot.img "$esp"
           test -s "$esp/EFI/BOOT/BOOTX64.EFI"
           test -s "$esp/EFI/BOOT/grubx64.efi"
