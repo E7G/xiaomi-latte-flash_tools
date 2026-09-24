@@ -3,7 +3,7 @@ set -Eeuo pipefail
 
 pkgbase="linux-latte-cachyos"
 boot_image="/boot/vmlinuz-linux-latte-cachyos"
-mok_key="/boot/EFI/MOK.key"
+mok_key="/var/lib/mipad2/secureboot/MOK.key"
 mok_cert="/boot/EFI/MOK.crt"
 
 matches=()
