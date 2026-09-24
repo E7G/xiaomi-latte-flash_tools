@@ -195,7 +195,7 @@ jobs:
           grep -q 'configfile.*grub.cfg' "$esp/EFI/BOOT/grub.cfg"
           cmp "$esp/EFI/BOOT/grubx64.efi" "$esp/EFI/BOOT/BOOTX64.EFI"
           sudo mount -o loop,ro,subvol=@ work/dnx-package/images/xiaomi-latte-rootfs.img "$rootfs"
-          mkdir "$rootfs/home"
+          mkdir -p "$rootfs/home"
           sudo mount -o loop,ro,subvol=@home work/dnx-package/images/xiaomi-latte-rootfs.img "$rootfs/home"
           test -s "$rootfs/var/lib/mipad2/secureboot/MOK.key"
           test "$(stat -c %a "$rootfs/var/lib/mipad2/secureboot/MOK.key")" = 600
