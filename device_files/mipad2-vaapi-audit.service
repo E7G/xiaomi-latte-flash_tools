@@ -1,0 +1,12 @@
+[Unit]
+Description=Mi Pad 2 VA-API hardware decode audit
+After=systemd-udev-trigger.service
+ConditionPathExists=/dev/dri/renderD128
+
+[Service]
+Type=oneshot
+Environment=LIBVA_DRIVER_NAME=i965
+ExecStart=/usr/local/sbin/mipad2-vaapi-smoke
+
+[Install]
+WantedBy=multi-user.target
