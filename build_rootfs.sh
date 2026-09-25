@@ -394,6 +394,11 @@ EOF
 	install -Dm0644 "$device_file/mipad2-thermal-guard.service" \
 		"$mount_dir/etc/systemd/system/mipad2-thermal-guard.service"
 	run $enable mipad2-thermal-guard.service
+	install -Dm0755 "$device_file/mipad2-vaapi-smoke" \
+		"$mount_dir/usr/local/sbin/mipad2-vaapi-smoke"
+	install -Dm0644 "$device_file/mipad2-vaapi-audit.service" \
+		"$mount_dir/etc/systemd/system/mipad2-vaapi-audit.service"
+	run $enable mipad2-vaapi-audit.service
 	run $enable mipad2-usb-serial.service
 	run $enable mipad2-hardware-audit.service
 	install -Dm0755 "$device_file/mipad2-grow-root" \
