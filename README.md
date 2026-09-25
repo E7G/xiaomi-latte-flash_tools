@@ -1,7 +1,7 @@
 # 小米平板 2 CachyOS 一键刷机包
 
-面向 Xiaomi Mi Pad 2（`latte`）的 CachyOS/Arch Linux 镜像。默认桌面为精简
-KDE Plasma Wayland，内核来自 [`E7G/linux_latte`](https://github.com/E7G/linux_latte)。
+面向 Xiaomi Mi Pad 2（`latte`）的 CachyOS/Arch Linux 镜像。当前默认桌面为针对平板优化的
+GNOME Wayland（构建脚本仍保留 Plasma 可选配置），内核来自 [`E7G/linux_latte`](https://github.com/E7G/linux_latte)。
 
 ## 一键刷机
 
