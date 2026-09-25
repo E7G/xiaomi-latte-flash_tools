@@ -384,11 +384,11 @@ EOF
 	fi
 
 	run $enable bluetooth
-	install -Dm0755 "$device_file/mipad2-navkeys.py" \
-		"$mount_dir/usr/local/libexec/mipad2-navkeys.py"
-	install -Dm0644 "$device_file/mipad2-navkeys.service" \
-		"$mount_dir/etc/systemd/system/mipad2-navkeys.service"
-	run $enable mipad2-navkeys.service
+	# Navigation keys are handled in-kernel on current linux_latte builds.
+	# Do not install/enable the legacy Python evdev daemon: it wastes memory
+	# on this 2 GiB tablet and may duplicate or override the kernel mapping.
+	run sh -c 'systemctl disable mipad2-navkeys.service >/dev/null 2>&1 || true'
+	run sh -c 'rm -f /etc/systemd/system/mipad2-navkeys.service /usr/local/libexec/mipad2-navkeys.py'
 	run $enable mipad2-usb-serial.service
 	run $enable mipad2-hardware-audit.service
 	install -Dm0755 "$device_file/mipad2-grow-root" \
