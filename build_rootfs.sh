@@ -497,6 +497,19 @@ EOF
 		run chown -R $UserName:$UserName /home/$UserName/.config /home/$UserName/.local
 	fi
 
+	# Keep automatic idle sleep disabled at the desktop level, but do not
+	# disable the kernel/systemd suspend verb. Manual suspend is required for
+	# Cherry Trail S0ix and has been validated on Mi Pad 2 with RTC resume.
+	mkdir -p "$mount_dir/etc/systemd/sleep.conf.d"
+	rm -f "$mount_dir/etc/systemd/sleep.conf.d/90-mipad2-no-suspend.conf"
+	cat > "$mount_dir/etc/systemd/sleep.conf.d/90-mipad2-power.conf" <<'EOF'
+[Sleep]
+AllowSuspend=yes
+AllowHibernation=no
+AllowSuspendThenHibernate=no
+AllowHybridSleep=no
+EOF
+
 	echo 设置 密码
 	run bash -c "echo root:$UserPasswd|chpasswd"
 	run bash -c "echo $UserName:$UserPasswd|chpasswd"
