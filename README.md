@@ -3,6 +3,11 @@
 面向 Xiaomi Mi Pad 2（`latte`）的 CachyOS/Arch Linux 镜像。当前默认桌面为针对平板优化的
 GNOME Wayland（构建脚本仍保留 Plasma 可选配置），内核来自 [`E7G/linux_latte`](https://github.com/E7G/linux_latte)。
 
+
+## Secure Boot / MOK security note
+
+The current legacy Mi Pad 2 MOK is retained only for compatibility with tablets that already enrolled its certificate. The private key must never be copied into a finished image; the build now keeps it only in a temporary build-time path and deletes it immediately after signing. Because the legacy private key has existed in repository history, it should be considered compromised for trust purposes. A future device-side migration should generate a new MOK, enroll the new certificate on the tablet first, then switch signing to the new key and remove the legacy private key from active builds.
+
 ## 一键刷机
 
 1. 在 GitHub Actions 下载 `xiaomi-latte-cachyos-one-click`。
