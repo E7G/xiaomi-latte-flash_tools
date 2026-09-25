@@ -109,3 +109,8 @@ sudo mp2-test-no-idle disable
 - Mi Pad 2 不具备的 Thunderbolt、WWAN、打印、Smartcard 和 Sharing 后台服务会被屏蔽，以减少常驻内存。
 
 这些优化不修改自定义 GRUB 菜单或 GRUB 字体，也不包含 Snapshot 相机源码；相机应用的 Mi Pad 2 专用修复继续由 `E7G/snapshot` 维护。
+
+
+### Mi Pad 2 navigation keys
+
+Current `linux_latte:cachyos-mipad2` kernels handle the capacitive Menu/Home/Back keys in-kernel. New `arch_linux` images therefore do not install or enable the legacy Python `mipad2-navkeys` daemon. The old files remain in `device_files/` only for recovery with older kernels.
