@@ -129,7 +129,7 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: snapshot-output
-          key: latte-snapshot-${{ runner.os }}-${{ steps.snapshot-source.outputs.commit }}
+          key: latte-snapshot-${{ runner.os }}-${{ steps.snapshot-source.outputs.commit }}-${{ hashFiles('.github/workflows/build-dnx.yml') }}
 
       - name: Build Mi Pad 2 Snapshot
         if: steps.snapshot-cache.outputs.cache-hit != 'true'
