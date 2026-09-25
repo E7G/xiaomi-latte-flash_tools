@@ -226,6 +226,9 @@ jobs:
       - name: Verify generated packages
         run: |
           bash -n build_rootfs.sh
+          bash -n scripts/build_dnx_package.sh
+          head -n2 build_rootfs.sh | grep -Fx 'set -e'
+          head -n2 scripts/build_dnx_package.sh | grep -Fx 'set -Eeuo pipefail'
           bash -n device_files/mipad2-kernel-install
           grep -q 'desktop_type="${desktop_type:-gnome}"' build_rootfs.sh
           grep -q 'qt6-base qt6-wayland qt6-5compat iio-sensor-proxy' build_rootfs.sh
@@ -308,6 +311,8 @@ jobs:
           grep -q '^x-scheme-handler/https=brave-browser.desktop$' "$rootfs/home/user/.config/mimeapps.list"
           test -x "$rootfs/usr/bin/qv4l2"
           test -x "$rootfs/usr/bin/snapshot"
+          test -x "$rootfs/usr/bin/vainfo"
+          test -s "$rootfs/usr/lib/dri/i965_drv_video.so"
           test -e "$rootfs/usr/lib/libQt6Core.so.6"
           test ! -e "$rootfs/home/user/.local/share/applications/mipad2-camera.desktop"
           grep -q '^Hidden=true$' "$rootfs/home/user/.local/share/applications/qv4l2.desktop"
