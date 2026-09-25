@@ -178,7 +178,7 @@ networkmanager
 # 蓝牙
 bluez-utils
 # 视频
-mpv v4l-utils i2c-tools
+mpv v4l-utils i2c-tools libva-utils
 # 电源配置
 power-profiles-daemon
 # 线程优化
