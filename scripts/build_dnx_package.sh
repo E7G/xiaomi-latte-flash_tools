@@ -8,7 +8,12 @@ kernel_pkg="$(find kernel-output -maxdepth 1 -name 'linux-latte-cachyos-*.pkg.ta
 [[ -n "${kernel_pkg}" ]] || { echo 'Kernel package not found' >&2; exit 1; }
 install -Dm0644 "${kernel_pkg}" "device_files/$(basename "${kernel_pkg}")"
 
+snapshot_pkg="$(find snapshot-output -maxdepth 1 -name 'snapshot-mipad2-*.tar.zst' -print -quit 2>/dev/null || true)"
+[[ -n "${snapshot_pkg}" ]] || { echo 'Mi Pad 2 Snapshot package not found' >&2; exit 1; }
+install -Dm0644 "${snapshot_pkg}" "device_files/$(basename "${snapshot_pkg}")"
+
 export KERNEL_PACKAGE="./device_files/$(basename "${kernel_pkg}")"
+export SNAPSHOT_PACKAGE="./device_files/$(basename "${snapshot_pkg}")"
 export ROOTFS_SIZE="${ROOTFS_SIZE:-8G}"
 bash ./build_rootfs.sh
 

@@ -178,7 +178,7 @@ networkmanager
 # 蓝牙
 bluez-utils
 # 视频
-mpv v4l-utils i2c-tools
+mpv v4l-utils libva-utils i2c-tools
 # 电源配置
 power-profiles-daemon
 # 线程优化
@@ -204,8 +204,8 @@ gnome=(
 # Minimal GNOME Wayland tablet desktop
 gdm gnome-shell gnome-session gnome-control-center
 nautilus gnome-console gnome-text-editor gnome-system-monitor
-gnome-keyring xdg-desktop-portal-gnome
-# V4L2 camera UI with native input switching and tablet integration
+gnome-keyring xdg-desktop-portal-gnome snapshot
+# Mi Pad 2 camera runtime + tablet integration
 qt6-base qt6-wayland qt6-5compat iio-sensor-proxy
 # Chinese input through GNOME-native IBus
 ibus ibus-libpinyin
@@ -229,6 +229,14 @@ install_packages() {
 
 	declare -n desktop=$desktop_type
 	pacstrap -C "${device_file}"/pacman.conf -c $mount_dir ${packages[@]} ${desktop[@]} mkinitcpio
+
+	if [[ $desktop_type == 'gnome' && -n "${SNAPSHOT_PACKAGE:-}" ]]; then
+		[[ -f "$SNAPSHOT_PACKAGE" ]] || { echo "Snapshot package not found: $SNAPSHOT_PACKAGE" >&2; exit 1; }
+		echo "Install Mi Pad 2 Snapshot overlay: $SNAPSHOT_PACKAGE"
+		tar --zstd -xf "$SNAPSHOT_PACKAGE" -C "$mount_dir"
+		[[ -x "$mount_dir/usr/bin/snapshot" ]] || { echo 'Mi Pad 2 Snapshot binary missing after overlay' >&2; exit 1; }
+	fi
+
 	cat > "$mount_dir/etc/mkinitcpio.d/$KERNEL_PKGBASE.preset" <<EOF
 ALL_config="/etc/mkinitcpio.conf"
 ALL_kver="/usr/lib/modules/$kernel_release/vmlinuz"
@@ -487,7 +495,8 @@ text/html=brave-browser.desktop;
 x-scheme-handler/http=brave-browser.desktop;
 x-scheme-handler/https=brave-browser.desktop;
 EOF
-		install -m0644 "$device_file/mipad2-camera.desktop" "$mount_dir/home/$UserName/.local/share/applications/mipad2-camera.desktop"
+		# Snapshot is the primary camera UI. Keep qv4l2 installed only as a
+		# low-level diagnostics tool, hidden from the application launcher.
 		install -m0644 "$device_file/qv4l2.desktop" "$mount_dir/home/$UserName/.local/share/applications/qv4l2.desktop"
 		run chown -R $UserName:$UserName /home/$UserName/.config /home/$UserName/.local
 	fi
