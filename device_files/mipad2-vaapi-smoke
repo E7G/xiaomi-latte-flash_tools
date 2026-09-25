@@ -1,0 +1,27 @@
+#!/bin/sh
+# Mi Pad 2 Cherry Trail VA-API smoke test. Read-only and non-interactive.
+set -eu
+
+render=/dev/dri/renderD128
+[ -c "$render" ] || { echo "MISS DRM render node: $render" >&2; exit 1; }
+command -v vainfo >/dev/null 2>&1 || { echo "MISS vainfo (libva-utils)" >&2; exit 1; }
+
+tmp=$(mktemp)
+trap 'rm -f "$tmp"' EXIT
+
+if ! LIBVA_DRIVER_NAME=i965 vainfo --display drm --device "$render" >"$tmp" 2>&1; then
+    cat "$tmp" >&2
+    echo "MISS i965 VA-API initialization" >&2
+    exit 1
+fi
+
+if ! grep -Eq 'VAProfileH264(High|Main).*VAEntrypointVLD' "$tmp"; then
+    cat "$tmp" >&2
+    echo "MISS H.264 hardware decode profile" >&2
+    exit 1
+fi
+
+driver=$(grep -m1 -E 'Driver version|vainfo: Driver version' "$tmp" || true)
+printf 'OK   VA-API i965 on %s\n' "$render"
+[ -n "$driver" ] && printf 'INFO %s\n' "$driver"
+grep -E 'VAProfileH264(High|Main).*VAEntrypointVLD' "$tmp" | sed 's/^/OK   /'
