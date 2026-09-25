@@ -95,6 +95,8 @@ install -Dm0755 fix_file/packages/mipad2-usb-serial/src/mipad2-usb-serial \
   "${work_dir}/pkg/usr/local/libexec/mipad2-usb-serial"
 install -Dm0644 fix_file/packages/mipad2-usb-serial/src/mipad2-usb-serial.service \
   "${work_dir}/pkg/etc/systemd/system/mipad2-usb-serial.service"
+install -Dm0755 fix_file/packages/mipad2-usb-serial/src/mipad2-usb-serial-sleep \
+  "${work_dir}/pkg/usr/lib/systemd/system-sleep/mipad2-usb-serial"
 install -Dm0755 fix_file/packages/mipad2-recovery/src/mp2-backup \
   "${work_dir}/pkg/usr/local/sbin/mp2-backup"
 install -Dm0755 fix_file/packages/mipad2-recovery/src/mp2-recover \
