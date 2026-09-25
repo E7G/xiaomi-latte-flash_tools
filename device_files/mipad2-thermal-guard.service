@@ -1,0 +1,14 @@
+[Unit]
+Description=Mi Pad 2 lightweight thermal guard
+After=multi-user.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/sbin/mipad2-thermal-guard
+Restart=always
+RestartSec=2
+Nice=10
+TimeoutStopSec=5s
+
+[Install]
+WantedBy=multi-user.target

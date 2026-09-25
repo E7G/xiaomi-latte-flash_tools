@@ -1,0 +1,95 @@
+#!/usr/bin/env bash
+set -u
+
+CPUROOT=/sys/devices/system/cpu
+last_state=-1
+
+read_temp() {
+    local z type t max=0
+    for z in /sys/class/thermal/thermal_zone*; do
+        [ -r "$z/type" ] && [ -r "$z/temp" ] || continue
+        type=$(cat "$z/type" 2>/dev/null || true)
+        case "$type" in
+            PNIT|soc_dts0|soc_dts1)
+                t=$(cat "$z/temp" 2>/dev/null || echo 0)
+                case "$t" in ''|*[!0-9]*) t=0;; esac
+                [ "$t" -gt "$max" ] && [ "$t" -lt 120000 ] && max=$t
+                ;;
+        esac
+    done
+
+    for h in /sys/class/hwmon/hwmon*; do
+        [ -r "$h/name" ] || continue
+        [ "$(cat "$h/name" 2>/dev/null)" = "coretemp" ] || continue
+        for f in "$h"/temp*_input; do
+            [ -r "$f" ] || continue
+            t=$(cat "$f" 2>/dev/null || echo 0)
+            case "$t" in ''|*[!0-9]*) t=0;; esac
+            [ "$t" -gt "$max" ] && [ "$t" -lt 120000 ] && max=$t
+        done
+    done
+
+    for z in /sys/class/thermal/thermal_zone*; do
+        [ -r "$z/type" ] && [ -r "$z/temp" ] || continue
+        type=$(cat "$z/type" 2>/dev/null || true)
+        case "$type" in
+            x86_pkg_temp*|pkg_temp*)
+                t=$(cat "$z/temp" 2>/dev/null || echo 0)
+                case "$t" in ''|*[!0-9]*) t=0;; esac
+                [ "$t" -gt "$max" ] && [ "$t" -lt 120000 ] && max=$t
+                ;;
+        esac
+    done
+    echo "$max"
+}
+
+apply_state() {
+    local state=$1 maxfreq label f
+    case "$state" in
+        0) maxfreq=2240000; label="cool/full";;
+        1) maxfreq=1840000; label="warm";;
+        2) maxfreq=1600000; label="hot";;
+        3) maxfreq=1330000; label="very-hot";;
+    esac
+    for f in "$CPUROOT"/cpu[0-9]*/cpufreq/scaling_max_freq; do
+        [ -w "$f" ] && printf '%s\n' "$maxfreq" > "$f"
+    done
+    logger -t mipad2-thermal "state=$state ($label) cpu_max=$maxfreq kHz"
+}
+
+cleanup() {
+    local f
+    for f in "$CPUROOT"/cpu[0-9]*/cpufreq/scaling_max_freq; do
+        [ -w "$f" ] && printf '%s\n' 2240000 > "$f"
+    done
+}
+trap cleanup EXIT
+trap 'exit 0' TERM INT
+
+state=0
+while :; do
+    t=$(read_temp)
+    if [ "$t" -le 0 ]; then
+        sleep 3
+        continue
+    fi
+
+    case "$state" in
+        0) [ "$t" -ge 67000 ] && state=1 ;;
+        1)
+            if [ "$t" -ge 74000 ]; then state=2
+            elif [ "$t" -le 61000 ]; then state=0
+            fi ;;
+        2)
+            if [ "$t" -ge 80000 ]; then state=3
+            elif [ "$t" -le 68000 ]; then state=1
+            fi ;;
+        3) [ "$t" -le 74000 ] && state=2 ;;
+    esac
+
+    if [ "$state" -ne "$last_state" ]; then
+        apply_state "$state"
+        last_state=$state
+    fi
+    sleep 3
+done
