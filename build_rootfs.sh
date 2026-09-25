@@ -389,6 +389,11 @@ EOF
 	# on this 2 GiB tablet and may duplicate or override the kernel mapping.
 	run sh -c 'systemctl disable mipad2-navkeys.service >/dev/null 2>&1 || true'
 	run sh -c 'rm -f /etc/systemd/system/mipad2-navkeys.service /usr/local/libexec/mipad2-navkeys.py'
+	install -Dm0755 "$device_file/mipad2-thermal-guard" \
+		"$mount_dir/usr/local/sbin/mipad2-thermal-guard"
+	install -Dm0644 "$device_file/mipad2-thermal-guard.service" \
+		"$mount_dir/etc/systemd/system/mipad2-thermal-guard.service"
+	run $enable mipad2-thermal-guard.service
 	run $enable mipad2-usb-serial.service
 	run $enable mipad2-hardware-audit.service
 	install -Dm0755 "$device_file/mipad2-grow-root" \
