@@ -585,6 +585,10 @@ EOF
 }
 
 cleanup_rootfs() {
+	# Signing keys are build-time material only. Remove them even when a prior
+	# signing step aborted and cleanup is being retried.
+	run rm -f /run/mipad2-build/MOK.key || true
+	rmdir "$mount_dir/run/mipad2-build" 2>/dev/null || true
 	run sh -c 'rm -rf /var/cache/pacman/pkg/* /home/*/.cache/yay /tmp/*' || true
 }
 
