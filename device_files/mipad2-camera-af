@@ -1,0 +1,109 @@
+import os, re, subprocess, tempfile, time
+from pathlib import Path
+
+VIDEO="/dev/video0"
+FOCUS="/dev/v4l-subdev6"
+NVMEM="/sys/bus/nvmem/devices/mipad2-t4ka3-otp/nvmem"
+FALLBACK_INF=237
+FALLBACK_MACRO=366
+
+def run(args, check=True, capture=True):
+    return subprocess.run(args, check=check, text=True,
+                          stdout=subprocess.PIPE if capture else subprocess.DEVNULL,
+                          stderr=subprocess.PIPE if capture else subprocess.DEVNULL)
+
+def read_otp():
+    data=None
+    try:
+        data=Path(NVMEM).read_bytes()
+    except Exception:
+        try:
+            p=run(["sudo","-n","cat",NVMEM])
+            data=p.stdout.encode("latin1")
+        except Exception:
+            return None
+    if len(data)!=578 or data[0x10]!=1:
+        return None
+    calc=sum(data[0x11:0x1f]) % 255
+    if calc != data[0x1f]:
+        return None
+    inf=(data[0x13] << 8) | data[0x14]
+    macro=(data[0x15] << 8) | data[0x16]
+    if not (0 <= inf < macro <= 1023):
+        return None
+    return inf,macro
+
+def get_format():
+    out=run(["v4l2-ctl","-d",VIDEO,"--get-fmt-video"]).stdout
+    wh=re.search(r"Width/Height\s*:\s*(\d+)/(\d+)",out)
+    sz=re.search(r"Size Image\s*:\s*(\d+)",out)
+    if not (wh and sz):
+        raise RuntimeError("cannot parse video format")
+    return int(wh.group(1)),int(wh.group(2)),int(sz.group(1))
+
+def set_focus(pos):
+    run(["v4l2-ctl","-d",FOCUS,f"--set-ctrl=focus_absolute={pos}"])
+
+def capture4(path):
+    run(["v4l2-ctl","-d",VIDEO,"--stream-mmap=4","--stream-count=4",f"--stream-to={path}"])
+
+def score_y(frame,w,h):
+    y=frame[:w*h]
+    # Center 75%, sparse 4-pixel grid. Standard-library-only edge energy.
+    x0,x1=w//8,7*w//8; y0,y1=h//8,7*h//8
+    step=4; total=0; count=0
+    for yy in range(y0+1,y1-1,step):
+        row=yy*w
+        up=(yy-1)*w; dn=(yy+1)*w
+        for xx in range(x0+1,x1-1,step):
+            i=row+xx
+            gx=int(y[i+1])-int(y[i-1])
+            gy=int(y[dn+xx])-int(y[up+xx])
+            total += gx*gx + gy*gy
+            count += 1
+    return total/count if count else 0.0
+
+def measure(pos,w,h,frame_size,tmpdir):
+    set_focus(pos)
+    time.sleep(0.12)
+    path=os.path.join(tmpdir,f"f-{pos}.raw")
+    capture4(path)
+    data=Path(path).read_bytes()
+    n=len(data)//frame_size
+    if n < 2:
+        return 0.0
+    scores=[]
+    for fi in range(max(0,n-2),n):
+        frame=data[fi*frame_size:(fi+1)*frame_size]
+        scores.append(score_y(frame,w,h))
+    return sum(scores)/len(scores)
+
+def positions(lo,hi,step):
+    p=list(range(lo,hi+1,step))
+    if p[-1] != hi: p.append(hi)
+    return p
+
+def main():
+    run(["v4l2-ctl","-d",VIDEO,"--set-input=0"])
+    otp=read_otp()
+    lo,hi=otp if otp else (FALLBACK_INF,FALLBACK_MACRO)
+    w,h,frame_size=get_format()
+    print(f"AF range: {lo}..{hi} ({'OTP' if otp else 'fallback'}), video={w}x{h}, frame={frame_size}")
+    with tempfile.TemporaryDirectory(prefix="mipad2-af-") as td:
+        coarse_step=max(6,(hi-lo)//14)
+        coarse=[]
+        for p in positions(lo,hi,coarse_step):
+            s=measure(p,w,h,frame_size,td)
+            coarse.append((s,p)); print(f"coarse {p}: {s:.2f}")
+        _,best=max(coarse)
+        fine_lo=max(lo,best-coarse_step)
+        fine_hi=min(hi,best+coarse_step)
+        fine=[]
+        for p in positions(fine_lo,fine_hi,2):
+            s=measure(p,w,h,frame_size,td)
+            fine.append((s,p)); print(f"fine {p}: {s:.2f}")
+        score,best=max(fine)
+        set_focus(best)
+        print(f"BEST focus={best} score={score:.2f}")
+if __name__=="__main__":
+    main()
