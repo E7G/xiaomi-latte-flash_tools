@@ -1,0 +1,66 @@
+#!/bin/sh
+set -eu
+
+cal=${MIPAD2_CAMERA_CALIBRATION_FILE:-/var/lib/mipad2-camera/calibration.env}
+lens=${MIPAD2_CAMERA_LENS_NODE:-/dev/v4l-subdev6}
+
+[ -r "$cal" ] || {
+    echo "Mi Pad 2 camera calibration missing: $cal" >&2
+    exit 2
+}
+[ -e "$lens" ] || {
+    echo "Mi Pad 2 lens node missing: $lens" >&2
+    exit 3
+}
+command -v v4l2-ctl >/dev/null 2>&1 || {
+    echo "v4l2-ctl is required" >&2
+    exit 4
+}
+
+inf=$(awk -F= '$1=="AF_INFINITY" {print $2}' "$cal")
+macro=$(awk -F= '$1=="AF_MACRO" {print $2}' "$cal")
+
+case "$inf:$macro" in
+    *[!0-9:]*|:*) echo "Invalid AF calibration" >&2; exit 5 ;;
+esac
+[ "$inf" -lt "$macro" ] || {
+    echo "Invalid AF range: $inf..$macro" >&2
+    exit 5
+}
+
+set_focus() {
+    value=$1
+    case "$value" in
+        *[!0-9]*|'') echo "Focus must be an integer" >&2; exit 6 ;;
+    esac
+    if [ "$value" -lt "$inf" ]; then value=$inf; fi
+    if [ "$value" -gt "$macro" ]; then value=$macro; fi
+    v4l2-ctl -d "$lens" --set-ctrl=focus_absolute="$value"
+    printf '%s\n' "$value"
+}
+
+cmd=${1:-info}
+case "$cmd" in
+    info)
+        current=$(v4l2-ctl -d "$lens" --get-ctrl=focus_absolute 2>/dev/null | awk '{print $NF}' || true)
+        printf 'AF_INFINITY=%s\nAF_MACRO=%s\nAF_SPAN=%s\nCURRENT=%s\n' \
+            "$inf" "$macro" "$((macro - inf))" "${current:-unknown}"
+        ;;
+    infinity|far)
+        set_focus "$inf"
+        ;;
+    macro|near)
+        set_focus "$macro"
+        ;;
+    mid)
+        set_focus "$(((inf + macro) / 2))"
+        ;;
+    set)
+        [ "$#" -eq 2 ] || { echo "Usage: $0 set <value>" >&2; exit 64; }
+        set_focus "$2"
+        ;;
+    *)
+        echo "Usage: $0 {info|infinity|far|macro|near|mid|set <value>}" >&2
+        exit 64
+        ;;
+esac
