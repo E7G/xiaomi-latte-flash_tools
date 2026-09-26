@@ -1,0 +1,20 @@
+#!/bin/sh
+set -eu
+
+src=/sys/bus/nvmem/devices/mipad2-t4ka3-otp/nvmem
+dst_dir=/run/mipad2-camera
+dst=$dst_dir/otp.bin
+tmp=$dst.tmp
+
+[ -r "$src" ] || exit 0
+install -d -m 0750 -o root -g video "$dst_dir"
+cat "$src" > "$tmp"
+size=$(stat -c %s "$tmp")
+if [ "$size" -ne 578 ]; then
+    rm -f "$tmp"
+    echo "Mi Pad 2 camera OTP size mismatch: $size" >&2
+    exit 1
+fi
+chown root:video "$tmp"
+chmod 0440 "$tmp"
+mv -f "$tmp" "$dst"
