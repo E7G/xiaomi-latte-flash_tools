@@ -1,0 +1,88 @@
+#!/bin/sh
+set -eu
+
+provider=${MIPAD2_CAMERA_OTP_PROVIDER:-/sys/bus/nvmem/devices/mipad2-t4ka3-otp/nvmem}
+outdir=${MIPAD2_CAMERA_CALIBRATION_DIR:-/var/lib/mipad2-camera}
+outfile=$outdir/calibration.env
+
+# Older kernels simply do not expose the provider yet.
+[ -r "$provider" ] || exit 0
+
+tmp=$(mktemp)
+parsed=$(mktemp)
+trap 'rm -f "$tmp" "$parsed"' EXIT
+
+cat "$provider" > "$tmp"
+size=$(wc -c < "$tmp")
+if [ "$size" -ne 578 ]; then
+    echo "Mi Pad 2 camera OTP: expected 578 bytes, got $size" >&2
+    exit 1
+fi
+
+od -An -v -tu1 "$tmp" | awk '
+{
+    for (i = 1; i <= NF; i++)
+        b[n++] = $i
+}
+END {
+    if (n != 578)
+        exit 10
+
+    ok = 1
+
+    s = 0; for (i = 1; i <= 14; i++) s += b[i]
+    if (b[0] != 1 || (s % 255) != b[15]) ok = 0
+
+    s = 0; for (i = 17; i <= 30; i++) s += b[i]
+    if (b[16] != 1 || (s % 255) != b[31]) ok = 0
+
+    s = 0; for (i = 33; i <= 302; i++) s += b[i]
+    if (b[32] != 1 || (s % 255) != b[303]) ok = 0
+
+    s = 0; for (i = 305; i <= 576; i++) s += b[i]
+    if (b[304] != 1 || (s % 255) != b[577]) ok = 0
+
+    if (!ok)
+        exit 11
+
+    inf = b[19] * 256 + b[20]
+    macro = b[21] * 256 + b[22]
+
+    printf "MODULE_VENDOR=%d\n", b[1]
+    printf "BUILD_YEAR=20%02d\n", b[5]
+    printf "BUILD_MONTH=%d\n", b[6]
+    printf "BUILD_DAY=%d\n", b[7]
+    printf "BUILD_HOUR=%d\n", b[8]
+    printf "BUILD_MINUTE=%d\n", b[9]
+    printf "BUILD_SECOND=%d\n", b[10]
+    printf "AF_INFINITY=%d\n", inf
+    printf "AF_MACRO=%d\n", macro
+    printf "AF_SPAN=%d\n", macro - inf
+    printf "LIGHT_SOURCES=%d\n", b[35]
+    printf "LS1_X=%d\n", b[36]
+    printf "LS1_Y=%d\n", b[37]
+    printf "LS2_X=%d\n", b[308]
+    printf "LS2_Y=%d\n", b[309]
+    printf "LSC_GRID_X=%d\n", b[38]
+    printf "LSC_GRID_Y=%d\n", b[39]
+}' > "$parsed" || {
+    echo "Mi Pad 2 camera OTP checksum validation failed" >&2
+    exit 1
+}
+
+otp_sha256=$(sha256sum "$tmp" | awk '{print $1}')
+ls1_awb=$(od -An -v -tx1 -j 293 -N 8 "$tmp" | tr -d ' \n')
+ls2_awb=$(od -An -v -tx1 -j 565 -N 8 "$tmp" | tr -d ' \n')
+
+mkdir -p "$outdir"
+{
+    echo "# Generated from validated Mi Pad 2 rear-camera factory OTP."
+    echo "OTP_SHA256=$otp_sha256"
+    cat "$parsed"
+    echo "LS1_AWB_RAW=$ls1_awb"
+    echo "LS2_AWB_RAW=$ls2_awb"
+} > "$outfile.tmp"
+chmod 0644 "$outfile.tmp"
+mv "$outfile.tmp" "$outfile"
+
+echo "Mi Pad 2 camera calibration written to $outfile"

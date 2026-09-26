@@ -1,0 +1,11 @@
+[Unit]
+Description=Mi Pad 2 rear camera factory calibration cache
+After=systemd-udev-trigger.service
+ConditionPathExists=/sys/bus/nvmem/devices/mipad2-t4ka3-otp/nvmem
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/mipad2-camera-calibration
+
+[Install]
+WantedBy=multi-user.target
