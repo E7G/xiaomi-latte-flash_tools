@@ -39,6 +39,101 @@ set_focus() {
     printf '%s\n' "$value"
 }
 
+video=${MIPAD2_CAMERA_VIDEO_NODE:-/dev/video0}
+rear_input=${MIPAD2_CAMERA_REAR_INPUT:-1}
+
+score_focus() {
+    value=$1
+    tmp=$(mktemp /tmp/mipad2-af.XXXXXX.yuv)
+    trap 'rm -f "$tmp"' EXIT INT TERM
+
+    v4l2-ctl -d "$lens" --set-ctrl=focus_absolute="$value" >/dev/null
+    sleep 0.45
+
+    if ! timeout 18 v4l2-ctl -d "$video" \
+        --set-fmt-video=width=1280,height=720,pixelformat=YU12 \
+        --stream-mmap=4 --stream-skip=10 --stream-count=4 \
+        --stream-to="$tmp" >/dev/null 2>&1; then
+        rm -f "$tmp"
+        trap - EXIT INT TERM
+        return 1
+    fi
+
+    score=$(ffmpeg -hide_banner -loglevel info \
+        -f rawvideo -pixel_format yuv420p -video_size 1280x720 \
+        -i "$tmp" -vf 'sobel,signalstats,metadata=print' -f null - 2>&1 \
+        | sed -n 's/.*lavfi.signalstats.YAVG=//p' | tail -n 1)
+
+    rm -f "$tmp"
+    trap - EXIT INT TERM
+
+    case "$score" in
+        ''|*[!0-9.eE+-]*) return 1 ;;
+    esac
+    printf '%s\n' "$score"
+}
+
+is_better() {
+    awk -v new="$1" -v old="$2" 'BEGIN { exit !(new > old) }'
+}
+
+auto_focus() {
+    command -v ffmpeg >/dev/null 2>&1 || {
+        echo "ffmpeg is required for autofocus" >&2
+        exit 7
+    }
+    [ -e "$video" ] || {
+        echo "Video node missing: $video" >&2
+        exit 8
+    }
+
+    v4l2-ctl -d "$video" --set-input="$rear_input" >/dev/null
+
+    span=$((macro - inf))
+    q=$((span / 4))
+    [ "$q" -gt 0 ] || q=1
+
+    best=
+    best_score=
+    for value in "$inf" "$((inf + q))" "$(((inf + macro) / 2))" "$((macro - q))" "$macro"; do
+        score=$(score_focus "$value") || continue
+        printf 'coarse focus=%s score=%s\n' "$value" "$score" >&2
+        if [ -z "$best_score" ] || is_better "$score" "$best_score"; then
+            best=$value
+            best_score=$score
+        fi
+    done
+
+    [ -n "$best" ] || {
+        echo "Autofocus coarse scan failed" >&2
+        exit 9
+    }
+
+    fine=$((q / 4))
+    [ "$fine" -ge 4 ] || fine=4
+    start=$((best - fine * 2))
+    end=$((best + fine * 2))
+    [ "$start" -ge "$inf" ] || start=$inf
+    [ "$end" -le "$macro" ] || end=$macro
+
+    value=$start
+    while [ "$value" -le "$end" ]; do
+        score=$(score_focus "$value") || {
+            value=$((value + fine))
+            continue
+        }
+        printf 'fine focus=%s score=%s\n' "$value" "$score" >&2
+        if is_better "$score" "$best_score"; then
+            best=$value
+            best_score=$score
+        fi
+        value=$((value + fine))
+    done
+
+    v4l2-ctl -d "$lens" --set-ctrl=focus_absolute="$best" >/dev/null
+    printf 'AF_BEST=%s\nAF_SCORE=%s\n' "$best" "$best_score"
+}
+
 cmd=${1:-info}
 case "$cmd" in
     info)
@@ -59,8 +154,11 @@ case "$cmd" in
         [ "$#" -eq 2 ] || { echo "Usage: $0 set <value>" >&2; exit 64; }
         set_focus "$2"
         ;;
+    auto)
+        auto_focus
+        ;;
     *)
-        echo "Usage: $0 {info|infinity|far|macro|near|mid|set <value>}" >&2
+        echo "Usage: $0 {info|infinity|far|macro|near|mid|set <value>|auto}" >&2
         exit 64
         ;;
 esac
