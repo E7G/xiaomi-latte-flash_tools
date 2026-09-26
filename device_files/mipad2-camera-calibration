@@ -1,0 +1,73 @@
+#!/bin/sh
+# Read and validate Xiaomi Mi Pad 2 rear-camera factory calibration.
+# Output is machine-readable KEY=VALUE lines. Read-only.
+set -eu
+
+nvmem=/sys/bus/nvmem/devices/mipad2-t4ka3-otp/nvmem
+
+if [ ! -r "$nvmem" ]; then
+    echo "CALIBRATION_AVAILABLE=0"
+    exit 0
+fi
+
+tmp=$(mktemp)
+trap 'rm -f "$tmp"' EXIT
+cat "$nvmem" > "$tmp"
+
+size=$(wc -c < "$tmp")
+if [ "$size" -ne 578 ]; then
+    echo "CALIBRATION_AVAILABLE=0"
+    echo "CALIBRATION_ERROR=bad_size_$size"
+    exit 1
+fi
+
+python3 - "$tmp" <<'PY'
+from pathlib import Path
+import sys, hashlib
+
+d = Path(sys.argv[1]).read_bytes()
+
+def checksum(start, size):
+    return sum(d[start + 1:start + size - 1]) % 255
+
+groups = [
+    ("MODULE", 0x000, 0x010, 0x00f),
+    ("AF",     0x010, 0x010, 0x01f),
+    ("LS1",    0x020, 0x110, 0x12f),
+    ("LS2",    0x130, 0x112, 0x241),
+]
+
+ok = True
+for name, start, size, stored_idx in groups:
+    valid = d[start] == 1
+    calc = checksum(start, size)
+    stored = d[stored_idx]
+    group_ok = valid and calc == stored
+    ok &= group_ok
+    print(f"{name}_VALID={1 if group_ok else 0}")
+
+if not ok:
+    print("CALIBRATION_AVAILABLE=0")
+    raise SystemExit(2)
+
+af_inf = (d[0x13] << 8) | d[0x14]
+af_macro = (d[0x15] << 8) | d[0x16]
+
+if not (0 <= af_inf < af_macro <= 1023):
+    print("CALIBRATION_AVAILABLE=0")
+    print("CALIBRATION_ERROR=bad_af_range")
+    raise SystemExit(3)
+
+print("CALIBRATION_AVAILABLE=1")
+print("OTP_SHA256=" + hashlib.sha256(d).hexdigest())
+print("MODULE_VENDOR=" + str(d[1]))
+print(f"MODULE_BUILD=20{d[5]:02d}-{d[6]:02d}-{d[7]:02d}T{d[8]:02d}:{d[9]:02d}:{d[10]:02d}")
+print("AF_INFINITY=" + str(af_inf))
+print("AF_MACRO=" + str(af_macro))
+print("AF_SPAN=" + str(af_macro - af_inf))
+print("LSC_GRID_W=" + str(d[0x26]))
+print("LSC_GRID_H=" + str(d[0x27]))
+print("LIGHT_SOURCES=" + str(d[0x23]))
+print("LS1_AWB_RAW=" + d[0x125:0x12d].hex())
+print("LS2_AWB_RAW=" + d[0x235:0x23d].hex())
+PY
