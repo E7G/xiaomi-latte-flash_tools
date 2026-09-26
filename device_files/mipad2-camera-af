@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 import os, re, subprocess, tempfile, time
 from pathlib import Path
 
@@ -18,8 +19,9 @@ def read_otp():
         data=Path(NVMEM).read_bytes()
     except Exception:
         try:
-            p=run(["sudo","-n","cat",NVMEM])
-            data=p.stdout.encode("latin1")
+            p=subprocess.run(["sudo","-n","cat",NVMEM], check=True,
+                             stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+            data=p.stdout
         except Exception:
             return None
     if len(data)!=578 or data[0x10]!=1:
