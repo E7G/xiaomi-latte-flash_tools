@@ -1,0 +1,1 @@
+SUBSYSTEM=="nvmem", KERNEL=="mipad2-t4ka3-otp", TAG+="systemd", ENV{SYSTEMD_WANTS}+="mipad2-camera-otp-cache.service"
