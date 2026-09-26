@@ -2,7 +2,7 @@
 set -eu
 
 provider=${MIPAD2_CAMERA_OTP_PROVIDER:-/sys/bus/nvmem/devices/mipad2-t4ka3-otp/nvmem}
-outdir=/var/lib/mipad2-camera
+outdir=${MIPAD2_CAMERA_CALIBRATION_DIR:-/var/lib/mipad2-camera}
 outfile=$outdir/calibration.env
 
 # Older kernels simply do not expose the provider yet.
