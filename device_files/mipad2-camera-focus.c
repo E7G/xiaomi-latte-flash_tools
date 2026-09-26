@@ -282,7 +282,15 @@ static double measure_focus(int vfd, int ffd, struct mm_buf *bufs, unsigned nbuf
             return -1.0;
 
         if (i >= 2) {
-            total += sharpness(bufs[b.index].ptr, b.bytesused,
+            size_t frame_bytes = b.bytesused;
+            size_t luma_bytes = (size_t)stride * h;
+            /*
+             * AtomISP on Mi Pad 2 may leave bytesused at zero for mmap
+             * capture even though the full mapped frame is valid.
+             */
+            if (frame_bytes < luma_bytes)
+                frame_bytes = bufs[b.index].len;
+            total += sharpness(bufs[b.index].ptr, frame_bytes,
                                w, h, stride, step, off);
             scored++;
         }
