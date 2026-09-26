@@ -394,6 +394,8 @@ EOF
 	install -Dm0644 "$device_file/mipad2-thermal-guard.service" \
 		"$mount_dir/etc/systemd/system/mipad2-thermal-guard.service"
 	run $enable mipad2-thermal-guard.service
+	install -Dm0755 "$device_file/mipad2-camera-af" \
+		"$mount_dir/usr/local/bin/mipad2-camera-af"
 	install -Dm0755 "$device_file/mipad2-vaapi-smoke" \
 		"$mount_dir/usr/local/sbin/mipad2-vaapi-smoke"
 	install -Dm0644 "$device_file/mipad2-vaapi-audit.service" \
