@@ -119,3 +119,22 @@ sudo mp2-test-no-idle disable
 ### Mi Pad 2 navigation keys
 
 Current `linux_latte:cachyos-mipad2` kernels handle the capacitive Menu/Home/Back keys in-kernel. New `arch_linux` images therefore do not install or enable the legacy Python `mipad2-navkeys` daemon. The old files remain in `device_files/` only for recovery with older kernels.
+
+
+### Mi Pad 2 rear camera factory calibration
+
+On kernels that expose `mipad2-t4ka3-otp`, the image runs a one-shot calibration
+cache service at boot. It validates Xiaomi's 578-byte rear-camera factory OTP and
+writes the safe parsed values to:
+
+`/var/lib/mipad2-camera/calibration.env`
+
+The helper `mipad2-camera-focus` uses the factory AF endpoints and never drives
+the lens outside the calibrated range. Useful commands:
+
+`mipad2-camera-focus info`
+`mipad2-camera-focus infinity`
+`mipad2-camera-focus macro`
+`mipad2-camera-focus auto`
+
+`auto` is on-demand only; there is no resident autofocus daemon.
