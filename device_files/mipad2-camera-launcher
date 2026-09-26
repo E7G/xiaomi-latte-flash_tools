@@ -1,0 +1,5 @@
+#!/bin/sh
+# Best-effort rear autofocus before opening GNOME Snapshot.
+# Failure must not prevent the camera UI from opening.
+/usr/local/bin/mipad2-camera-focus auto >/run/user/"$(id -u)"/mipad2-camera-af.log 2>&1 || true
+exec snapshot "$@"
