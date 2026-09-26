@@ -1,7 +1,7 @@
 #!/bin/sh
 set -eu
 
-provider=/sys/bus/nvmem/devices/mipad2-t4ka3-otp/nvmem
+provider=${MIPAD2_CAMERA_OTP_PROVIDER:-/sys/bus/nvmem/devices/mipad2-t4ka3-otp/nvmem}
 outdir=/var/lib/mipad2-camera
 outfile=$outdir/calibration.env
 
