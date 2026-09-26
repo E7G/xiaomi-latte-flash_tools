@@ -42,7 +42,7 @@ set_focus() {
 video=${MIPAD2_CAMERA_VIDEO_NODE:-/dev/video0}
 rear_input=${MIPAD2_CAMERA_REAR_INPUT:-1}
 
-score_focus() {
+score_focus_once() {
     value=$1
     tmp=$(mktemp /tmp/mipad2-af.XXXXXX.yuv)
     trap 'rm -f "$tmp"' EXIT INT TERM
@@ -75,6 +75,34 @@ score_focus() {
         ''|*[!0-9.eE+-]*) return 1 ;;
     esac
     printf '%s\n' "$score"
+}
+
+score_focus() {
+    value=$1
+    min_score=${MIPAD2_CAMERA_AF_MIN_SCORE:-0.10}
+    attempt=1
+    best_score=
+
+    while [ "$attempt" -le 3 ]; do
+        score=$(score_focus_once "$value") || {
+            attempt=$((attempt + 1))
+            continue
+        }
+
+        if [ -z "$best_score" ] || awk -v a="$score" -v b="$best_score" 'BEGIN { exit !(a > b) }'; then
+            best_score=$score
+        fi
+
+        if awk -v s="$score" -v min="$min_score" 'BEGIN { exit !(s >= min) }'; then
+            break
+        fi
+
+        printf 'retry focus=%s low-score=%s\n' "$value" "$score" >&2
+        attempt=$((attempt + 1))
+    done
+
+    [ -n "$best_score" ] || return 1
+    printf '%s\n' "$best_score"
 }
 
 is_better() {
