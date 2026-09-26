@@ -135,7 +135,7 @@ static int find_focus_dev(char *out, size_t n)
     int found = -1;
 
     while ((de = readdir(d))) {
-        if (strncmp(de->d_name, "v4l-subdev", 11))
+        if (strncmp(de->d_name, "v4l-subdev", strlen("v4l-subdev")))
             continue;
 
         char p[PATH_MAX], name[256];
