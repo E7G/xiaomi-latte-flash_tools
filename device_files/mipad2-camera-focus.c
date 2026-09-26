@@ -207,6 +207,38 @@ static inline int y_at(const uint8_t *p, unsigned stride, unsigned step,
     return p[(size_t)y * stride + (size_t)x * step + off];
 }
 
+static void debug_luma_once(const uint8_t *p, size_t bytes,
+                            unsigned w, unsigned h, unsigned stride,
+                            unsigned step, unsigned off)
+{
+    static int done;
+    if (done)
+        return;
+    done = 1;
+
+    size_t need = (size_t)stride * h;
+    if (bytes < need) {
+        fprintf(stderr, "debug: frame too small bytes=%zu need=%zu\n", bytes, need);
+        return;
+    }
+
+    unsigned minv = 255, maxv = 0;
+    uint64_t sum = 0, count = 0;
+    for (unsigned y = 0; y < h; y += 8) {
+        for (unsigned x = 0; x < w; x += 8) {
+            unsigned v = (unsigned)y_at(p, stride, step, off, x, y);
+            if (v < minv) minv = v;
+            if (v > maxv) maxv = v;
+            sum += v;
+            count++;
+        }
+    }
+
+    fprintf(stderr, "debug: luma bytes=%zu stride=%u min=%u max=%u mean=%.2f\n",
+            bytes, stride, minv, maxv,
+            count ? (double)sum / (double)count : 0.0);
+}
+
 static double sharpness(const uint8_t *p, size_t bytes,
                         unsigned w, unsigned h, unsigned stride,
                         unsigned step, unsigned off)
@@ -290,6 +322,8 @@ static double measure_focus(int vfd, int ffd, struct mm_buf *bufs, unsigned nbuf
              */
             if (frame_bytes < luma_bytes)
                 frame_bytes = bufs[b.index].len;
+            debug_luma_once(bufs[b.index].ptr, frame_bytes,
+                            w, h, stride, step, off);
             total += sharpness(bufs[b.index].ptr, frame_bytes,
                                w, h, stride, step, off);
             scored++;
@@ -420,6 +454,8 @@ int main(int argc, char **argv)
         }
 
         bufs[i].len = b.length;
+        fprintf(stderr, "debug: qbuf %u length=%u offset=%u\n",
+                i, b.length, b.m.offset);
         bufs[i].ptr = mmap(NULL, b.length, PROT_READ | PROT_WRITE,
                            MAP_SHARED, vfd, b.m.offset);
         if (bufs[i].ptr == MAP_FAILED) {
