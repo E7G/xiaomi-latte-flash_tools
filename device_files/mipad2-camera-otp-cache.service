@@ -1,0 +1,7 @@
+[Unit]
+Description=Cache Mi Pad 2 rear camera factory OTP for video users
+ConditionPathExists=/sys/bus/nvmem/devices/mipad2-t4ka3-otp/nvmem
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/mipad2-camera-otp-cache
