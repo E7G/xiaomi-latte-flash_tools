@@ -1,0 +1,47 @@
+#!/bin/sh
+# Calibrated Mi Pad 2 rear-camera focus helper. No daemon.
+set -eu
+
+calib=$(/usr/local/sbin/mipad2-camera-calibration)
+eval "$calib"
+
+if [ "${CALIBRATION_AVAILABLE:-0}" != "1" ]; then
+    echo "Rear-camera factory calibration is unavailable." >&2
+    exit 1
+fi
+
+focus_dev=
+for dev in /dev/v4l-subdev*; do
+    [ -e "$dev" ] || continue
+    if v4l2-ctl -d "$dev" --list-ctrls 2>/dev/null | grep -q 'focus_absolute'; then
+        focus_dev=$dev
+        break
+    fi
+done
+
+if [ -z "$focus_dev" ]; then
+    echo "DW9719 focus control not found." >&2
+    exit 1
+fi
+
+case "${1:-mid}" in
+    infinity) target=$AF_INFINITY ;;
+    macro)    target=$AF_MACRO ;;
+    mid)      target=$(( (AF_INFINITY + AF_MACRO) / 2 )) ;;
+    *)
+        case "$1" in
+            *[!0-9]*|'') echo "Usage: $0 [infinity|mid|macro|0..1023]" >&2; exit 2 ;;
+            *) target=$1 ;;
+        esac
+        ;;
+esac
+
+if [ "$target" -lt "$AF_INFINITY" ] || [ "$target" -gt "$AF_MACRO" ]; then
+    echo "Refusing focus=$target outside factory AF range $AF_INFINITY..$AF_MACRO." >&2
+    exit 3
+fi
+
+v4l2-ctl -d "$focus_dev" --set-ctrl "focus_absolute=$target"
+printf 'FOCUS_DEVICE=%s\n' "$focus_dev"
+printf 'FOCUS_TARGET=%s\n' "$target"
+printf 'AF_RANGE=%s..%s\n' "$AF_INFINITY" "$AF_MACRO"
