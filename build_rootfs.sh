@@ -446,7 +446,7 @@ EOF
 
 config_user() {
 	echo 添加 $UserName 用户
-	run useradd -m -G wheel,lp -s '/usr/bin/zsh' $UserName
+	run useradd -m -G wheel,lp,audio,video,render -s '/usr/bin/zsh' $UserName
 	run pacman -S oh-my-zsh-git --noconfirm
 
 	run sed -i 's|#[[:space:]]*ZSH_CUSTOM=.*|ZSH_CUSTOM=/usr/share/zsh|' /usr/share/oh-my-zsh/zshrc
