@@ -50,9 +50,9 @@ score_focus() {
     v4l2-ctl -d "$lens" --set-ctrl=focus_absolute="$value" >/dev/null
     sleep 0.45
 
-    if ! timeout 18 v4l2-ctl -d "$video" \
+    if ! timeout 20 v4l2-ctl -d "$video" \
         --set-fmt-video=width=1280,height=720,pixelformat=YU12 \
-        --stream-mmap=4 --stream-skip=10 --stream-count=4 \
+        --stream-mmap=4 --stream-skip=10 --stream-count=6 \
         --stream-to="$tmp" >/dev/null 2>&1; then
         rm -f "$tmp"
         trap - EXIT INT TERM
@@ -61,8 +61,12 @@ score_focus() {
 
     score=$(ffmpeg -hide_banner -loglevel info \
         -f rawvideo -pixel_format yuv420p -video_size 1280x720 \
-        -i "$tmp" -vf 'sobel,signalstats,metadata=print' -f null - 2>&1 \
-        | sed -n 's/.*lavfi.signalstats.YAVG=//p' | tail -n 1)
+        -i "$tmp" \
+        -vf 'crop=640:480:(in_w-out_w)/2:(in_h-out_h)/2,sobel,signalstats,metadata=print' \
+        -f null - 2>&1 \
+        | sed -n 's/.*lavfi.signalstats.YAVG=//p' \
+        | tail -n 3 \
+        | awk '{ sum += $1; n++ } END { if (n) printf "%.8f\n", sum / n }')
 
     rm -f "$tmp"
     trap - EXIT INT TERM
