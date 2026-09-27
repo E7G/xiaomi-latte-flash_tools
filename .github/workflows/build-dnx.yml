@@ -231,95 +231,9 @@ jobs:
           test -s "$rootfs/etc/systemd/system/mipad2-camera-init-focus.service"
           test -L "$rootfs/etc/systemd/system/multi-user.target.wants/mipad2-camera-init-focus.service"
           test -s "$rootfs/home/user/.local/share/applications/mipad2-camera.desktop"
-          grep -q '^Exec=/usr/local/bin/mipad2-camera-launch
-          test -L "$rootfs/etc/systemd/system/display-manager.service"
-          test "$(readlink "$rootfs/etc/systemd/system/display-manager.service")" = '/usr/lib/systemd/system/gdm.service'
-          grep -q '^AutomaticLoginEnable=True$' "$rootfs/etc/gdm/custom.conf"
-          test ! -x "$rootfs/usr/bin/plasmalogin"
-          test -s "$rootfs/usr/lib/firmware/brcm/brcmfmac4356-pcie.Xiaomi Inc-Mipad2.txt"
-          test -s "$rootfs/usr/lib/firmware/brcm/BCM4356A2.hcd"
-          test -s "$rootfs/usr/share/alsa/ucm2/conf.d/cht-bsw-rt5659/HiFi.conf"
-
-      - name: Validate Windows flasher syntax
-        shell: pwsh
-        run: |
-          $tokens = $null
-          $errors = $null
-          [System.Management.Automation.Language.Parser]::ParseFile(
-            (Resolve-Path './flash-one-click.ps1').Path,
-            [ref]$tokens,
-            [ref]$errors
-          ) | Out-Null
-          if ($errors.Count -gt 0) {
-            $errors | ForEach-Object { Write-Error $_ }
-            exit 1
-          }
-
-      - name: Upload one-click USB installer image
-        uses: actions/upload-artifact@v4
-        with:
-          name: xiaomi-latte-cachyos-usb-imgxz
-          path: |
-            dist/*.img.xz
-            dist/*.img.xz.sha256
-          if-no-files-found: error
-          compression-level: 0
-          retention-days: 30
-
-      - name: Upload ready-to-run one-click flash package
-        uses: actions/upload-artifact@v4
-        with:
-          name: xiaomi-latte-cachyos-one-click
-          path: work/dnx-package/
-          if-no-files-found: error
-          compression-level: 6
-          retention-days: 30
- "$rootfs/home/user/.local/share/applications/mipad2-camera.desktop"
-          grep -q 'mipad2-camera-af auto' "$rootfs/usr/local/bin/mipad2-camera-launch"
-          grep -q '^Hidden=true
-          test -L "$rootfs/etc/systemd/system/display-manager.service"
-          test "$(readlink "$rootfs/etc/systemd/system/display-manager.service")" = '/usr/lib/systemd/system/gdm.service'
-          grep -q '^AutomaticLoginEnable=True$' "$rootfs/etc/gdm/custom.conf"
-          test ! -x "$rootfs/usr/bin/plasmalogin"
-          test -s "$rootfs/usr/lib/firmware/brcm/brcmfmac4356-pcie.Xiaomi Inc-Mipad2.txt"
-          test -s "$rootfs/usr/lib/firmware/brcm/BCM4356A2.hcd"
-          test -s "$rootfs/usr/share/alsa/ucm2/conf.d/cht-bsw-rt5659/HiFi.conf"
-
-      - name: Validate Windows flasher syntax
-        shell: pwsh
-        run: |
-          $tokens = $null
-          $errors = $null
-          [System.Management.Automation.Language.Parser]::ParseFile(
-            (Resolve-Path './flash-one-click.ps1').Path,
-            [ref]$tokens,
-            [ref]$errors
-          ) | Out-Null
-          if ($errors.Count -gt 0) {
-            $errors | ForEach-Object { Write-Error $_ }
-            exit 1
-          }
-
-      - name: Upload one-click USB installer image
-        uses: actions/upload-artifact@v4
-        with:
-          name: xiaomi-latte-cachyos-usb-imgxz
-          path: |
-            dist/*.img.xz
-            dist/*.img.xz.sha256
-          if-no-files-found: error
-          compression-level: 0
-          retention-days: 30
-
-      - name: Upload ready-to-run one-click flash package
-        uses: actions/upload-artifact@v4
-        with:
-          name: xiaomi-latte-cachyos-one-click
-          path: work/dnx-package/
-          if-no-files-found: error
-          compression-level: 6
-          retention-days: 30
- "$rootfs/home/user/.local/share/applications/qv4l2.desktop"
+          grep -Fxq 'Exec=/usr/local/bin/mipad2-camera-launch' "$rootfs/home/user/.local/share/applications/mipad2-camera.desktop"
+          grep -Fq 'mipad2-camera-af auto' "$rootfs/usr/local/bin/mipad2-camera-launch"
+          grep -Fxq 'Hidden=true' "$rootfs/home/user/.local/share/applications/qv4l2.desktop"
           test -L "$rootfs/etc/systemd/system/display-manager.service"
           test "$(readlink "$rootfs/etc/systemd/system/display-manager.service")" = '/usr/lib/systemd/system/gdm.service'
           grep -q '^AutomaticLoginEnable=True$' "$rootfs/etc/gdm/custom.conf"
