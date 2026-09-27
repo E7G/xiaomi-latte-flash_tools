@@ -3,10 +3,18 @@ import os, re, subprocess, tempfile, time
 from pathlib import Path
 
 VIDEO="/dev/video0"
-FOCUS="/dev/v4l-subdev6"
 NVMEM="/sys/bus/nvmem/devices/mipad2-t4ka3-otp/nvmem"
-FALLBACK_INF=237
-FALLBACK_MACRO=366
+
+def find_focus_device():
+    base=Path("/sys/class/video4linux")
+    for p in sorted(base.glob("v4l-subdev*")):
+        try:
+            name=(p/"name").read_text().strip()
+        except Exception:
+            continue
+        if name.startswith("dw9719 "):
+            return "/dev/"+p.name
+    raise RuntimeError("DW9719 focus subdevice not found")
 
 def run(args, check=True, capture=True):
     return subprocess.run(args, check=check, text=True,
@@ -43,8 +51,8 @@ def get_format():
         raise RuntimeError("cannot parse video format")
     return int(wh.group(1)),int(wh.group(2)),int(sz.group(1))
 
-def set_focus(pos):
-    run(["v4l2-ctl","-d",FOCUS,f"--set-ctrl=focus_absolute={pos}"])
+def set_focus(focus_dev,pos):
+    run(["v4l2-ctl","-d",focus_dev,f"--set-ctrl=focus_absolute={pos}"])
 
 def capture4(path):
     run(["v4l2-ctl","-d",VIDEO,"--stream-mmap=4","--stream-count=4",f"--stream-to={path}"])
@@ -65,8 +73,8 @@ def score_y(frame,w,h):
             count += 1
     return total/count if count else 0.0
 
-def measure(pos,w,h,frame_size,tmpdir):
-    set_focus(pos)
+def measure(focus_dev,pos,w,h,frame_size,tmpdir):
+    set_focus(focus_dev,pos)
     time.sleep(0.12)
     for attempt in range(2):
         path=os.path.join(tmpdir,f"f-{pos}-{attempt}.raw")
@@ -96,24 +104,27 @@ def main():
     run(["v4l2-ctl","-d",VIDEO,
          "--set-fmt-video=width=1280,height=720,pixelformat=YU12"])
     otp=read_otp()
-    lo,hi=otp if otp else (FALLBACK_INF,FALLBACK_MACRO)
+    if not otp:
+        raise SystemExit("valid Mi Pad 2 rear-camera OTP is required for autofocus")
+    lo,hi=otp
+    focus_dev=find_focus_device()
     w,h,frame_size=get_format()
-    print(f"AF range: {lo}..{hi} ({'OTP' if otp else 'fallback'}), video={w}x{h}, frame={frame_size}")
+    print(f"AF range: {lo}..{hi} (OTP), focus={focus_dev}, video={w}x{h}, frame={frame_size}")
     with tempfile.TemporaryDirectory(prefix="mipad2-af-") as td:
         coarse_step=max(6,(hi-lo)//14)
         coarse=[]
         for p in positions(lo,hi,coarse_step):
-            s=measure(p,w,h,frame_size,td)
+            s=measure(focus_dev,p,w,h,frame_size,td)
             coarse.append((s,p)); print(f"coarse {p}: {s:.2f}")
         _,best=max(coarse)
         fine_lo=max(lo,best-coarse_step)
         fine_hi=min(hi,best+coarse_step)
         fine=[]
         for p in positions(fine_lo,fine_hi,2):
-            s=measure(p,w,h,frame_size,td)
+            s=measure(focus_dev,p,w,h,frame_size,td)
             fine.append((s,p)); print(f"fine {p}: {s:.2f}")
         score,best=max(fine)
-        set_focus(best)
+        set_focus(focus_dev,best)
         print(f"BEST focus={best} score={score:.2f}")
 if __name__=="__main__":
     main()
