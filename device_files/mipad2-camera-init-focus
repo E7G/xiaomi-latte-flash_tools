@@ -4,36 +4,52 @@ set -eu
 NVMEM=/sys/bus/nvmem/devices/mipad2-t4ka3-otp/nvmem
 STATE=/run/mipad2-camera-af.env
 
-# The OTP provider is created by the T4KA3 module; give udev/module loading
-# a short bounded window at boot, but never stay resident.
+# T4KA3/AtomISP probe finishes a few seconds after multi-user.target on the
+# tablet. Wait only inside this oneshot helper; nothing remains resident.
 i=0
-while [ ! -r "$NVMEM" ] && [ "$i" -lt 20 ]; do
+while [ ! -r "$NVMEM" ] && [ "$i" -lt 120 ]; do
     sleep 0.25
     i=$((i + 1))
 done
-[ -r "$NVMEM" ] || exit 0
+[ -r "$NVMEM" ] || exit 1
 
-# Xiaomi DW9761 OTP: big-endian infinity/macro words at raw offsets 0x13/0x15.
-set -- $(od -An -tu1 -j 19 -N 4 "$NVMEM" 2>/dev/null)
-[ "$#" -eq 4 ] || exit 0
-inf=$(( $1 * 256 + $2 ))
-macro=$(( $3 * 256 + $4 ))
+set -- $(od -An -tu1 -j 16 -N 16 "$NVMEM")
+[ "$#" -eq 16 ] || exit 2
+[ "$1" -eq 1 ] || exit 3
 
-# Reject corrupt / nonsensical calibration rather than moving the lens.
-[ "$inf" -ge 0 ] && [ "$inf" -lt "$macro" ] && [ "$macro" -le 1023 ] || exit 1
+sum=0
+stored=
+idx=1
+for x in "$@"; do
+    if [ "$idx" -ge 2 ] && [ "$idx" -le 15 ]; then
+        sum=$((sum + x))
+    elif [ "$idx" -eq 16 ]; then
+        stored=$x
+    fi
+    idx=$((idx + 1))
+done
+calc=$((sum % 255))
+[ -n "$stored" ] && [ "$calc" -eq "$stored" ] || exit 4
+
+inf=$(( $4 * 256 + $5 ))
+macro=$(( $6 * 256 + $7 ))
+[ "$inf" -ge 0 ] && [ "$inf" -lt "$macro" ] && [ "$macro" -le 1023 ] || exit 5
 
 focusdev=
-for dev in /dev/v4l-subdev*; do
-    [ -e "$dev" ] || continue
-    if v4l2-ctl -d "$dev" --list-ctrls 2>/dev/null | grep -q 'focus_absolute'; then
-        focusdev=$dev
-        break
-    fi
+i=0
+while [ -z "$focusdev" ] && [ "$i" -lt 40 ]; do
+    for dev in /dev/v4l-subdev*; do
+        [ -e "$dev" ] || continue
+        if v4l2-ctl -d "$dev" --list-ctrls 2>/dev/null | grep -q 'focus_absolute'; then
+            focusdev=$dev
+            break
+        fi
+    done
+    [ -n "$focusdev" ] || sleep 0.25
+    i=$((i + 1))
 done
-[ -n "$focusdev" ] || exit 0
+[ -n "$focusdev" ] || exit 6
 
-# Even when the lens is runtime-suspended, V4L2 keeps the control value and
-# the DW9719/DW9761 resume path restores it on next camera open.
 v4l2-ctl -d "$focusdev" --set-ctrl="focus_absolute=$inf" >/dev/null
 
 umask 022
