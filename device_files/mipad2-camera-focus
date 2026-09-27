@@ -1,0 +1,61 @@
+#!/bin/sh
+set -eu
+
+NVMEM=/sys/bus/nvmem/devices/mipad2-t4ka3-otp/nvmem
+VCM=/dev/v4l-subdev6
+
+die() { echo "mipad2-camera-focus: $*" >&2; exit 1; }
+
+[ -r "$NVMEM" ] || die "factory camera OTP is not available"
+command -v v4l2-ctl >/dev/null 2>&1 || die "v4l2-ctl is required"
+[ -e "$VCM" ] || die "DW9761 VCM subdevice is not available"
+
+byte_at() {
+    od -An -tu1 -j "$1" -N 1 "$NVMEM" | tr -d ' '
+}
+
+valid_module=$(byte_at 0)
+valid_af=$(byte_at 16)
+[ "$valid_module" = 1 ] || die "module OTP group is invalid"
+[ "$valid_af" = 1 ] || die "AF OTP group is invalid"
+
+inf_hi=$(byte_at 19)
+inf_lo=$(byte_at 20)
+macro_hi=$(byte_at 21)
+macro_lo=$(byte_at 22)
+
+infinity=$((inf_hi * 256 + inf_lo))
+macro=$((macro_hi * 256 + macro_lo))
+
+[ "$infinity" -ge 0 ] && [ "$infinity" -le 1023 ] || die "invalid infinity endpoint: $infinity"
+[ "$macro" -ge "$infinity" ] && [ "$macro" -le 1023 ] || die "invalid macro endpoint: $macro"
+
+set_focus() {
+    value=$1
+    [ "$value" -ge "$infinity" ] && [ "$value" -le "$macro" ] ||
+        die "focus $value outside factory range $infinity..$macro"
+    v4l2-ctl -d "$VCM" --set-ctrl="focus_absolute=$value"
+}
+
+case "${1:-info}" in
+    info)
+        printf 'infinity=%s\nmacro=%s\nspan=%s\n' "$infinity" "$macro" "$((macro - infinity))"
+        ;;
+    infinity)
+        set_focus "$infinity"
+        ;;
+    macro)
+        set_focus "$macro"
+        ;;
+    midpoint)
+        set_focus "$(((infinity + macro) / 2))"
+        ;;
+    set)
+        [ "$#" -eq 2 ] || die "usage: $0 set VALUE"
+        case "$2" in *[!0-9]*|'') die "VALUE must be an integer" ;; esac
+        set_focus "$2"
+        ;;
+    *)
+        die "usage: $0 [info|infinity|macro|midpoint|set VALUE]"
+        ;;
+esac
