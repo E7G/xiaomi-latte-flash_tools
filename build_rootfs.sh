@@ -335,6 +335,17 @@ EOF
 		install -Dm0644 "$device_file/brave-lean-policy.json" \
 			"$mount_dir/etc/brave/policies/managed/lean-browser.json"
 
+		# Launch GNOME Snapshot through a tiny focus initializer. It only
+		# restores the per-device OTP infinity position; full autofocus remains
+		# an explicit command so camera startup stays instant.
+		if [[ -f "$mount_dir/usr/share/applications/org.gnome.Snapshot.desktop" ]]; then
+			install -Dm0644 "$mount_dir/usr/share/applications/org.gnome.Snapshot.desktop" \
+				"$mount_dir/home/$UserName/.local/share/applications/org.gnome.Snapshot.desktop"
+			sed -i '0,/^Exec=/s|^Exec=.*|Exec=/usr/local/bin/mipad2-snapshot|' \
+				"$mount_dir/home/$UserName/.local/share/applications/org.gnome.Snapshot.desktop"
+			run chown "$UserName:$UserName" /home/$UserName/.local/share/applications/org.gnome.Snapshot.desktop
+		fi
+
 		# Hardware absent on Mi Pad 2: keep GNOME dependencies installed but
 		# stop their background services from consuming RAM.
 		run sh -c 'systemctl mask bolt.service >/dev/null 2>&1 || true'
@@ -396,6 +407,10 @@ EOF
 	run $enable mipad2-thermal-guard.service
 	install -Dm0755 "$device_file/mipad2-camera-af" \
 		"$mount_dir/usr/local/bin/mipad2-camera-af"
+	install -Dm0755 "$device_file/mipad2-camera-focus-init" \
+		"$mount_dir/usr/local/bin/mipad2-camera-focus-init"
+	install -Dm0755 "$device_file/mipad2-snapshot" \
+		"$mount_dir/usr/local/bin/mipad2-snapshot"
 	install -Dm0755 "$device_file/mipad2-vaapi-smoke" \
 		"$mount_dir/usr/local/sbin/mipad2-vaapi-smoke"
 	install -Dm0644 "$device_file/mipad2-vaapi-audit.service" \
