@@ -26,6 +26,8 @@ env:
   KERNEL_REPO: E7G/linux_latte
   KERNEL_REF: cachyos-mipad2
   KERNEL_JOBS: '4'
+  SNAPSHOT_REPO: E7G/snapshot
+  SNAPSHOT_REF: mipad2-camera50-otp-af-20260927
   ROOTFS_SIZE: 8G
 
 jobs:
@@ -106,8 +108,431 @@ jobs:
           compression-level: 0
           retention-days: 1
 
+  snapshot:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve validated Mi Pad 2 Snapshot branch
+        id: snapshot-source
+        shell: bash
+        run: |
+          commit="$(git ls-remote "https://github.com/${SNAPSHOT_REPO}.git" "refs/heads/${SNAPSHOT_REF}" | awk '{print $1}')"
+          test -n "$commit"
+          echo "commit=$commit" >> "$GITHUB_OUTPUT"
+          echo "Building ${SNAPSHOT_REPO}@${SNAPSHOT_REF} (${commit})"
+
+      - name: Restore Snapshot build cache
+        id: snapshot-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: snapshot-output
+          key: latte-snapshot-${{ runner.os }}-${{ steps.snapshot-source.outputs.commit }}-${{ hashFiles('.github/workflows/build-dnx.yml') }}
+
+      - name: Build validated Mi Pad 2 Snapshot
+        if: steps.snapshot-cache.outputs.cache-hit != 'true'
+        run: |
+          rm -rf snapshot-src snapshot-output
+          git clone --depth 1 --branch "${SNAPSHOT_REF}" "https://github.com/${SNAPSHOT_REPO}.git" snapshot-src
+          docker run --rm \
+            -v "$PWD/snapshot-src:/src" \
+            -v "$PWD/snapshot-output:/out" \
+            -w /src \
+            archlinux:base-devel \
+            bash -lc '
+              set -euxo pipefail
+              pacman -Syu --noconfirm --needed \
+                git rust meson ninja pkgconf gettext desktop-file-utils appstream \
+                snapshot v4l-utils gst-plugins-good zstd
+              meson setup build --prefix=/usr --buildtype=release
+              ninja -C build -j"$(nproc)"
+              rm -rf pkgroot
+              DESTDIR="$PWD/pkgroot" meson install -C build --no-rebuild
+              test -x pkgroot/usr/bin/snapshot
+              strings pkgroot/usr/bin/snapshot | grep -Fq "/sys/bus/nvmem/devices/mipad2-t4ka3-otp/nvmem"
+              strings pkgroot/usr/bin/snapshot | grep -Fq "Mi Pad 2 rear autofocus selected focus"
+              version="$(sed -n "s/.*version: '\''\([^'\'']*\)'\''.*/\1/p" meson.build | head -n1)"
+              test "$version" = "50.0"
+              mkdir -p /out
+              tar --zstd -C pkgroot -cf "/out/snapshot-mipad2-$version-x86_64.tar.zst" usr
+              (cd /out && sha256sum "snapshot-mipad2-$version-x86_64.tar.zst" > "snapshot-mipad2-$version-x86_64.tar.zst.sha256")
+            '
+
+      - name: Save Snapshot build cache
+        if: steps.snapshot-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: snapshot-output
+          key: ${{ steps.snapshot-cache.outputs.cache-primary-key }}
+
+      - name: Verify Mi Pad 2 Snapshot artifact
+        run: |
+          cd snapshot-output
+          sha256sum -c *.tar.zst.sha256
+          contents="${RUNNER_TEMP}/snapshot-contents.txt"
+          tar --zstd -tf *.tar.zst > "$contents"
+          grep -q '^usr/bin/snapshot
+    runs-on: ubuntu-24.04
+    timeout-minutes: 240
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Free runner disk space
+        run: |
+          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc
+          docker system prune --all --force
+
+      - name: Download kernel package
+        uses: actions/download-artifact@v4
+        with:
+          name: xiaomi-latte-cachyos-kernel
+          path: kernel-output
+
+      - name: Download Mi Pad 2 Snapshot
+        uses: actions/download-artifact@v4
+        with:
+          name: xiaomi-latte-snapshot
+          path: snapshot-output
+
+      - name: Prepare NBD devices
+        run: |
+          sudo modprobe nbd max_part=8
+          ls -l /dev/nbd0 /dev/nbd1
+
+      - name: Build rootfs and one-click package
+        run: |
+          docker run --rm --privileged \
+            -e ROOTFS_SIZE -e GITHUB_RUN_NUMBER \
+            -v "$PWD:/workspace" -w /workspace \
+            archlinux:base-devel \
+            bash -lc 'pacman -Sy --noconfirm arch-install-scripts btrfs-progs dosfstools gptfdisk qemu-img xz zstd && bash ./scripts/build_dnx_package.sh'
+
+      - name: Verify generated packages
+        run: |
+          bash -n build_rootfs.sh
+          bash -n device_files/mipad2-kernel-install
+          cc -O2 -Wall -Wextra device_files/mipad2-camera-af.c -o /tmp/mipad2-camera-af-ci
+          grep -q 'desktop_type="${desktop_type:-gnome}"' build_rootfs.sh
+          grep -q 'qt6-base qt6-wayland qt6-5compat iio-sensor-proxy' build_rootfs.sh
+          grep -q 'brave-bin' build_rootfs.sh
+          grep -q 'zram-size = ram \* 3 / 4' build_rootfs.sh
+          grep -q 'compression-algorithm = lz4' build_rootfs.sh
+          grep -q 'mipad2-gnome-osk-patch' build_rootfs.sh
+          python -m py_compile device_files/mipad2-gnome-osk-patch
+          python -m json.tool device_files/brave-lean-policy.json >/dev/null
+          grep -q '^wifi.powersave=2$' device_files/20-mipad2-wifi-powersave.conf
+          grep -q '^vm.swappiness = 60$' device_files/99-mipad2-lowlatency.conf
+          grep -q 'AcceleratedVideoDecodeLinuxGL,VaapiIgnoreDriverChecks' device_files/brave-flags.conf
+          grep -q 'org.gnome.desktop.session idle-delay 0' build_rootfs.sh
+          grep -q "sleep-inactive-ac-type 'nothing'" build_rootfs.sh
+          grep -q "sleep-inactive-battery-type 'nothing'" build_rootfs.sh
+          grep -q 'Exec = /usr/local/sbin/mipad2-kernel-install' device_files/kernel.hook
+          cd dist
+          sha256sum -c *.sha256
+          xz -t *.img.xz
+          test "$(openssl x509 -in ../device_files/MOK.crt -noout -fingerprint -sha256 | tr -d ':' | cut -d= -f2)" = '9C8AF8E2C75D0B5D7887A2F70EEA56F8CEA9F4FE8B3AF1070CCC74408B811DF1'
+          echo '9c8af8e2c75d0b5d7887a2f70eea56f8cea9f4fe8b3af1070ccc74408b811df1  ../device_files/MOK.cer' | sha256sum -c -
+          echo 'af677ea5fb0ff1e70b34d18118a55b7dad70325c8d3920000b58427ae22a7c3d  ../device_files/fastboot.efi' | sha256sum -c -
+          ls -lh *
+          cd ../work/dnx-package
+          sha256sum -c SHA256SUMS
+          test -f ONE_KEY_FLASH.bat
+          test -f flash-one-click.ps1
+          test -f platform-tools/fastboot.exe
+          test -f images/gpt.bin
+          test -f images/xiaomi-latte-boot.img
+          test -f images/xiaomi-latte-rootfs.img
+
+      - name: Verify boot image layout
+        run: |
+          set -Eeuo pipefail
+          esp="$(mktemp -d)"
+          rootfs="$(mktemp -d)"
+          cleanup() {
+            mountpoint -q "$rootfs" && sudo umount "$rootfs" || true
+            mountpoint -q "$esp" && sudo umount "$esp" || true
+            rmdir "$rootfs" || true
+            rmdir "$esp" || true
+          }
+          trap cleanup EXIT
+          sudo mount -o loop,ro work/dnx-package/images/xiaomi-latte-boot.img "$esp"
+          test -s "$esp/EFI/BOOT/BOOTX64.EFI"
+          test -s "$esp/EFI/BOOT/grubx64.efi"
+          test -s "$esp/EFI/BOOT/grub.cfg"
+          test -s "$esp/grub/grub.cfg"
+          grep -q 'configfile.*grub.cfg' "$esp/EFI/BOOT/grub.cfg"
+          cmp "$esp/EFI/BOOT/grubx64.efi" "$esp/EFI/BOOT/BOOTX64.EFI"
+          sudo mount -o loop,ro,subvol=@ work/dnx-package/images/xiaomi-latte-rootfs.img "$rootfs"
+          test -x "$rootfs/usr/local/sbin/mipad2-install-to-emmc"
+          test -s "$rootfs/etc/systemd/system/mipad2-usb-installer.service"
+          test -L "$rootfs/etc/systemd/system/multi-user.target.wants/mipad2-usb-installer.service"
+          test -L "$rootfs/etc/systemd/system/multi-user.target.wants/mipad2-hardware-audit.service"
+          test ! -e "$rootfs/usr/local/libexec/mipad2-navkeys.py"
+          test ! -e "$rootfs/etc/systemd/system/mipad2-navkeys.service"
+          test ! -e "$rootfs/etc/systemd/system/multi-user.target.wants/mipad2-navkeys.service"
+          kernel_release="$(find "$rootfs/usr/lib/modules" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | head -n1)"
+          test -n "$kernel_release"
+          test -s "$rootfs/usr/lib/modules/$kernel_release/modules.dep"
+          test -s "$rootfs/usr/lib/modules/$kernel_release/config"
+          test -x "$rootfs/usr/local/sbin/mipad2-kernel-install"
+          grep -q 'Exec = /usr/local/sbin/mipad2-kernel-install' "$rootfs/etc/pacman.d/hooks/kernel.hook"
+          test -x "$rootfs/usr/bin/gnome-shell"
+          test -x "$rootfs/usr/bin/brave"
+          test ! -x "$rootfs/usr/bin/firefox"
+          test -x "$rootfs/usr/lib/rtkit-daemon"
+          test -x "$rootfs/usr/local/sbin/mipad2-gnome-osk-patch"
+          test -s "$rootfs/etc/pacman.d/hooks/95-mipad2-gnome-osk.hook"
+          test -s "$rootfs/etc/brave/policies/managed/lean-browser.json"
+          test -s "$rootfs/home/user/.config/brave-flags.conf"
+          grep -q '^wifi.powersave=2$' "$rootfs/etc/NetworkManager/conf.d/20-mipad2-wifi-powersave.conf"
+          grep -q '^vm.swappiness = 60$' "$rootfs/etc/sysctl.d/99-mipad2-lowlatency.conf"
+          grep -q '^vm.page-cluster = 0$' "$rootfs/etc/sysctl.d/99-mipad2-lowlatency.conf"
+          grep -q '^zram-size = ram \* 3 / 4$' "$rootfs/etc/systemd/zram-generator.conf"
+          grep -q '^compression-algorithm = lz4$' "$rootfs/etc/systemd/zram-generator.conf"
+          grep -q '^swap-priority = 100$' "$rootfs/etc/systemd/zram-generator.conf"
+          grep -q 'AcceleratedVideoDecodeLinuxGL,VaapiIgnoreDriverChecks' "$rootfs/home/user/.config/brave-flags.conf"
+          grep -q '^x-scheme-handler/https=brave-browser.desktop$' "$rootfs/home/user/.config/mimeapps.list"
+          test -x "$rootfs/usr/bin/snapshot"
+          test -x "$rootfs/usr/bin/qv4l2"
+          test -e "$rootfs/usr/lib/libQt6Core.so.6"
+          test -x "$rootfs/usr/local/bin/mipad2-camera-af"
+          test -x "$rootfs/usr/local/bin/mipad2-camera-launch"
+          test -x "$rootfs/usr/local/sbin/mipad2-camera-init-focus"
+          test -s "$rootfs/etc/systemd/system/mipad2-camera-init-focus.service"
+          test -L "$rootfs/etc/systemd/system/multi-user.target.wants/mipad2-camera-init-focus.service"
+          test -s "$rootfs/home/user/.local/share/applications/mipad2-camera.desktop"
+          grep -Fxq 'Exec=/usr/local/bin/mipad2-camera-launch' "$rootfs/home/user/.local/share/applications/mipad2-camera.desktop"
+          grep -Fq 'mipad2-camera-af auto' "$rootfs/usr/local/bin/mipad2-camera-launch"
+          grep -Fxq 'Hidden=true' "$rootfs/home/user/.local/share/applications/qv4l2.desktop"
+          test -L "$rootfs/etc/systemd/system/display-manager.service"
+          test "$(readlink "$rootfs/etc/systemd/system/display-manager.service")" = '/usr/lib/systemd/system/gdm.service'
+          grep -q '^AutomaticLoginEnable=True$' "$rootfs/etc/gdm/custom.conf"
+          test ! -x "$rootfs/usr/bin/plasmalogin"
+          test -s "$rootfs/usr/lib/firmware/brcm/brcmfmac4356-pcie.Xiaomi Inc-Mipad2.txt"
+          test -s "$rootfs/usr/lib/firmware/brcm/BCM4356A2.hcd"
+          test -s "$rootfs/usr/share/alsa/ucm2/conf.d/cht-bsw-rt5659/HiFi.conf"
+
+      - name: Validate Windows flasher syntax
+        shell: pwsh
+        run: |
+          $tokens = $null
+          $errors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile(
+            (Resolve-Path './flash-one-click.ps1').Path,
+            [ref]$tokens,
+            [ref]$errors
+          ) | Out-Null
+          if ($errors.Count -gt 0) {
+            $errors | ForEach-Object { Write-Error $_ }
+            exit 1
+          }
+
+      - name: Upload one-click USB installer image
+        uses: actions/upload-artifact@v4
+        with:
+          name: xiaomi-latte-cachyos-usb-imgxz
+          path: |
+            dist/*.img.xz
+            dist/*.img.xz.sha256
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 30
+
+      - name: Upload ready-to-run one-click flash package
+        uses: actions/upload-artifact@v4
+        with:
+          name: xiaomi-latte-cachyos-one-click
+          path: work/dnx-package/
+          if-no-files-found: error
+          compression-level: 6
+          retention-days: 30
+ "$contents"
+          grep -q '^usr/share/applications/org.gnome.Snapshot.desktop
+    runs-on: ubuntu-24.04
+    timeout-minutes: 240
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Free runner disk space
+        run: |
+          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc
+          docker system prune --all --force
+
+      - name: Download kernel package
+        uses: actions/download-artifact@v4
+        with:
+          name: xiaomi-latte-cachyos-kernel
+          path: kernel-output
+
+      - name: Prepare NBD devices
+        run: |
+          sudo modprobe nbd max_part=8
+          ls -l /dev/nbd0 /dev/nbd1
+
+      - name: Build rootfs and one-click package
+        run: |
+          docker run --rm --privileged \
+            -e ROOTFS_SIZE -e GITHUB_RUN_NUMBER \
+            -v "$PWD:/workspace" -w /workspace \
+            archlinux:base-devel \
+            bash -lc 'pacman -Sy --noconfirm arch-install-scripts btrfs-progs dosfstools gptfdisk qemu-img xz zstd && bash ./scripts/build_dnx_package.sh'
+
+      - name: Verify generated packages
+        run: |
+          bash -n build_rootfs.sh
+          bash -n device_files/mipad2-kernel-install
+          cc -O2 -Wall -Wextra device_files/mipad2-camera-af.c -o /tmp/mipad2-camera-af-ci
+          grep -q 'desktop_type="${desktop_type:-gnome}"' build_rootfs.sh
+          grep -q 'qt6-base qt6-wayland qt6-5compat iio-sensor-proxy' build_rootfs.sh
+          grep -q 'brave-bin' build_rootfs.sh
+          grep -q 'zram-size = ram \* 3 / 4' build_rootfs.sh
+          grep -q 'compression-algorithm = lz4' build_rootfs.sh
+          grep -q 'mipad2-gnome-osk-patch' build_rootfs.sh
+          python -m py_compile device_files/mipad2-gnome-osk-patch
+          python -m json.tool device_files/brave-lean-policy.json >/dev/null
+          grep -q '^wifi.powersave=2$' device_files/20-mipad2-wifi-powersave.conf
+          grep -q '^vm.swappiness = 60$' device_files/99-mipad2-lowlatency.conf
+          grep -q 'AcceleratedVideoDecodeLinuxGL,VaapiIgnoreDriverChecks' device_files/brave-flags.conf
+          grep -q 'org.gnome.desktop.session idle-delay 0' build_rootfs.sh
+          grep -q "sleep-inactive-ac-type 'nothing'" build_rootfs.sh
+          grep -q "sleep-inactive-battery-type 'nothing'" build_rootfs.sh
+          grep -q 'Exec = /usr/local/sbin/mipad2-kernel-install' device_files/kernel.hook
+          cd dist
+          sha256sum -c *.sha256
+          xz -t *.img.xz
+          test "$(openssl x509 -in ../device_files/MOK.crt -noout -fingerprint -sha256 | tr -d ':' | cut -d= -f2)" = '9C8AF8E2C75D0B5D7887A2F70EEA56F8CEA9F4FE8B3AF1070CCC74408B811DF1'
+          echo '9c8af8e2c75d0b5d7887a2f70eea56f8cea9f4fe8b3af1070ccc74408b811df1  ../device_files/MOK.cer' | sha256sum -c -
+          echo 'af677ea5fb0ff1e70b34d18118a55b7dad70325c8d3920000b58427ae22a7c3d  ../device_files/fastboot.efi' | sha256sum -c -
+          ls -lh *
+          cd ../work/dnx-package
+          sha256sum -c SHA256SUMS
+          test -f ONE_KEY_FLASH.bat
+          test -f flash-one-click.ps1
+          test -f platform-tools/fastboot.exe
+          test -f images/gpt.bin
+          test -f images/xiaomi-latte-boot.img
+          test -f images/xiaomi-latte-rootfs.img
+
+      - name: Verify boot image layout
+        run: |
+          set -Eeuo pipefail
+          esp="$(mktemp -d)"
+          rootfs="$(mktemp -d)"
+          cleanup() {
+            mountpoint -q "$rootfs" && sudo umount "$rootfs" || true
+            mountpoint -q "$esp" && sudo umount "$esp" || true
+            rmdir "$rootfs" || true
+            rmdir "$esp" || true
+          }
+          trap cleanup EXIT
+          sudo mount -o loop,ro work/dnx-package/images/xiaomi-latte-boot.img "$esp"
+          test -s "$esp/EFI/BOOT/BOOTX64.EFI"
+          test -s "$esp/EFI/BOOT/grubx64.efi"
+          test -s "$esp/EFI/BOOT/grub.cfg"
+          test -s "$esp/grub/grub.cfg"
+          grep -q 'configfile.*grub.cfg' "$esp/EFI/BOOT/grub.cfg"
+          cmp "$esp/EFI/BOOT/grubx64.efi" "$esp/EFI/BOOT/BOOTX64.EFI"
+          sudo mount -o loop,ro,subvol=@ work/dnx-package/images/xiaomi-latte-rootfs.img "$rootfs"
+          test -x "$rootfs/usr/local/sbin/mipad2-install-to-emmc"
+          test -s "$rootfs/etc/systemd/system/mipad2-usb-installer.service"
+          test -L "$rootfs/etc/systemd/system/multi-user.target.wants/mipad2-usb-installer.service"
+          test -L "$rootfs/etc/systemd/system/multi-user.target.wants/mipad2-hardware-audit.service"
+          test ! -e "$rootfs/usr/local/libexec/mipad2-navkeys.py"
+          test ! -e "$rootfs/etc/systemd/system/mipad2-navkeys.service"
+          test ! -e "$rootfs/etc/systemd/system/multi-user.target.wants/mipad2-navkeys.service"
+          kernel_release="$(find "$rootfs/usr/lib/modules" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | head -n1)"
+          test -n "$kernel_release"
+          test -s "$rootfs/usr/lib/modules/$kernel_release/modules.dep"
+          test -s "$rootfs/usr/lib/modules/$kernel_release/config"
+          test -x "$rootfs/usr/local/sbin/mipad2-kernel-install"
+          grep -q 'Exec = /usr/local/sbin/mipad2-kernel-install' "$rootfs/etc/pacman.d/hooks/kernel.hook"
+          test -x "$rootfs/usr/bin/gnome-shell"
+          test -x "$rootfs/usr/bin/brave"
+          test ! -x "$rootfs/usr/bin/firefox"
+          test -x "$rootfs/usr/lib/rtkit-daemon"
+          test -x "$rootfs/usr/local/sbin/mipad2-gnome-osk-patch"
+          test -s "$rootfs/etc/pacman.d/hooks/95-mipad2-gnome-osk.hook"
+          test -s "$rootfs/etc/brave/policies/managed/lean-browser.json"
+          test -s "$rootfs/home/user/.config/brave-flags.conf"
+          grep -q '^wifi.powersave=2$' "$rootfs/etc/NetworkManager/conf.d/20-mipad2-wifi-powersave.conf"
+          grep -q '^vm.swappiness = 60$' "$rootfs/etc/sysctl.d/99-mipad2-lowlatency.conf"
+          grep -q '^vm.page-cluster = 0$' "$rootfs/etc/sysctl.d/99-mipad2-lowlatency.conf"
+          grep -q '^zram-size = ram \* 3 / 4$' "$rootfs/etc/systemd/zram-generator.conf"
+          grep -q '^compression-algorithm = lz4$' "$rootfs/etc/systemd/zram-generator.conf"
+          grep -q '^swap-priority = 100$' "$rootfs/etc/systemd/zram-generator.conf"
+          grep -q 'AcceleratedVideoDecodeLinuxGL,VaapiIgnoreDriverChecks' "$rootfs/home/user/.config/brave-flags.conf"
+          grep -q '^x-scheme-handler/https=brave-browser.desktop$' "$rootfs/home/user/.config/mimeapps.list"
+          test -x "$rootfs/usr/bin/snapshot"
+          test -x "$rootfs/usr/bin/qv4l2"
+          test -e "$rootfs/usr/lib/libQt6Core.so.6"
+          test -x "$rootfs/usr/local/bin/mipad2-camera-af"
+          test -x "$rootfs/usr/local/bin/mipad2-camera-launch"
+          test -x "$rootfs/usr/local/sbin/mipad2-camera-init-focus"
+          test -s "$rootfs/etc/systemd/system/mipad2-camera-init-focus.service"
+          test -L "$rootfs/etc/systemd/system/multi-user.target.wants/mipad2-camera-init-focus.service"
+          test -s "$rootfs/home/user/.local/share/applications/mipad2-camera.desktop"
+          grep -Fxq 'Exec=/usr/local/bin/mipad2-camera-launch' "$rootfs/home/user/.local/share/applications/mipad2-camera.desktop"
+          grep -Fq 'mipad2-camera-af auto' "$rootfs/usr/local/bin/mipad2-camera-launch"
+          grep -Fxq 'Hidden=true' "$rootfs/home/user/.local/share/applications/qv4l2.desktop"
+          test -L "$rootfs/etc/systemd/system/display-manager.service"
+          test "$(readlink "$rootfs/etc/systemd/system/display-manager.service")" = '/usr/lib/systemd/system/gdm.service'
+          grep -q '^AutomaticLoginEnable=True$' "$rootfs/etc/gdm/custom.conf"
+          test ! -x "$rootfs/usr/bin/plasmalogin"
+          test -s "$rootfs/usr/lib/firmware/brcm/brcmfmac4356-pcie.Xiaomi Inc-Mipad2.txt"
+          test -s "$rootfs/usr/lib/firmware/brcm/BCM4356A2.hcd"
+          test -s "$rootfs/usr/share/alsa/ucm2/conf.d/cht-bsw-rt5659/HiFi.conf"
+
+      - name: Validate Windows flasher syntax
+        shell: pwsh
+        run: |
+          $tokens = $null
+          $errors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile(
+            (Resolve-Path './flash-one-click.ps1').Path,
+            [ref]$tokens,
+            [ref]$errors
+          ) | Out-Null
+          if ($errors.Count -gt 0) {
+            $errors | ForEach-Object { Write-Error $_ }
+            exit 1
+          }
+
+      - name: Upload one-click USB installer image
+        uses: actions/upload-artifact@v4
+        with:
+          name: xiaomi-latte-cachyos-usb-imgxz
+          path: |
+            dist/*.img.xz
+            dist/*.img.xz.sha256
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 30
+
+      - name: Upload ready-to-run one-click flash package
+        uses: actions/upload-artifact@v4
+        with:
+          name: xiaomi-latte-cachyos-one-click
+          path: work/dnx-package/
+          if-no-files-found: error
+          compression-level: 6
+          retention-days: 30
+ "$contents"
+          ls -lh *
+
+      - name: Upload Mi Pad 2 Snapshot for DNX job
+        uses: actions/upload-artifact@v4
+        with:
+          name: xiaomi-latte-snapshot
+          path: |
+            snapshot-output/*.tar.zst
+            snapshot-output/*.tar.zst.sha256
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 1
+
   dnx:
-    needs: kernel
+    needs: [kernel, snapshot]
     runs-on: ubuntu-24.04
     timeout-minutes: 240
     steps:
