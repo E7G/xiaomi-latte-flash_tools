@@ -205,8 +205,8 @@ gnome=(
 gdm gnome-shell gnome-session gnome-control-center
 nautilus gnome-console gnome-text-editor gnome-system-monitor
 gnome-keyring xdg-desktop-portal-gnome
-# V4L2 camera UI with native input switching and tablet integration
-qt6-base qt6-wayland qt6-5compat iio-sensor-proxy
+# GNOME Snapshot is the normal camera UI; qv4l2 remains a low-level debugger.
+snapshot qt6-base qt6-wayland qt6-5compat iio-sensor-proxy
 # Chinese input through GNOME-native IBus
 ibus ibus-libpinyin
 )
@@ -396,6 +396,13 @@ EOF
 	run $enable mipad2-thermal-guard.service
 	install -Dm0755 "$device_file/mipad2-camera-af" \
 		"$mount_dir/usr/local/bin/mipad2-camera-af"
+	install -Dm0755 "$device_file/mipad2-camera-init-focus" \
+		"$mount_dir/usr/local/sbin/mipad2-camera-init-focus"
+	install -Dm0755 "$device_file/mipad2-camera-launch" \
+		"$mount_dir/usr/local/bin/mipad2-camera-launch"
+	install -Dm0644 "$device_file/mipad2-camera-init-focus.service" \
+		"$mount_dir/etc/systemd/system/mipad2-camera-init-focus.service"
+	run $enable mipad2-camera-init-focus.service
 	install -Dm0755 "$device_file/mipad2-vaapi-smoke" \
 		"$mount_dir/usr/local/sbin/mipad2-vaapi-smoke"
 	install -Dm0644 "$device_file/mipad2-vaapi-audit.service" \
