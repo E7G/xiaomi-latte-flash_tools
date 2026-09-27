@@ -394,8 +394,13 @@ EOF
 	install -Dm0644 "$device_file/mipad2-thermal-guard.service" \
 		"$mount_dir/etc/systemd/system/mipad2-thermal-guard.service"
 	run $enable mipad2-thermal-guard.service
-	install -Dm0755 "$device_file/mipad2-camera-af" \
-		"$mount_dir/usr/local/bin/mipad2-camera-af"
+	# Build the autofocus helper natively at image-build time. The final
+	# tablet image gets only the small C binary; no Python AF runtime is needed.
+	install -d "$mount_dir/usr/local/bin"
+	cc -O2 -Wall -Wextra "$device_file/mipad2-camera-af.c" \
+		-o "$mount_dir/usr/local/bin/mipad2-camera-af"
+	strip --strip-unneeded "$mount_dir/usr/local/bin/mipad2-camera-af"
+	chmod 0755 "$mount_dir/usr/local/bin/mipad2-camera-af"
 	install -Dm0755 "$device_file/mipad2-camera-init-focus" \
 		"$mount_dir/usr/local/sbin/mipad2-camera-init-focus"
 	install -Dm0755 "$device_file/mipad2-camera-launch" \
