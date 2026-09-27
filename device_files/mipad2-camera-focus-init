@@ -1,0 +1,52 @@
+#!/bin/sh
+set -eu
+
+NVMEM=/sys/bus/nvmem/devices/mipad2-t4ka3-otp/nvmem
+FALLBACK_INF=237
+focus=$FALLBACK_INF
+source=fallback
+
+read_af_bytes() {
+    if [ -r "$NVMEM" ]; then
+        dd if="$NVMEM" bs=1 skip=19 count=4 status=none 2>/dev/null
+        return
+    fi
+    if command -v sudo >/dev/null 2>&1 && sudo -n test -r "$NVMEM" 2>/dev/null; then
+        sudo -n dd if="$NVMEM" bs=1 skip=19 count=4 status=none 2>/dev/null
+    fi
+}
+
+bytes=$(read_af_bytes | od -An -tu1 2>/dev/null || true)
+set -- $bytes
+if [ "$#" -eq 4 ]; then
+    inf=$(( $1 * 256 + $2 ))
+    macro=$(( $3 * 256 + $4 ))
+    if [ "$inf" -ge 0 ] && [ "$inf" -lt "$macro" ] && [ "$macro" -le 1023 ]; then
+        focus=$inf
+        source=OTP
+    fi
+fi
+
+lens=
+for namefile in /sys/class/video4linux/v4l-subdev*/name; do
+    [ -r "$namefile" ] || continue
+    name=$(cat "$namefile" 2>/dev/null || true)
+    case "$name" in
+        dw9719*|dw9761*)
+            node=$(basename "$(dirname "$namefile")")
+            lens="/dev/$node"
+            break
+            ;;
+    esac
+done
+
+[ -n "$lens" ] || exit 0
+if v4l2-ctl -d "$lens" --set-ctrl=focus_absolute="$focus" >/dev/null 2>&1; then
+    printf 'Mi Pad 2 camera focus init: %s (%s) on %s\n' "$focus" "$source" "$lens"
+    exit 0
+fi
+
+if command -v sudo >/dev/null 2>&1 &&
+   sudo -n v4l2-ctl -d "$lens" --set-ctrl=focus_absolute="$focus" >/dev/null 2>&1; then
+    printf 'Mi Pad 2 camera focus init: %s (%s) on %s\n' "$focus" "$source" "$lens"
+fi
