@@ -1,0 +1,10 @@
+[Unit]
+Description=Mi Pad 2 factory camera focus calibration
+After=systemd-udev-trigger.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/mipad2-camera-calibration-init
+
+[Install]
+WantedBy=multi-user.target
