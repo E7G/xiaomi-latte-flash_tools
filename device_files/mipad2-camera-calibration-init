@@ -1,0 +1,81 @@
+#!/bin/sh
+# Initialize Mi Pad 2 rear-camera focus from the per-device factory OTP.
+# Runs once at boot; no resident process.
+set -eu
+
+OTP=/sys/bus/nvmem/devices/mipad2-t4ka3-otp/nvmem
+RUNDIR=/run/mipad2-camera
+
+i=0
+while [ ! -r "$OTP" ] && [ "$i" -lt 20 ]; do
+	sleep 0.25
+	i=$((i + 1))
+done
+
+if [ ! -r "$OTP" ]; then
+	echo "Mi Pad 2 camera OTP NVMEM is unavailable; leaving focus unchanged" >&2
+	exit 0
+fi
+
+size=$(stat -c %s "$OTP" 2>/dev/null || echo 0)
+if [ "$size" -ne 578 ]; then
+	echo "Unexpected Mi Pad 2 camera OTP size: $size" >&2
+	exit 1
+fi
+
+af=$(od -An -v -tu1 -j 16 -N 16 "$OTP" | awk '
+{
+	for (i = 1; i <= NF; i++)
+		b[++n] = $i
+}
+END {
+	if (n != 16)
+		exit 2
+	sum = 0
+	for (i = 2; i <= 15; i++)
+		sum += b[i]
+	printf "%u %u %u %u %u\\n", b[1], b[4] * 256 + b[5],
+	       b[6] * 256 + b[7], sum % 255, b[16]
+}')
+set -- $af
+valid=$1
+inf=$2
+macro=$3
+calc=$4
+stored=$5
+
+if [ "$valid" -ne 1 ] || [ "$calc" -ne "$stored" ] ||
+   [ "$inf" -lt 0 ] || [ "$macro" -gt 1023 ] || [ "$inf" -ge "$macro" ]; then
+	echo "Invalid Mi Pad 2 factory AF calibration" >&2
+	exit 1
+fi
+
+focus=
+for sysdev in /sys/class/video4linux/v4l-subdev*; do
+	[ -r "$sysdev/name" ] || continue
+	name=$(cat "$sysdev/name")
+	case "$name" in
+		dw9719\ *)
+			focus=/dev/${sysdev##*/}
+			break
+			;;
+	esac
+done
+
+if [ -z "$focus" ] || [ ! -e "$focus" ]; then
+	echo "DW9719 focus subdevice not found" >&2
+	exit 1
+fi
+
+v4l2-ctl -d "$focus" --set-ctrl "focus_absolute=$inf"
+
+install -d -m 0755 "$RUNDIR"
+cat > "$RUNDIR/af.env" <<EOF
+MIPAD2_AF_INFINITY=$inf
+MIPAD2_AF_MACRO=$macro
+MIPAD2_AF_SPAN=$((macro - inf))
+MIPAD2_AF_FOCUS_DEVICE=$focus
+EOF
+chmod 0644 "$RUNDIR/af.env"
+
+printf 'Mi Pad 2 AF calibrated: infinity=%s macro=%s focus=%s\n' "$inf" "$macro" "$focus"
