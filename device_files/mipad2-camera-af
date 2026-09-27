@@ -86,7 +86,7 @@ def positions(lo,hi,step):
     return p
 
 def main():
-    run(["v4l2-ctl","-d",VIDEO,"--set-input=0"])
+    run(["v4l2-ctl","-d",VIDEO,"--set-input=1"])
     otp=read_otp()
     lo,hi=otp if otp else (FALLBACK_INF,FALLBACK_MACRO)
     w,h,frame_size=get_format()
