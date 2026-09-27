@@ -1,0 +1,3 @@
+#!/bin/sh
+/usr/local/bin/mipad2-camera-focus-init >/dev/null 2>&1 || true
+exec /usr/bin/snapshot "$@"
