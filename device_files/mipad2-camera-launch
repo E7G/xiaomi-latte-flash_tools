@@ -1,13 +1,7 @@
 #!/bin/sh
-# Run one short OTP-bounded autofocus pass before handing the camera to
-# GNOME Snapshot. This keeps the camera UI native while avoiding a resident
-# autofocus daemon. If AtomISP is temporarily unavailable, fall back to the
-# per-unit factory infinity position and still launch Snapshot.
-if [ "${MIPAD2_CAMERA_SKIP_AF:-0}" != "1" ] &&
-   /usr/local/bin/mipad2-camera-af auto >/tmp/mipad2-camera-af.log 2>&1; then
-    :
-elif command -v sudo >/dev/null 2>&1; then
+# Refresh the per-unit infinity preset before opening GNOME Snapshot.
+# The helper is safe to run repeatedly and does not stay resident.
+if command -v sudo >/dev/null 2>&1; then
     sudo -n /usr/local/sbin/mipad2-camera-init-focus >/dev/null 2>&1 || true
 fi
-
 exec snapshot "$@"
