@@ -1,4 +1,3 @@
-#include <errno.h>
 #include <fcntl.h>
 #include <linux/videodev2.h>
 #include <stdint.h>
@@ -12,6 +11,7 @@
 
 #define VIDEO_DEV "/dev/video0"
 #define OTP_DEV "/sys/bus/nvmem/devices/mipad2-t4ka3-otp/nvmem"
+#define STATE_FILE "/run/mipad2-camera-af.env"
 #define OTP_SIZE 578
 #define FALLBACK_INF 237
 #define FALLBACK_MACRO 366
@@ -48,6 +48,23 @@ static int read_otp_range(int *inf, int *macro) {
 
     int a = (d[0x13] << 8) | d[0x14];
     int b = (d[0x15] << 8) | d[0x16];
+    if (a < 0 || b > 1023 || a >= b) return -1;
+    *inf = a; *macro = b;
+    return 0;
+}
+
+static int read_state_range(int *inf, int *macro) {
+    FILE *fp = fopen(STATE_FILE, "r");
+    if (!fp) return -1;
+
+    char line[128];
+    int a = -1, b = -1;
+    while (fgets(line, sizeof(line), fp)) {
+        if (sscanf(line, "MIPAD2_AF_INFINITY=%d", &a) == 1) continue;
+        if (sscanf(line, "MIPAD2_AF_MACRO=%d", &b) == 1) continue;
+    }
+    fclose(fp);
+
     if (a < 0 || b > 1023 || a >= b) return -1;
     *inf = a; *macro = b;
     return 0;
@@ -179,7 +196,10 @@ static int best_point(struct point *p, int n, double *out) {
 int main(int argc, char **argv) {
     int lo = FALLBACK_INF, hi = FALLBACK_MACRO;
     const char *range_src = "fallback";
-    if (read_otp_range(&lo, &hi) == 0) range_src = "OTP";
+    if (read_otp_range(&lo, &hi) == 0)
+        range_src = "OTP";
+    else if (read_state_range(&lo, &hi) == 0)
+        range_src = "state";
     if (argc >= 3) {
         lo = atoi(argv[1]);
         hi = atoi(argv[2]);
@@ -201,6 +221,11 @@ int main(int argc, char **argv) {
 
     struct v4l2_format fmt = {0};
     fmt.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+    fmt.fmt.pix.width = 1280;
+    fmt.fmt.pix.height = 720;
+    fmt.fmt.pix.pixelformat = V4L2_PIX_FMT_YUV420;
+    fmt.fmt.pix.field = V4L2_FIELD_NONE;
+    if (xioctl(vfd, VIDIOC_S_FMT, &fmt) < 0) die("VIDIOC_S_FMT");
     if (xioctl(vfd, VIDIOC_G_FMT, &fmt) < 0) die("VIDIOC_G_FMT");
     int w = fmt.fmt.pix.width, h = fmt.fmt.pix.height, stride = fmt.fmt.pix.bytesperline;
     if (fmt.fmt.pix.pixelformat != V4L2_PIX_FMT_YUV420) {
