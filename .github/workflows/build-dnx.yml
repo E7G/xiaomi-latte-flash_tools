@@ -141,6 +141,7 @@ jobs:
         run: |
           bash -n build_rootfs.sh
           bash -n device_files/mipad2-kernel-install
+          cc -O2 -Wall -Wextra device_files/mipad2-camera-af.c -o /tmp/mipad2-camera-af-ci
           grep -q 'desktop_type="${desktop_type:-gnome}"' build_rootfs.sh
           grep -q 'qt6-base qt6-wayland qt6-5compat iio-sensor-proxy' build_rootfs.sh
           grep -q 'brave-bin' build_rootfs.sh
