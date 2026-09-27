@@ -253,6 +253,13 @@ EOF
 }
 
 config_packages() {
+	echo 编译 Mi Pad 2 OTP 自动对焦工具
+	af_build_bin="$(mktemp)"
+	cc -O2 -Wall -Wextra -Werror "$device_file/mipad2-af.c" -o "$af_build_bin"
+	strip "$af_build_bin"
+	install -Dm0755 "$af_build_bin" "$mount_dir/usr/local/bin/mipad2-af"
+	rm -f "$af_build_bin"
+
 	echo 安装 pacman 内核签名 hook
 	install -Dm0755 "${device_file}"/mipad2-kernel-install $mount_dir/usr/local/sbin/mipad2-kernel-install
 	install -Dm0644 "${device_file}"/kernel.hook $mount_dir/etc/pacman.d/hooks/
