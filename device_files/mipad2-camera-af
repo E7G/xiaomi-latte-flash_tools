@@ -68,17 +68,21 @@ def score_y(frame,w,h):
 def measure(pos,w,h,frame_size,tmpdir):
     set_focus(pos)
     time.sleep(0.12)
-    path=os.path.join(tmpdir,f"f-{pos}.raw")
-    capture4(path)
-    data=Path(path).read_bytes()
-    n=len(data)//frame_size
-    if n < 2:
-        return 0.0
-    scores=[]
-    for fi in range(max(0,n-2),n):
-        frame=data[fi*frame_size:(fi+1)*frame_size]
-        scores.append(score_y(frame,w,h))
-    return sum(scores)/len(scores)
+    for attempt in range(2):
+        path=os.path.join(tmpdir,f"f-{pos}-{attempt}.raw")
+        capture4(path)
+        data=Path(path).read_bytes()
+        n=len(data)//frame_size
+        if n >= 2:
+            scores=[]
+            for fi in range(max(0,n-2),n):
+                frame=data[fi*frame_size:(fi+1)*frame_size]
+                scores.append(score_y(frame,w,h))
+            score=sum(scores)/len(scores)
+            if score > 0:
+                return score
+        time.sleep(0.08)
+    return -1.0
 
 def positions(lo,hi,step):
     p=list(range(lo,hi+1,step))
@@ -86,7 +90,11 @@ def positions(lo,hi,step):
     return p
 
 def main():
-    run(["v4l2-ctl","-d",VIDEO,"--set-input=0"])
+    run(["v4l2-ctl","-d",VIDEO,"--set-input=1"])
+    # AtomISP may retain the previous input's negotiated format. Use a known
+    # lightweight YU12 mode for AF scoring so frame_size matches captured data.
+    run(["v4l2-ctl","-d",VIDEO,
+         "--set-fmt-video=width=1280,height=720,pixelformat=YU12"])
     otp=read_otp()
     lo,hi=otp if otp else (FALLBACK_INF,FALLBACK_MACRO)
     w,h,frame_size=get_format()
