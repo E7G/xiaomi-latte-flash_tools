@@ -1,6 +1,8 @@
+#define _GNU_SOURCE
 #include <errno.h>
 #include <fcntl.h>
 #include <linux/videodev2.h>
+#include <poll.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -9,290 +11,561 @@
 #include <sys/mman.h>
 #include <sys/stat.h>
 #include <unistd.h>
+#include <dirent.h>
+#include <limits.h>
 
 #define VIDEO_DEV "/dev/video0"
-#define OTP_DEV "/sys/bus/nvmem/devices/mipad2-t4ka3-otp/nvmem"
-#define STATE_FILE "/run/mipad2-camera-af.env"
+#define OTP_CACHE "/run/mipad2-camera/otp.bin"
+#define OTP_SYSFS "/sys/bus/nvmem/devices/mipad2-t4ka3-otp/nvmem"
 #define OTP_SIZE 578
 #define FALLBACK_INF 237
 #define FALLBACK_MACRO 366
-#define NBUF 4
-#define MAX_POINTS 256
+#define REAR_INPUT 1
+#define NBUFS 4
 
-struct buf { void *p; size_t len; };
-struct point { int f; double s1, s2; };
+struct mm_buf {
+    void *ptr;
+    size_t len;
+};
 
-static int xioctl(int fd, unsigned long req, void *arg) {
+static int xioctl(int fd, unsigned long req, void *arg)
+{
     int r;
-    do r = ioctl(fd, req, arg); while (r < 0 && errno == EINTR);
+    do {
+        r = ioctl(fd, req, arg);
+    } while (r < 0 && errno == EINTR);
     return r;
 }
-static void die(const char *s) { perror(s); exit(1); }
 
-static int read_otp_range(int *inf, int *macro) {
-    uint8_t d[OTP_SIZE];
-    int fd = open(OTP_DEV, O_RDONLY | O_CLOEXEC);
-    if (fd < 0) return -1;
+static int read_exact(const char *path, uint8_t *buf, size_t n)
+{
+    int fd = open(path, O_RDONLY | O_CLOEXEC);
+    if (fd < 0)
+        return -1;
 
-    ssize_t got = 0;
-    while (got < OTP_SIZE) {
-        ssize_t n = read(fd, d + got, OTP_SIZE - got);
-        if (n <= 0) { close(fd); return -1; }
-        got += n;
-    }
-    close(fd);
-
-    if (d[0x10] != 1) return -1;
-    unsigned sum = 0;
-    for (int i = 0x11; i <= 0x1e; i++) sum += d[i];
-    if ((sum % 255) != d[0x1f]) return -1;
-
-    int a = (d[0x13] << 8) | d[0x14];
-    int b = (d[0x15] << 8) | d[0x16];
-    if (a < 0 || b > 1023 || a >= b) return -1;
-    *inf = a; *macro = b;
-    return 0;
-}
-
-static int read_state_range(int *inf, int *macro) {
-    FILE *fp = fopen(STATE_FILE, "r");
-    if (!fp) return -1;
-
-    char line[128];
-    int a = -1, b = -1;
-    while (fgets(line, sizeof(line), fp)) {
-        if (sscanf(line, "MIPAD2_AF_INFINITY=%d", &a) == 1) continue;
-        if (sscanf(line, "MIPAD2_AF_MACRO=%d", &b) == 1) continue;
-    }
-    fclose(fp);
-
-    if (a < 0 || b > 1023 || a >= b) return -1;
-    *inf = a; *macro = b;
-    return 0;
-}
-
-static int find_focus_device(char *path, size_t npath) {
-    for (int i = 0; i < 32; i++) {
-        char p[64];
-        snprintf(p, sizeof(p), "/dev/v4l-subdev%d", i);
-        int fd = open(p, O_RDWR | O_CLOEXEC);
-        if (fd < 0) continue;
-        struct v4l2_queryctrl q = { .id = V4L2_CID_FOCUS_ABSOLUTE };
-        if (xioctl(fd, VIDIOC_QUERYCTRL, &q) == 0 && !(q.flags & V4L2_CTRL_FLAG_DISABLED)) {
-            snprintf(path, npath, "%s", p);
-            return fd;
+    size_t off = 0;
+    while (off < n) {
+        ssize_t r = read(fd, buf + off, n - off);
+        if (r <= 0) {
+            close(fd);
+            return -1;
         }
-        close(fd);
+        off += (size_t)r;
     }
-    errno = ENODEV;
+
+    uint8_t extra;
+    ssize_t r = read(fd, &extra, 1);
+    close(fd);
+    return r == 0 ? 0 : -1;
+}
+
+static int group_ok(const uint8_t *d, size_t start, size_t size)
+{
+    unsigned sum = 0;
+
+    if (start + size > OTP_SIZE || size < 3 || d[start] != 1)
+        return 0;
+
+    for (size_t i = start + 1; i < start + size - 1; i++)
+        sum += d[i];
+
+    return (sum % 255) == d[start + size - 1];
+}
+
+static int otp_focus_range(int *inf, int *macro, const char **source)
+{
+    uint8_t d[OTP_SIZE];
+    const char *env = getenv("MIPAD2_OTP_PATH");
+    const char *paths[] = { env, OTP_CACHE, OTP_SYSFS, NULL };
+
+    for (int p = 0; paths[p] || p < 3; p++) {
+        const char *path = paths[p];
+        if (!path || !*path)
+            continue;
+        if (read_exact(path, d, sizeof(d)) < 0)
+            continue;
+
+        if (!group_ok(d, 0x00, 0x10) ||
+            !group_ok(d, 0x10, 0x10) ||
+            !group_ok(d, 0x20, 0x110) ||
+            !group_ok(d, 0x130, 0x112))
+            continue;
+
+        int i = ((int)d[0x13] << 8) | d[0x14];
+        int m = ((int)d[0x15] << 8) | d[0x16];
+        if (i < 0 || i >= m || m > 1023)
+            continue;
+
+        *inf = i;
+        *macro = m;
+        *source = path;
+        return 0;
+    }
+
+    *inf = FALLBACK_INF;
+    *macro = FALLBACK_MACRO;
+    *source = "fallback";
     return -1;
 }
 
-static void set_focus(int fd, int value) {
-    struct v4l2_control c = { .id = V4L2_CID_FOCUS_ABSOLUTE, .value = value };
-    if (xioctl(fd, VIDIOC_S_CTRL, &c) < 0) die("VIDIOC_S_CTRL focus");
+static int read_name(const char *path, char *buf, size_t n)
+{
+    int fd = open(path, O_RDONLY | O_CLOEXEC);
+    if (fd < 0)
+        return -1;
+    ssize_t r = read(fd, buf, n - 1);
+    close(fd);
+    if (r <= 0)
+        return -1;
+    buf[r] = 0;
+    char *nl = strchr(buf, '\n');
+    if (nl)
+        *nl = 0;
+    return 0;
 }
-static void wait_focus(int from, int to) {
-    int d = abs(to - from);
-    int us = 30000 + d * 1000;
-    if (us > 180000) us = 180000;
-    usleep(us);
+
+static int find_focus_dev(char *out, size_t n)
+{
+    DIR *d = opendir("/sys/class/video4linux");
+    if (!d)
+        return -1;
+
+    struct dirent *de;
+    int found = -1;
+
+    while ((de = readdir(d))) {
+        if (strncmp(de->d_name, "v4l-subdev", strlen("v4l-subdev")))
+            continue;
+
+        char p[PATH_MAX], name[256];
+        snprintf(p, sizeof(p), "/sys/class/video4linux/%s/name", de->d_name);
+        if (read_name(p, name, sizeof(name)) < 0)
+            continue;
+
+        if (strstr(name, "dw9719") || strstr(name, "dw9761")) {
+            snprintf(out, n, "/dev/%s", de->d_name);
+            found = 0;
+            break;
+        }
+    }
+
+    closedir(d);
+    return found;
 }
-static unsigned char *dq(int vfd, struct buf *b, struct v4l2_buffer *vb) {
-    memset(vb, 0, sizeof(*vb));
-    vb->type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
-    vb->memory = V4L2_MEMORY_MMAP;
-    if (xioctl(vfd, VIDIOC_DQBUF, vb) < 0) die("VIDIOC_DQBUF");
-    if (vb->index >= NBUF) { fprintf(stderr, "bad buffer index\n"); exit(1); }
-    return b[vb->index].p;
+
+static int focus_get(int fd, int *v)
+{
+    struct v4l2_control c = { .id = V4L2_CID_FOCUS_ABSOLUTE };
+    if (xioctl(fd, VIDIOC_G_CTRL, &c) < 0)
+        return -1;
+    *v = c.value;
+    return 0;
 }
-static void qbuf(int vfd, struct v4l2_buffer *vb) {
-    if (xioctl(vfd, VIDIOC_QBUF, vb) < 0) die("VIDIOC_QBUF");
+
+static int focus_set(int fd, int v)
+{
+    struct v4l2_control c = {
+        .id = V4L2_CID_FOCUS_ABSOLUTE,
+        .value = v,
+    };
+    return xioctl(fd, VIDIOC_S_CTRL, &c);
 }
-static void discard_frames(int vfd, struct buf *b, int n) {
-    for (int i = 0; i < n; i++) {
-        struct v4l2_buffer vb;
-        dq(vfd, b, &vb);
-        qbuf(vfd, &vb);
+
+static int luma_layout(uint32_t fmt, unsigned width, unsigned bpl,
+                       unsigned *stride, unsigned *pixel_step, unsigned *pixel_off)
+{
+    switch (fmt) {
+    case V4L2_PIX_FMT_YUV420:
+    case V4L2_PIX_FMT_YVU420:
+    case V4L2_PIX_FMT_NV12:
+    case V4L2_PIX_FMT_NV21:
+    case V4L2_PIX_FMT_NV16:
+    case V4L2_PIX_FMT_YUV422P:
+        *stride = bpl ? bpl : width;
+        *pixel_step = 1;
+        *pixel_off = 0;
+        return 0;
+    case V4L2_PIX_FMT_YUYV:
+        *stride = bpl ? bpl : width * 2;
+        *pixel_step = 2;
+        *pixel_off = 0;
+        return 0;
+    case V4L2_PIX_FMT_UYVY:
+        *stride = bpl ? bpl : width * 2;
+        *pixel_step = 2;
+        *pixel_off = 1;
+        return 0;
+    default:
+        return -1;
     }
 }
-static double frame_score(const uint8_t *y, int w, int h, int stride) {
-    int x0 = w / 6, x1 = w - w / 6, y0 = h / 6, y1 = h - h / 6;
-    double edge = 0.0, lum = 0.0;
-    uint64_t count = 0;
 
-    for (int yy = y0 + 2; yy < y1 - 2; yy += 2) {
-        const uint8_t *up = y + (yy - 1) * stride;
-        const uint8_t *row = y + yy * stride;
-        const uint8_t *dn = y + (yy + 1) * stride;
-        for (int x = x0 + 2; x < x1 - 2; x += 2) {
-            int c = row[x];
-            edge += abs(2 * c - row[x - 1] - row[x + 1]);
-            edge += abs(2 * c - up[x] - dn[x]);
-            lum += c + 16.0;
+static inline int y_at(const uint8_t *p, unsigned stride, unsigned step,
+                       unsigned off, unsigned x, unsigned y)
+{
+    return p[(size_t)y * stride + (size_t)x * step + off];
+}
+
+static void debug_luma_once(const uint8_t *p, size_t bytes,
+                            unsigned w, unsigned h, unsigned stride,
+                            unsigned step, unsigned off)
+{
+    static int done;
+    if (done)
+        return;
+    done = 1;
+
+    size_t need = (size_t)stride * h;
+    if (bytes < need) {
+        fprintf(stderr, "debug: frame too small bytes=%zu need=%zu\n", bytes, need);
+        return;
+    }
+
+    unsigned minv = 255, maxv = 0;
+    uint64_t sum = 0, count = 0;
+    for (unsigned y = 0; y < h; y += 8) {
+        for (unsigned x = 0; x < w; x += 8) {
+            unsigned v = (unsigned)y_at(p, stride, step, off, x, y);
+            if (v < minv) minv = v;
+            if (v > maxv) maxv = v;
+            sum += v;
             count++;
         }
     }
-    return (!count || lum <= 0.0) ? 0.0 : edge / lum;
-}
-static int cmpd(const void *a, const void *b) {
-    double x = *(const double *)a, y = *(const double *)b;
-    return (x > y) - (x < y);
-}
-static double stable_score(int vfd, struct buf *b, int w, int h, int stride) {
-    discard_frames(vfd, b, 3);
-    double s[3];
-    for (int i = 0; i < 3; i++) {
-        struct v4l2_buffer vb;
-        uint8_t *p = dq(vfd, b, &vb);
-        s[i] = frame_score(p, w, h, stride);
-        qbuf(vfd, &vb);
-    }
-    qsort(s, 3, sizeof(double), cmpd);
-    return s[1];
-}
-static int build_points(struct point *p, int lo, int hi, int step) {
-    int n = 0;
-    for (int f = lo; f <= hi && n < MAX_POINTS; f += step)
-        p[n++] = (struct point){ .f = f };
-    if (n && p[n - 1].f != hi && n < MAX_POINTS)
-        p[n++] = (struct point){ .f = hi };
-    return n;
-}
-static int scan_pass(int vfd, int ffd, struct buf *b, int w, int h, int stride,
-                     struct point *p, int n, int reverse, int current) {
-    if (!reverse) {
-        for (int i = 0; i < n; i++) {
-            set_focus(ffd, p[i].f);
-            wait_focus(current, p[i].f);
-            current = p[i].f;
-            p[i].s1 = stable_score(vfd, b, w, h, stride);
-            printf("forward focus=%d score=%.8f\n", p[i].f, p[i].s1);
-            fflush(stdout);
-        }
-    } else {
-        for (int i = n - 1; i >= 0; i--) {
-            set_focus(ffd, p[i].f);
-            wait_focus(current, p[i].f);
-            current = p[i].f;
-            p[i].s2 = stable_score(vfd, b, w, h, stride);
-            printf("reverse focus=%d score=%.8f\n", p[i].f, p[i].s2);
-            fflush(stdout);
-        }
-    }
-    return current;
-}
-static int best_point(struct point *p, int n, double *out) {
-    int bi = 0;
-    double best = -1.0;
-    for (int i = 0; i < n; i++) {
-        double s = (p[i].s1 + p[i].s2) / 2.0;
-        printf("combined focus=%d score=%.8f\n", p[i].f, s);
-        if (s > best) { best = s; bi = i; }
-    }
-    *out = best;
-    return bi;
+
+    fprintf(stderr, "debug: luma bytes=%zu stride=%u min=%u max=%u mean=%.2f\n",
+            bytes, stride, minv, maxv,
+            count ? (double)sum / (double)count : 0.0);
 }
 
-int main(int argc, char **argv) {
-    int lo = FALLBACK_INF, hi = FALLBACK_MACRO;
-    const char *range_src = "fallback";
-    if (read_otp_range(&lo, &hi) == 0)
-        range_src = "OTP";
-    else if (read_state_range(&lo, &hi) == 0)
-        range_src = "state";
-    if (argc >= 3) {
-        lo = atoi(argv[1]);
-        hi = atoi(argv[2]);
-        range_src = "override";
+static double sharpness(const uint8_t *p, size_t bytes,
+                        unsigned w, unsigned h, unsigned stride,
+                        unsigned step, unsigned off)
+{
+    if (w < 32 || h < 32)
+        return 0.0;
+
+    size_t min_bytes = (size_t)stride * h;
+    if (bytes < min_bytes)
+        return 0.0;
+
+    unsigned x0 = w / 8, x1 = w * 7 / 8;
+    unsigned y0 = h / 8, y1 = h * 7 / 8;
+    uint64_t total = 0, count = 0;
+
+    for (unsigned y = y0 + 2; y + 2 < y1; y += 4) {
+        for (unsigned x = x0 + 2; x + 2 < x1; x += 4) {
+            int gx = y_at(p, stride, step, off, x + 1, y) -
+                     y_at(p, stride, step, off, x - 1, y);
+            int gy = y_at(p, stride, step, off, x, y + 1) -
+                     y_at(p, stride, step, off, x, y - 1);
+            total += (uint64_t)(gx * gx + gy * gy);
+            count++;
+        }
     }
-    if (lo < 0 || hi > 1023 || lo >= hi) {
-        fprintf(stderr, "invalid focus range %d..%d\n", lo, hi);
+
+    return count ? (double)total / (double)count : 0.0;
+}
+
+static int dequeue_frame(int fd, struct mm_buf *bufs, unsigned count,
+                         struct v4l2_buffer *b)
+{
+    struct pollfd pfd = { .fd = fd, .events = POLLIN };
+    int pr;
+    do {
+        pr = poll(&pfd, 1, 2500);
+    } while (pr < 0 && errno == EINTR);
+    if (pr <= 0)
+        return -1;
+
+    memset(b, 0, sizeof(*b));
+    b->type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+    b->memory = V4L2_MEMORY_MMAP;
+    if (xioctl(fd, VIDIOC_DQBUF, b) < 0)
+        return -1;
+    if (b->index >= count)
+        return -1;
+    if (b->bytesused > bufs[b->index].len)
+        b->bytesused = bufs[b->index].len;
+    return 0;
+}
+
+static int requeue_frame(int fd, struct v4l2_buffer *b)
+{
+    return xioctl(fd, VIDIOC_QBUF, b);
+}
+
+static double measure_focus(int vfd, int ffd, struct mm_buf *bufs, unsigned nbufs,
+                            int pos, unsigned w, unsigned h, unsigned stride,
+                            unsigned step, unsigned off)
+{
+    if (focus_set(ffd, pos) < 0)
+        return -1.0;
+
+    usleep(80000);
+
+    double total = 0.0;
+    int scored = 0;
+
+    for (int i = 0; i < 4; i++) {
+        struct v4l2_buffer b;
+        if (dequeue_frame(vfd, bufs, nbufs, &b) < 0)
+            return -1.0;
+
+        if (i >= 2) {
+            size_t frame_bytes = b.bytesused;
+            size_t luma_bytes = (size_t)stride * h;
+            /*
+             * AtomISP on Mi Pad 2 may leave bytesused at zero for mmap
+             * capture even though the full mapped frame is valid.
+             */
+            if (frame_bytes < luma_bytes)
+                frame_bytes = bufs[b.index].len;
+            debug_luma_once(bufs[b.index].ptr, frame_bytes,
+                            w, h, stride, step, off);
+            total += sharpness(bufs[b.index].ptr, frame_bytes,
+                               w, h, stride, step, off);
+            scored++;
+        }
+
+        if (requeue_frame(vfd, &b) < 0)
+            return -1.0;
+    }
+
+    return scored ? total / scored : -1.0;
+}
+
+static int simple_action(const char *action, int ffd, int inf, int macro)
+{
+    int pos;
+    if (!strcmp(action, "far"))
+        pos = inf;
+    else if (!strcmp(action, "near"))
+        pos = macro;
+    else if (!strcmp(action, "mid"))
+        pos = inf + (macro - inf) / 2;
+    else
+        return -1;
+
+    if (focus_set(ffd, pos) < 0) {
+        perror("VIDIOC_S_CTRL focus");
+        return 1;
+    }
+
+    printf("focus=%d\n", pos);
+    return 0;
+}
+
+int main(int argc, char **argv)
+{
+    const char *action = argc > 1 ? argv[1] : "auto";
+    int inf, macro;
+    const char *otp_source;
+    int otp_ok = otp_focus_range(&inf, &macro, &otp_source) == 0;
+
+    printf("AF range=%d..%d source=%s%s\n",
+           inf, macro, otp_source, otp_ok ? "" : " (fallback)");
+
+    if (!strcmp(action, "range"))
+        return 0;
+
+    char focus_dev[PATH_MAX];
+    if (find_focus_dev(focus_dev, sizeof(focus_dev)) < 0) {
+        fprintf(stderr, "DW9719/DW9761 focus subdevice not found\n");
         return 2;
     }
 
-    char focus_path[64];
-    int ffd = find_focus_device(focus_path, sizeof(focus_path));
-    if (ffd < 0) die("find focus device");
+    int ffd = open(focus_dev, O_RDWR | O_CLOEXEC);
+    if (ffd < 0) {
+        perror(focus_dev);
+        return 2;
+    }
 
-    int vfd = open(VIDEO_DEV, O_RDWR | O_CLOEXEC);
-    if (vfd < 0) die("open video");
-    int input = 1;
-    if (xioctl(vfd, VIDIOC_S_INPUT, &input) < 0) die("VIDIOC_S_INPUT");
+    if (strcmp(action, "auto")) {
+        int r = simple_action(action, ffd, inf, macro);
+        close(ffd);
+        if (r < 0) {
+            fprintf(stderr, "usage: %s [auto|far|near|mid|range]\n", argv[0]);
+            return 2;
+        }
+        return r;
+    }
 
+    int old_focus = -1;
+    focus_get(ffd, &old_focus);
+
+    int vfd = open(VIDEO_DEV, O_RDWR | O_NONBLOCK | O_CLOEXEC);
+    if (vfd < 0) {
+        perror(VIDEO_DEV);
+        close(ffd);
+        return 2;
+    }
+
+    int old_input = 0;
+    if (xioctl(vfd, VIDIOC_G_INPUT, &old_input) < 0)
+        old_input = 0;
+
+    int input = REAR_INPUT;
+    if (xioctl(vfd, VIDIOC_S_INPUT, &input) < 0) {
+        perror("VIDIOC_S_INPUT rear");
+        close(vfd);
+        close(ffd);
+        return 3;
+    }
+
+    /* Force a stable AF scoring format instead of inheriting Snapshot's tiny preview. */
     struct v4l2_format fmt = {0};
     fmt.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
     fmt.fmt.pix.width = 1280;
     fmt.fmt.pix.height = 720;
     fmt.fmt.pix.pixelformat = V4L2_PIX_FMT_YUV420;
-    fmt.fmt.pix.field = V4L2_FIELD_NONE;
-    if (xioctl(vfd, VIDIOC_S_FMT, &fmt) < 0) die("VIDIOC_S_FMT");
-    if (xioctl(vfd, VIDIOC_G_FMT, &fmt) < 0) die("VIDIOC_G_FMT");
-    int w = fmt.fmt.pix.width, h = fmt.fmt.pix.height, stride = fmt.fmt.pix.bytesperline;
-    if (fmt.fmt.pix.pixelformat != V4L2_PIX_FMT_YUV420) {
-        fprintf(stderr, "unsupported fourcc 0x%08x\n", fmt.fmt.pix.pixelformat);
-        return 3;
+    fmt.fmt.pix.field = V4L2_FIELD_ANY;
+    if (xioctl(vfd, VIDIOC_S_FMT, &fmt) < 0) {
+        perror("VIDIOC_S_FMT AF format");
+        goto fail_restore;
     }
-    fprintf(stderr, "video=%s format=%dx%d stride=%d focus=%s range=%d..%d (%s)\n",
-            VIDEO_DEV, w, h, stride, focus_path, lo, hi, range_src);
+    if (xioctl(vfd, VIDIOC_G_FMT, &fmt) < 0) {
+        perror("VIDIOC_G_FMT");
+        goto fail_restore;
+    }
 
-    struct v4l2_requestbuffers req = {0};
-    req.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
-    req.memory = V4L2_MEMORY_MMAP;
-    req.count = NBUF;
-    if (xioctl(vfd, VIDIOC_REQBUFS, &req) < 0) die("VIDIOC_REQBUFS");
-    if (req.count < NBUF) { fprintf(stderr, "not enough buffers\n"); return 4; }
+    unsigned stride, pixel_step, pixel_off;
+    if (luma_layout(fmt.fmt.pix.pixelformat, fmt.fmt.pix.width,
+                    fmt.fmt.pix.bytesperline,
+                    &stride, &pixel_step, &pixel_off) < 0) {
+        fprintf(stderr, "unsupported pixel format %.4s\n",
+                (char *)&fmt.fmt.pix.pixelformat);
+        goto fail_restore;
+    }
 
-    struct buf b[NBUF] = {0};
-    for (unsigned i = 0; i < NBUF; i++) {
-        struct v4l2_buffer vb = {0};
-        vb.type = req.type; vb.memory = req.memory; vb.index = i;
-        if (xioctl(vfd, VIDIOC_QUERYBUF, &vb) < 0) die("VIDIOC_QUERYBUF");
-        b[i].len = vb.length;
-        b[i].p = mmap(NULL, vb.length, PROT_READ | PROT_WRITE, MAP_SHARED, vfd, vb.m.offset);
-        if (b[i].p == MAP_FAILED) die("mmap");
-        if (xioctl(vfd, VIDIOC_QBUF, &vb) < 0) die("VIDIOC_QBUF init");
+    struct v4l2_requestbuffers req = {
+        .count = NBUFS,
+        .type = V4L2_BUF_TYPE_VIDEO_CAPTURE,
+        .memory = V4L2_MEMORY_MMAP,
+    };
+    if (xioctl(vfd, VIDIOC_REQBUFS, &req) < 0 || req.count < 2) {
+        perror("VIDIOC_REQBUFS");
+        goto fail_restore;
+    }
+
+    struct mm_buf bufs[NBUFS] = {0};
+    unsigned nbufs = req.count > NBUFS ? NBUFS : req.count;
+
+    for (unsigned i = 0; i < nbufs; i++) {
+        struct v4l2_buffer b = {
+            .type = V4L2_BUF_TYPE_VIDEO_CAPTURE,
+            .memory = V4L2_MEMORY_MMAP,
+            .index = i,
+        };
+        if (xioctl(vfd, VIDIOC_QUERYBUF, &b) < 0) {
+            perror("VIDIOC_QUERYBUF");
+            goto fail_unmap;
+        }
+
+        bufs[i].len = b.length;
+        fprintf(stderr, "debug: qbuf %u length=%u offset=%u\n",
+                i, b.length, b.m.offset);
+        bufs[i].ptr = mmap(NULL, b.length, PROT_READ | PROT_WRITE,
+                           MAP_SHARED, vfd, b.m.offset);
+        if (bufs[i].ptr == MAP_FAILED) {
+            bufs[i].ptr = NULL;
+            perror("mmap");
+            goto fail_unmap;
+        }
+
+        if (xioctl(vfd, VIDIOC_QBUF, &b) < 0) {
+            perror("VIDIOC_QBUF");
+            goto fail_unmap;
+        }
     }
 
     enum v4l2_buf_type type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
-    if (xioctl(vfd, VIDIOC_STREAMON, &type) < 0) die("VIDIOC_STREAMON");
+    if (xioctl(vfd, VIDIOC_STREAMON, &type) < 0) {
+        perror("VIDIOC_STREAMON");
+        goto fail_unmap;
+    }
 
-    int current = (lo + hi) / 2;
-    set_focus(ffd, current);
-    wait_focus(lo, current);
-    discard_frames(vfd, b, 12);
+    int span = macro - inf;
+    int coarse_step = span / 12;
+    if (coarse_step < 6)
+        coarse_step = 6;
 
-    struct point coarse[MAX_POINTS];
-    int step = (hi - lo) / 16;
-    if (step < 6) step = 6;
-    int n = build_points(coarse, lo, hi, step);
-    current = scan_pass(vfd, ffd, b, w, h, stride, coarse, n, 0, current);
-    current = scan_pass(vfd, ffd, b, w, h, stride, coarse, n, 1, current);
-    double coarse_score;
-    int ci = best_point(coarse, n, &coarse_score);
-    int center = coarse[ci].f;
+    double best_score = -1.0;
+    int best = inf;
 
-    int rlo = center - step;
-    int rhi = center + step;
-    if (rlo < lo) rlo = lo;
-    if (rhi > hi) rhi = hi;
-    struct point fine[MAX_POINTS];
-    int fn = build_points(fine, rlo, rhi, 2);
-    current = scan_pass(vfd, ffd, b, w, h, stride, fine, fn, 0, current);
-    current = scan_pass(vfd, ffd, b, w, h, stride, fine, fn, 1, current);
-    double fine_score;
-    int fi = best_point(fine, fn, &fine_score);
-    int best = fine[fi].f;
+    printf("video=%ux%u %.4s stride=%u focusdev=%s oldfocus=%d\n",
+           fmt.fmt.pix.width, fmt.fmt.pix.height,
+           (char *)&fmt.fmt.pix.pixelformat, stride, focus_dev, old_focus);
 
-    set_focus(ffd, best);
-    wait_focus(current, best);
-    discard_frames(vfd, b, 3);
-    printf("BEST focus=%d score=%.8f coarse=%d coarse_score=%.8f range=%d..%d source=%s\n",
-           best, fine_score, center, coarse_score, lo, hi, range_src);
+    for (int p = inf; p <= macro; p += coarse_step) {
+        double s = measure_focus(vfd, ffd, bufs, nbufs, p,
+                                 fmt.fmt.pix.width, fmt.fmt.pix.height,
+                                 stride, pixel_step, pixel_off);
+        if (s < 0)
+            goto fail_stream;
+        printf("coarse %d %.2f\n", p, s);
+        if (s > best_score) {
+            best_score = s;
+            best = p;
+        }
+    }
+    if ((macro - inf) % coarse_step) {
+        double s = measure_focus(vfd, ffd, bufs, nbufs, macro,
+                                 fmt.fmt.pix.width, fmt.fmt.pix.height,
+                                 stride, pixel_step, pixel_off);
+        if (s < 0)
+            goto fail_stream;
+        printf("coarse %d %.2f\n", macro, s);
+        if (s > best_score) {
+            best_score = s;
+            best = macro;
+        }
+    }
+
+    int fine_lo = best - coarse_step;
+    int fine_hi = best + coarse_step;
+    if (fine_lo < inf) fine_lo = inf;
+    if (fine_hi > macro) fine_hi = macro;
+
+    for (int p = fine_lo; p <= fine_hi; p += 2) {
+        double s = measure_focus(vfd, ffd, bufs, nbufs, p,
+                                 fmt.fmt.pix.width, fmt.fmt.pix.height,
+                                 stride, pixel_step, pixel_off);
+        if (s < 0)
+            goto fail_stream;
+        printf("fine %d %.2f\n", p, s);
+        if (s > best_score) {
+            best_score = s;
+            best = p;
+        }
+    }
+
+    if (focus_set(ffd, best) < 0)
+        perror("final focus");
 
     xioctl(vfd, VIDIOC_STREAMOFF, &type);
-    close(ffd);
-    for (int i = 0; i < NBUF; i++) munmap(b[i].p, b[i].len);
+    for (unsigned i = 0; i < nbufs; i++)
+        if (bufs[i].ptr)
+            munmap(bufs[i].ptr, bufs[i].len);
+
+    xioctl(vfd, VIDIOC_S_INPUT, &old_input);
     close(vfd);
+    close(ffd);
+
+    printf("BEST focus=%d score=%.2f\n", best, best_score);
     return 0;
+
+fail_stream:
+    xioctl(vfd, VIDIOC_STREAMOFF, &type);
+fail_unmap:
+    for (unsigned i = 0; i < nbufs; i++)
+        if (bufs[i].ptr)
+            munmap(bufs[i].ptr, bufs[i].len);
+fail_restore:
+    xioctl(vfd, VIDIOC_S_INPUT, &old_input);
+    if (old_focus >= 0)
+        focus_set(ffd, old_focus);
+    close(vfd);
+    close(ffd);
+    return 4;
 }
