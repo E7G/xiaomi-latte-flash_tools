@@ -140,6 +140,8 @@ jobs:
       - name: Verify generated packages
         run: |
           bash -n build_rootfs.sh
+          cc -O2 -Wall -Wextra -Werror device_files/mipad2-af.c -o /tmp/mipad2-af-buildcheck
+          test -x /tmp/mipad2-af-buildcheck
           bash -n device_files/mipad2-kernel-install
           grep -q 'desktop_type="${desktop_type:-gnome}"' build_rootfs.sh
           grep -q 'qt6-base qt6-wayland qt6-5compat iio-sensor-proxy' build_rootfs.sh
@@ -204,6 +206,7 @@ jobs:
           test -s "$rootfs/usr/lib/modules/$kernel_release/modules.dep"
           test -s "$rootfs/usr/lib/modules/$kernel_release/config"
           test -x "$rootfs/usr/local/sbin/mipad2-kernel-install"
+          test -x "$rootfs/usr/local/bin/mipad2-af"
           grep -q 'Exec = /usr/local/sbin/mipad2-kernel-install' "$rootfs/etc/pacman.d/hooks/kernel.hook"
           test -x "$rootfs/usr/bin/gnome-shell"
           test -x "$rootfs/usr/bin/brave"
