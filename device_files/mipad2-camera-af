@@ -68,17 +68,21 @@ def score_y(frame,w,h):
 def measure(pos,w,h,frame_size,tmpdir):
     set_focus(pos)
     time.sleep(0.12)
-    path=os.path.join(tmpdir,f"f-{pos}.raw")
-    capture4(path)
-    data=Path(path).read_bytes()
-    n=len(data)//frame_size
-    if n < 2:
-        return 0.0
-    scores=[]
-    for fi in range(max(0,n-2),n):
-        frame=data[fi*frame_size:(fi+1)*frame_size]
-        scores.append(score_y(frame,w,h))
-    return sum(scores)/len(scores)
+    for attempt in range(2):
+        path=os.path.join(tmpdir,f"f-{pos}-{attempt}.raw")
+        capture4(path)
+        data=Path(path).read_bytes()
+        n=len(data)//frame_size
+        if n >= 2:
+            scores=[]
+            for fi in range(max(0,n-2),n):
+                frame=data[fi*frame_size:(fi+1)*frame_size]
+                scores.append(score_y(frame,w,h))
+            score=sum(scores)/len(scores)
+            if score > 0:
+                return score
+        time.sleep(0.08)
+    return -1.0
 
 def positions(lo,hi,step):
     p=list(range(lo,hi+1,step))
