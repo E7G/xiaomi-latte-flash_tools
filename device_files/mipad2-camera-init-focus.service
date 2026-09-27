@@ -1,7 +1,6 @@
 [Unit]
 Description=Mi Pad 2 camera factory focus preset
 After=systemd-udev-trigger.service
-ConditionPathExists=/sys/bus/nvmem/devices/mipad2-t4ka3-otp/nvmem
 
 [Service]
 Type=oneshot
