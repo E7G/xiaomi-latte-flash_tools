@@ -9,6 +9,7 @@ HostName="${HostName:-mipad2}"
 desktop_type="${desktop_type:-gnome}"
 ROOTFS_SIZE="${ROOTFS_SIZE:-8G}"
 KERNEL_PACKAGE="${KERNEL_PACKAGE:-}"
+SNAPSHOT_PACKAGE="${SNAPSHOT_PACKAGE:-}"
 KERNEL_PKGBASE="linux-latte-cachyos"
 
 if [[ ! -d /sys/module/nbd ]]; then
@@ -229,6 +230,16 @@ install_packages() {
 
 	declare -n desktop=$desktop_type
 	pacstrap -C "${device_file}"/pacman.conf -c $mount_dir ${packages[@]} ${desktop[@]} mkinitcpio
+
+	if [[ $desktop_type == "gnome" && -n "$SNAPSHOT_PACKAGE" ]]; then
+		[[ -f "$SNAPSHOT_PACKAGE" ]] || { echo "Snapshot overlay not found: $SNAPSHOT_PACKAGE" >&2; exit 1; }
+		echo "Install validated Mi Pad 2 Snapshot overlay: $SNAPSHOT_PACKAGE"
+		tar --zstd -xf "$SNAPSHOT_PACKAGE" -C "$mount_dir"
+		[[ -x "$mount_dir/usr/bin/snapshot" ]] || { echo "Mi Pad 2 Snapshot binary missing after overlay" >&2; exit 1; }
+		if ! grep -Fxq "IgnorePkg = snapshot" "$mount_dir/etc/pacman.conf"; then
+			sed -i '/^\[options\]/a IgnorePkg = snapshot' "$mount_dir/etc/pacman.conf"
+		fi
+	fi
 	cat > "$mount_dir/etc/mkinitcpio.d/$KERNEL_PKGBASE.preset" <<EOF
 ALL_config="/etc/mkinitcpio.conf"
 ALL_kver="/usr/lib/modules/$kernel_release/vmlinuz"
@@ -511,7 +522,7 @@ text/html=brave-browser.desktop;
 x-scheme-handler/http=brave-browser.desktop;
 x-scheme-handler/https=brave-browser.desktop;
 EOF
-		install -m0644 "$device_file/mipad2-camera.desktop" "$mount_dir/home/$UserName/.local/share/applications/mipad2-camera.desktop"
+		install -m0644 "$device_file/mipad2-camera.desktop" "$mount_dir/home/$UserName/.local/share/applications/org.gnome.Snapshot.desktop"
 		install -m0644 "$device_file/qv4l2.desktop" "$mount_dir/home/$UserName/.local/share/applications/qv4l2.desktop"
 		run chown -R $UserName:$UserName /home/$UserName/.config /home/$UserName/.local
 	fi
