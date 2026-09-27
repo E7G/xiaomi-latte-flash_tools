@@ -562,8 +562,10 @@ EOF
 	install -Dm0644 $device_file/MOK.cer $mount_dir/boot/
 	install -Dm0644 $device_file/MOK.crt $mount_dir/boot/EFI/
 	# Never ship the private signing key in the finished image. Keep it only
-	# in the build-time tmpfs and remove it immediately after signing.
-	install -Dm0600 $device_file/MOK.key $mount_dir/run/mipad2-build/MOK.key
+	# in a root-only build staging directory and remove it immediately after
+	# signing. Do not use /run here: arch-chroot mounts its runtime /run over
+	# the target tree, which would hide a key staged at $mount_dir/run.
+	install -Dm0600 $device_file/MOK.key $mount_dir/root/.mipad2-build/MOK.key
 	rm -f $mount_dir/boot/EFI/MOK.key
 
 	# Mi Pad 2's USB fallback path is verified directly by its firmware.  Its
@@ -575,11 +577,11 @@ EOF
 		--modules="part_gpt fat btrfs search search_fs_uuid search_label test configfile normal linux" \
 		boot/grub/grub.cfg=/boot/EFI/BOOT/grub.cfg
 	echo 使用原项目 MOK 直接签名 U 盘入口、GRUB 和内核
-	run sbsign --key /run/mipad2-build/MOK.key --cert /boot/EFI/MOK.crt \
+	run sbsign --key /root/.mipad2-build/MOK.key --cert /boot/EFI/MOK.crt \
 		--output /boot/EFI/BOOT/grubx64.efi.signed /boot/EFI/BOOT/grubx64.efi
 	run mv /boot/EFI/BOOT/grubx64.efi.signed /boot/EFI/BOOT/grubx64.efi
 	run cp /boot/EFI/BOOT/grubx64.efi /boot/EFI/BOOT/BOOTX64.EFI
-	run sbsign --key /run/mipad2-build/MOK.key --cert /boot/EFI/MOK.crt \
+	run sbsign --key /root/.mipad2-build/MOK.key --cert /boot/EFI/MOK.crt \
 		--output /boot/vmlinuz-$KERNEL_PKGBASE /boot/vmlinuz-$KERNEL_PKGBASE
 	run sbverify --list /boot/vmlinuz-$KERNEL_PKGBASE
 	run sbverify --list /boot/EFI/BOOT/BOOTX64.EFI
@@ -587,9 +589,9 @@ EOF
 	run sh -ec 'sbverify --list /boot/EFI/BOOT/BOOTX64.EFI 2>&1 | grep -F "my Machine Owner Key"'
 	run sh -ec 'sbverify --list /boot/EFI/BOOT/grubx64.efi 2>&1 | grep -F "my Machine Owner Key"'
 	run sh -ec 'sbverify --list /boot/vmlinuz-'$KERNEL_PKGBASE' 2>&1 | grep -F "my Machine Owner Key"'
-	run rm -f /run/mipad2-build/MOK.key
-	rmdir "$mount_dir/run/mipad2-build" 2>/dev/null || true
-	if [[ -e "$mount_dir/boot/EFI/MOK.key" ]]; then
+	run rm -f /root/.mipad2-build/MOK.key
+	rmdir "$mount_dir/root/.mipad2-build" 2>/dev/null || true
+	if [[ -e "$mount_dir/boot/EFI/MOK.key" || -e "$mount_dir/root/.mipad2-build/MOK.key" ]]; then
 		echo 'Refusing to ship private MOK key in image' >&2
 		return 1
 	fi
@@ -601,8 +603,8 @@ EOF
 cleanup_rootfs() {
 	# Signing keys are build-time material only. Remove them even when a prior
 	# signing step aborted and cleanup is being retried.
-	run rm -f /run/mipad2-build/MOK.key || true
-	rmdir "$mount_dir/run/mipad2-build" 2>/dev/null || true
+	run rm -f /root/.mipad2-build/MOK.key || true
+	rmdir "$mount_dir/root/.mipad2-build" 2>/dev/null || true
 	run sh -c 'rm -rf /var/cache/pacman/pkg/* /home/*/.cache/yay /tmp/*' || true
 }
 
