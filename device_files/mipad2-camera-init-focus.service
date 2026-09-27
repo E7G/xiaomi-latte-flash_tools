@@ -1,0 +1,10 @@
+[Unit]
+Description=Mi Pad 2 camera factory focus preset
+After=systemd-udev-trigger.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/mipad2-camera-init-focus
+
+[Install]
+WantedBy=multi-user.target
