@@ -113,7 +113,16 @@ sudo mp2-test-no-idle disable
 - GNOME 保留 `IBus + libpinyin`，默认输入源为 US + Intelligent Pinyin；
 - Mi Pad 2 不具备的 Thunderbolt、WWAN、打印、Smartcard 和 Sharing 后台服务会被屏蔽，以减少常驻内存。
 
-这些优化不修改自定义 GRUB 菜单或 GRUB 字体，也不包含 Snapshot 相机源码；相机应用的 Mi Pad 2 专用修复继续由 `E7G/snapshot` 维护。
+相机保持使用原版 GNOME Snapshot，不维护应用 fork。Mi Pad 2 专用适配放在系统层完成：
+
+- 开机和普通打开相机时，从内核只读 NVMEM 校验本机 T4KA3/DW9761 工厂 OTP，并把后摄恢复到该机器自己的 infinity 焦点；
+- 桌面菜单提供“自动对焦后打开”和“高精度自动对焦后打开”两个动作；
+- 自动对焦 helper 是构建期编译的小型原生 C 程序，不需要 Python 常驻；
+- AF 只在每台机器 OTP 给出的 infinity..macro 区间内工作，并按 DW9761 实测机械回差从 macro 侧向 infinity 侧扫描和落焦；
+- 若最佳值落在 macro 硬端点且邻近内点锐度在 95% 以内，会优先使用内点，减少机械端点重复性差的问题；
+- qv4l2 仅保留为底层调试工具，正常用户入口仍是 GNOME Snapshot。
+
+这些优化不修改自定义 GRUB 菜单或 GRUB 字体。
 
 
 ### Mi Pad 2 navigation keys
