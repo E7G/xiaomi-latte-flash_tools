@@ -1,7 +1,7 @@
 #!/bin/sh
 set -eu
 
-mode=fast
+mode=normal
 case "${1:-}" in
     --no-autofocus)
         mode=normal
@@ -24,9 +24,7 @@ if command -v sudo >/dev/null 2>&1; then
     sudo -n /usr/local/sbin/mipad2-camera-init-focus >/dev/null 2>&1 || true
 fi
 
-# Fast factory-range autofocus is the normal launch path. It runs before
-# Snapshot opens the AtomISP node, then exits completely; no AF daemon stays
-# resident. Never prevent Snapshot from opening if AF cannot run.
+# Normal launch stays immediate because GNOME Snapshot/PipeWire sees AtomISP as one camera node and may reopen the front V4L2 input regardless of a pre-launch rear-camera AF pass. Factory-range autofocus remains available through the explicit desktop actions; it runs before Snapshot opens AtomISP and leaves no daemon resident.
 case "$mode" in
     fast)
         timeout 10s /usr/local/bin/mipad2-camera-af --fast >/tmp/mipad2-camera-af.log 2>&1 || true
