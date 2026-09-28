@@ -77,11 +77,16 @@ done
 
 v4l2-ctl -d "$focusdev" --set-ctrl="focus_absolute=$inf" >/dev/null
 
-umask 022
-cat > "$STATE" <<EOF
+# Only the boot-time root oneshot owns the persistent-in-/run state.
+# Desktop launches reuse it read-only and must not fail trying to overwrite a
+# root-owned file after successfully restoring the lens position.
+if [ "$(id -u)" -eq 0 ]; then
+    umask 022
+    cat > "$STATE" <<EOF
 MIPAD2_AF_INFINITY=$inf
 MIPAD2_AF_MACRO=$macro
 MIPAD2_AF_DEVICE=$focusdev
 EOF
+fi
 
 printf 'Mi Pad 2 camera focus preset: infinity=%s macro=%s device=%s\n' "$inf" "$macro" "$focusdev"
