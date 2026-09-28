@@ -1,6 +1,7 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <linux/videodev2.h>
+#include <poll.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -111,6 +112,17 @@ static void wait_focus(int from, int to) {
     usleep(us);
 }
 static unsigned char *dq(int vfd, struct buf *b, struct v4l2_buffer *vb) {
+    struct pollfd pfd = { .fd = vfd, .events = POLLIN };
+    int pr;
+
+    do pr = poll(&pfd, 1, 2500); while (pr < 0 && errno == EINTR);
+    if (pr == 0) {
+        errno = ETIMEDOUT;
+        die("camera frame timeout");
+    }
+    if (pr < 0)
+        die("poll camera");
+
     memset(vb, 0, sizeof(*vb));
     vb->type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
     vb->memory = V4L2_MEMORY_MMAP;
@@ -245,7 +257,8 @@ int main(int argc, char **argv) {
     fmt.fmt.pix.field = V4L2_FIELD_NONE;
     if (xioctl(vfd, VIDIOC_S_FMT, &fmt) < 0) die("VIDIOC_S_FMT");
     if (xioctl(vfd, VIDIOC_G_FMT, &fmt) < 0) die("VIDIOC_G_FMT");
-    int w = fmt.fmt.pix.width, h = fmt.fmt.pix.height, stride = fmt.fmt.pix.bytesperline;
+    int w = fmt.fmt.pix.width, h = fmt.fmt.pix.height;
+    int stride = fmt.fmt.pix.bytesperline ? fmt.fmt.pix.bytesperline : w;
     if (fmt.fmt.pix.pixelformat != V4L2_PIX_FMT_YUV420) {
         fprintf(stderr, "unsupported fourcc 0x%08x\n", fmt.fmt.pix.pixelformat);
         return 3;
