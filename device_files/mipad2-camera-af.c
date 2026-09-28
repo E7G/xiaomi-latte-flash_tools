@@ -18,7 +18,7 @@
 #define FALLBACK_MACRO 366
 #define NBUF 4
 #define MAX_POINTS 256
-#define MIN_CONFIDENT_SCORE 0.0005
+#define MIN_CONFIDENT_SCORE 0.0001
 
 struct buf { void *p; size_t len; };
 struct point { int f; double s1, s2; };
@@ -295,7 +295,7 @@ int main(int argc, char **argv) {
     int current = (lo + hi) / 2;
     set_focus(ffd, current);
     wait_focus(lo, current);
-    discard_frames(vfd, b, 12);
+    discard_frames(vfd, b, 30);
 
     struct point coarse[MAX_POINTS];
     int step = (hi - lo) / (fast ? 8 : 16);
