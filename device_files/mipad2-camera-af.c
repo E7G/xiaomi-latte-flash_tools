@@ -1,4 +1,3 @@
-#include <errno.h>
 #include <fcntl.h>
 #include <linux/videodev2.h>
 #include <stdint.h>
@@ -18,7 +17,7 @@
 #define FALLBACK_MACRO 366
 #define NBUF 4
 #define MAX_POINTS 256
-#define MIN_CONFIDENT_SCORE 0.0001
+#define MIN_CONFIDENT_SCORE 0.0005
 
 struct buf { void *p; size_t len; };
 struct point { int f; double s1, s2; };
@@ -292,22 +291,36 @@ int main(int argc, char **argv) {
     enum v4l2_buf_type type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
     if (xioctl(vfd, VIDIOC_STREAMON, &type) < 0) die("VIDIOC_STREAMON");
 
-    int current = (lo + hi) / 2;
+    /*
+     * DW9761 on this tablet has measurable mechanical hysteresis. Factory
+     * testing shows the macro->infinity direction is stable, while an
+     * infinity->macro sweep can under-score otherwise sharp positions.
+     * Always measure and finally approach focus from the macro side.
+     */
+    int current = hi;
     set_focus(ffd, current);
     wait_focus(lo, current);
-    discard_frames(vfd, b, 30);
+    discard_frames(vfd, b, 18);
 
     struct point coarse[MAX_POINTS];
     int step = (hi - lo) / (fast ? 8 : 16);
     if (step < (fast ? 8 : 6)) step = fast ? 8 : 6;
     int n = build_points(coarse, lo, hi, step);
-    current = scan_pass(vfd, ffd, b, w, h, stride, coarse, n, 0, current);
-    if (fast) {
-        for (int i = 0; i < n; i++)
-            coarse[i].s2 = coarse[i].s1;
-    } else {
+
+    /* First reliable pass: macro -> infinity. */
+    current = scan_pass(vfd, ffd, b, w, h, stride, coarse, n, 1, current);
+    for (int i = 0; i < n; i++)
+        coarse[i].s1 = coarse[i].s2;
+
+    /* Full mode repeats the same mechanical direction for stability. */
+    if (!fast) {
+        set_focus(ffd, hi);
+        wait_focus(current, hi);
+        current = hi;
+        discard_frames(vfd, b, 6);
         current = scan_pass(vfd, ffd, b, w, h, stride, coarse, n, 1, current);
     }
+
     double coarse_score;
     int ci = best_point(coarse, n, &coarse_score);
     int center = coarse[ci].f;
@@ -326,14 +339,53 @@ int main(int argc, char **argv) {
         struct point fine[MAX_POINTS];
         int fine_step = fast ? 4 : 2;
         int fn = build_points(fine, rlo, rhi, fine_step);
-        current = scan_pass(vfd, ffd, b, w, h, stride, fine, fn, 0, current);
-        if (fast) {
-            for (int i = 0; i < fn; i++)
-                fine[i].s2 = fine[i].s1;
-        } else {
+
+        set_focus(ffd, rhi);
+        wait_focus(current, rhi);
+        current = rhi;
+        discard_frames(vfd, b, 6);
+
+        current = scan_pass(vfd, ffd, b, w, h, stride, fine, fn, 1, current);
+        for (int i = 0; i < fn; i++)
+            fine[i].s1 = fine[i].s2;
+
+        if (!fast) {
+            set_focus(ffd, rhi);
+            wait_focus(current, rhi);
+            current = rhi;
+            discard_frames(vfd, b, 4);
             current = scan_pass(vfd, ffd, b, w, h, stride, fine, fn, 1, current);
         }
+
         int fi = best_point(fine, fn, &fine_score);
+
+        /*
+         * Do not sit on the hard macro endpoint when an interior point is
+         * essentially as sharp. Factory macro is a calibration limit, not a
+         * preferred resting point, and this DW9761 shows repeatability loss
+         * when driven exactly against that end of travel.
+         */
+        if (fine[fi].f == hi && fn > 1) {
+            int ai = -1;
+            double as = -1.0;
+            for (int i = 0; i < fn; i++) {
+                if (fine[i].f >= hi)
+                    continue;
+                double s = (fine[i].s1 + fine[i].s2) / 2.0;
+                if (s > as) {
+                    as = s;
+                    ai = i;
+                }
+            }
+            if (ai >= 0 && as >= fine_score * 0.95) {
+                fprintf(stderr,
+                        "macro endpoint guard: %d %.8f -> %d %.8f\n",
+                        fine[fi].f, fine_score, fine[ai].f, as);
+                fi = ai;
+                fine_score = as;
+            }
+        }
+
         best = fine[fi].f;
         if (fine_score < MIN_CONFIDENT_SCORE) {
             low_confidence = 1;
@@ -341,8 +393,19 @@ int main(int argc, char **argv) {
         }
     }
 
-    set_focus(ffd, best);
-    wait_focus(current, best);
+    /* Final position must use the same macro->infinity approach direction. */
+    int approach = best + 12;
+    if (approach > hi) approach = hi;
+    if (current != approach) {
+        set_focus(ffd, approach);
+        wait_focus(current, approach);
+        current = approach;
+    }
+    if (current != best) {
+        set_focus(ffd, best);
+        wait_focus(current, best);
+        current = best;
+    }
     discard_frames(vfd, b, 3);
     printf("BEST focus=%d score=%.8f coarse=%d coarse_score=%.8f range=%d..%d source=%s confidence=%s\n",
            best, fine_score, center, coarse_score, lo, hi, range_src,
