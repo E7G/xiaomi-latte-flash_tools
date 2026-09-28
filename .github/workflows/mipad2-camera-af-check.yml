@@ -1,0 +1,32 @@
+name: Mi Pad 2 camera autofocus check
+
+on:
+  pull_request:
+    branches: [arch_linux]
+    paths:
+      - "device_files/mipad2-camera-af.c"
+      - "device_files/mipad2-camera-launch"
+      - "device_files/mipad2-camera-init-focus"
+      - "device_files/mipad2-camera.desktop"
+      - ".github/workflows/mipad2-camera-af-check.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+      - name: Compile autofocus helper
+        run: |
+          set -euxo pipefail
+          cc -O2 -Wall -Wextra device_files/mipad2-camera-af.c -o /tmp/mipad2-camera-af
+          strip --strip-unneeded /tmp/mipad2-camera-af
+          test -x /tmp/mipad2-camera-af
+          size /tmp/mipad2-camera-af
+      - name: Validate camera shell helpers
+        run: |
+          sh -n device_files/mipad2-camera-launch
+          sh -n device_files/mipad2-camera-init-focus
