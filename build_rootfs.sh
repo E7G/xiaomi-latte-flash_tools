@@ -511,7 +511,7 @@ text/html=brave-browser.desktop;
 x-scheme-handler/http=brave-browser.desktop;
 x-scheme-handler/https=brave-browser.desktop;
 EOF
-		install -m0644 "$device_file/mipad2-camera.desktop" "$mount_dir/home/$UserName/.local/share/applications/mipad2-camera.desktop"
+		install -m0644 "$device_file/mipad2-camera.desktop" "$mount_dir/home/$UserName/.local/share/applications/org.gnome.Snapshot.desktop"
 		install -m0644 "$device_file/qv4l2.desktop" "$mount_dir/home/$UserName/.local/share/applications/qv4l2.desktop"
 		run chown -R $UserName:$UserName /home/$UserName/.config /home/$UserName/.local
 	fi
