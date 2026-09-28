@@ -210,15 +210,33 @@ static int best_point(struct point *p, int n, double *out) {
 
 int main(int argc, char **argv) {
     int lo = FALLBACK_INF, hi = FALLBACK_MACRO;
+    int fast = 0;
+    int argi = 1;
     const char *range_src = "fallback";
+
+    if (argc > 1 && strcmp(argv[1], "--fast") == 0) {
+        fast = 1;
+        argi++;
+    } else if (argc > 1 && strcmp(argv[1], "--full") == 0) {
+        argi++;
+    } else if (argc > 1 && (strcmp(argv[1], "-h") == 0 ||
+                            strcmp(argv[1], "--help") == 0)) {
+        fprintf(stderr, "Usage: %s [--fast|--full] [focus-min focus-max]\n", argv[0]);
+        return 0;
+    }
+
     if (read_otp_range(&lo, &hi) == 0)
         range_src = "OTP";
     else if (read_state_range(&lo, &hi) == 0)
         range_src = "state";
-    if (argc >= 3) {
-        lo = atoi(argv[1]);
-        hi = atoi(argv[2]);
+
+    if (argc - argi == 2) {
+        lo = atoi(argv[argi]);
+        hi = atoi(argv[argi + 1]);
         range_src = "override";
+    } else if (argc != argi) {
+        fprintf(stderr, "Usage: %s [--fast|--full] [focus-min focus-max]\n", argv[0]);
+        return 2;
     }
     if (lo < 0 || hi > 1023 || lo >= hi) {
         fprintf(stderr, "invalid focus range %d..%d\n", lo, hi);
@@ -248,8 +266,9 @@ int main(int argc, char **argv) {
         fprintf(stderr, "unsupported fourcc 0x%08x\n", fmt.fmt.pix.pixelformat);
         return 3;
     }
-    fprintf(stderr, "video=%s input=%d(T4KA3) format=%dx%d stride=%d focus=%s range=%d..%d (%s)\n",
-            VIDEO_DEV, input, w, h, stride, focus_path, lo, hi, range_src);
+    fprintf(stderr, "video=%s input=%d(T4KA3) format=%dx%d stride=%d focus=%s range=%d..%d (%s) mode=%s\n",
+            VIDEO_DEV, input, w, h, stride, focus_path, lo, hi, range_src,
+            fast ? "fast" : "full");
 
     struct v4l2_requestbuffers req = {0};
     req.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
@@ -278,11 +297,16 @@ int main(int argc, char **argv) {
     discard_frames(vfd, b, 12);
 
     struct point coarse[MAX_POINTS];
-    int step = (hi - lo) / 16;
-    if (step < 6) step = 6;
+    int step = (hi - lo) / (fast ? 8 : 16);
+    if (step < (fast ? 8 : 6)) step = fast ? 8 : 6;
     int n = build_points(coarse, lo, hi, step);
     current = scan_pass(vfd, ffd, b, w, h, stride, coarse, n, 0, current);
-    current = scan_pass(vfd, ffd, b, w, h, stride, coarse, n, 1, current);
+    if (fast) {
+        for (int i = 0; i < n; i++)
+            coarse[i].s2 = coarse[i].s1;
+    } else {
+        current = scan_pass(vfd, ffd, b, w, h, stride, coarse, n, 1, current);
+    }
     double coarse_score;
     int ci = best_point(coarse, n, &coarse_score);
     int center = coarse[ci].f;
@@ -292,9 +316,15 @@ int main(int argc, char **argv) {
     if (rlo < lo) rlo = lo;
     if (rhi > hi) rhi = hi;
     struct point fine[MAX_POINTS];
-    int fn = build_points(fine, rlo, rhi, 2);
+    int fine_step = fast ? 4 : 2;
+    int fn = build_points(fine, rlo, rhi, fine_step);
     current = scan_pass(vfd, ffd, b, w, h, stride, fine, fn, 0, current);
-    current = scan_pass(vfd, ffd, b, w, h, stride, fine, fn, 1, current);
+    if (fast) {
+        for (int i = 0; i < fn; i++)
+            fine[i].s2 = fine[i].s1;
+    } else {
+        current = scan_pass(vfd, ffd, b, w, h, stride, fine, fn, 1, current);
+    }
     double fine_score;
     int fi = best_point(fine, fn, &fine_score);
     int best = fine[fi].f;
