@@ -14,8 +14,6 @@
 #define OTP_DEV "/sys/bus/nvmem/devices/mipad2-t4ka3-otp/nvmem"
 #define STATE_FILE "/run/mipad2-camera-af.env"
 #define OTP_SIZE 578
-#define FALLBACK_INF 237
-#define FALLBACK_MACRO 366
 #define NBUF 4
 #define MAX_POINTS 256
 
@@ -209,16 +207,20 @@ static int best_point(struct point *p, int n, double *out) {
 }
 
 int main(int argc, char **argv) {
-    int lo = FALLBACK_INF, hi = FALLBACK_MACRO;
-    const char *range_src = "fallback";
-    if (read_otp_range(&lo, &hi) == 0)
-        range_src = "OTP";
-    else if (read_state_range(&lo, &hi) == 0)
-        range_src = "state";
+    int lo = -1, hi = -1;
+    const char *range_src = NULL;
+
     if (argc >= 3) {
         lo = atoi(argv[1]);
         hi = atoi(argv[2]);
         range_src = "override";
+    } else if (read_otp_range(&lo, &hi) == 0) {
+        range_src = "OTP";
+    } else if (read_state_range(&lo, &hi) == 0) {
+        range_src = "state";
+    } else {
+        fprintf(stderr, "factory AF range unavailable; OTP/state missing\n");
+        return 2;
     }
     if (lo < 0 || hi > 1023 || lo >= hi) {
         fprintf(stderr, "invalid focus range %d..%d\n", lo, hi);
