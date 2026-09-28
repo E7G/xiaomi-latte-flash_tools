@@ -18,6 +18,7 @@
 #define FALLBACK_MACRO 366
 #define NBUF 4
 #define MAX_POINTS 256
+#define MIN_CONFIDENT_SCORE 0.0005
 
 struct buf { void *p; size_t len; };
 struct point { int f; double s1, s2; };
@@ -310,30 +311,42 @@ int main(int argc, char **argv) {
     double coarse_score;
     int ci = best_point(coarse, n, &coarse_score);
     int center = coarse[ci].f;
+    int best = center;
+    double fine_score = coarse_score;
+    int low_confidence = 0;
 
-    int rlo = center - step;
-    int rhi = center + step;
-    if (rlo < lo) rlo = lo;
-    if (rhi > hi) rhi = hi;
-    struct point fine[MAX_POINTS];
-    int fine_step = fast ? 4 : 2;
-    int fn = build_points(fine, rlo, rhi, fine_step);
-    current = scan_pass(vfd, ffd, b, w, h, stride, fine, fn, 0, current);
-    if (fast) {
-        for (int i = 0; i < fn; i++)
-            fine[i].s2 = fine[i].s1;
+    if (coarse_score < MIN_CONFIDENT_SCORE) {
+        low_confidence = 1;
+        best = lo;
     } else {
-        current = scan_pass(vfd, ffd, b, w, h, stride, fine, fn, 1, current);
+        int rlo = center - step;
+        int rhi = center + step;
+        if (rlo < lo) rlo = lo;
+        if (rhi > hi) rhi = hi;
+        struct point fine[MAX_POINTS];
+        int fine_step = fast ? 4 : 2;
+        int fn = build_points(fine, rlo, rhi, fine_step);
+        current = scan_pass(vfd, ffd, b, w, h, stride, fine, fn, 0, current);
+        if (fast) {
+            for (int i = 0; i < fn; i++)
+                fine[i].s2 = fine[i].s1;
+        } else {
+            current = scan_pass(vfd, ffd, b, w, h, stride, fine, fn, 1, current);
+        }
+        int fi = best_point(fine, fn, &fine_score);
+        best = fine[fi].f;
+        if (fine_score < MIN_CONFIDENT_SCORE) {
+            low_confidence = 1;
+            best = lo;
+        }
     }
-    double fine_score;
-    int fi = best_point(fine, fn, &fine_score);
-    int best = fine[fi].f;
 
     set_focus(ffd, best);
     wait_focus(current, best);
     discard_frames(vfd, b, 3);
-    printf("BEST focus=%d score=%.8f coarse=%d coarse_score=%.8f range=%d..%d source=%s\n",
-           best, fine_score, center, coarse_score, lo, hi, range_src);
+    printf("BEST focus=%d score=%.8f coarse=%d coarse_score=%.8f range=%d..%d source=%s confidence=%s\n",
+           best, fine_score, center, coarse_score, lo, hi, range_src,
+           low_confidence ? "low->infinity" : "good");
 
     xioctl(vfd, VIDIOC_STREAMOFF, &type);
     close(ffd);
