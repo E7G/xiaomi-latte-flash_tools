@@ -1,7 +1,34 @@
 #!/bin/sh
-# Refresh the per-unit infinity preset before opening GNOME Snapshot.
-# The helper is safe to run repeatedly and does not stay resident.
+set -eu
+
+mode=normal
+case "${1:-}" in
+    --autofocus)
+        mode=fast
+        shift
+        ;;
+    --full-autofocus)
+        mode=full
+        shift
+        ;;
+esac
+
+# Always restore this tablet's factory infinity preset before opening the
+# camera. The helper validates the rear-camera OTP AF group and writes a
+# non-persistent state file for the C autofocus helper.
 if command -v sudo >/dev/null 2>&1; then
     sudo -n /usr/local/sbin/mipad2-camera-init-focus >/dev/null 2>&1 || true
 fi
+
+# Autofocus is opt-in from the desktop action so the normal camera launch
+# remains immediate. Never prevent Snapshot from opening if AF cannot run.
+case "$mode" in
+    fast)
+        timeout 10s /usr/local/bin/mipad2-camera-af --fast >/tmp/mipad2-camera-af.log 2>&1 || true
+        ;;
+    full)
+        timeout 30s /usr/local/bin/mipad2-camera-af --full >/tmp/mipad2-camera-af.log 2>&1 || true
+        ;;
+esac
+
 exec snapshot "$@"

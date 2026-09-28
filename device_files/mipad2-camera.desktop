@@ -9,3 +9,15 @@ Type=Application
 Categories=AudioVideo;Video;Camera;
 Keywords=camera;video;Snapshot;Mi Pad 2;
 StartupNotify=true
+DBusActivatable=false
+Actions=AutoFocus;FullAutoFocus;
+
+[Desktop Action AutoFocus]
+Name=自动对焦后打开
+Name[en]=Open with fast autofocus
+Exec=/usr/local/bin/mipad2-camera-launch --autofocus
+
+[Desktop Action FullAutoFocus]
+Name=高精度自动对焦后打开
+Name[en]=Open with full autofocus
+Exec=/usr/local/bin/mipad2-camera-launch --full-autofocus
