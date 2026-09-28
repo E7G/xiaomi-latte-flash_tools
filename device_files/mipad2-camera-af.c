@@ -92,6 +92,20 @@ static void set_focus(int fd, int value) {
     struct v4l2_control c = { .id = V4L2_CID_FOCUS_ABSOLUTE, .value = value };
     if (xioctl(fd, VIDIOC_S_CTRL, &c) < 0) die("VIDIOC_S_CTRL focus");
 }
+static int find_rear_input(int vfd) {
+    for (unsigned i = 0; i < 32; i++) {
+        struct v4l2_input in = { .index = i };
+        if (xioctl(vfd, VIDIOC_ENUMINPUT, &in) < 0) {
+            if (errno == EINVAL)
+                break;
+            die("VIDIOC_ENUMINPUT");
+        }
+        if (strstr((const char *)in.name, "t4ka3"))
+            return (int)i;
+    }
+    errno = ENODEV;
+    return -1;
+}
 static void wait_focus(int from, int to) {
     int d = abs(to - from);
     int us = 30000 + d * 1000;
@@ -217,7 +231,8 @@ int main(int argc, char **argv) {
 
     int vfd = open(VIDEO_DEV, O_RDWR | O_CLOEXEC);
     if (vfd < 0) die("open video");
-    int input = 1;
+    int input = find_rear_input(vfd);
+    if (input < 0) die("find T4KA3 input");
     if (xioctl(vfd, VIDIOC_S_INPUT, &input) < 0) die("VIDIOC_S_INPUT");
 
     struct v4l2_format fmt = {0};
@@ -233,8 +248,8 @@ int main(int argc, char **argv) {
         fprintf(stderr, "unsupported fourcc 0x%08x\n", fmt.fmt.pix.pixelformat);
         return 3;
     }
-    fprintf(stderr, "video=%s format=%dx%d stride=%d focus=%s range=%d..%d (%s)\n",
-            VIDEO_DEV, w, h, stride, focus_path, lo, hi, range_src);
+    fprintf(stderr, "video=%s input=%d(T4KA3) format=%dx%d stride=%d focus=%s range=%d..%d (%s)\n",
+            VIDEO_DEV, input, w, h, stride, focus_path, lo, hi, range_src);
 
     struct v4l2_requestbuffers req = {0};
     req.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
