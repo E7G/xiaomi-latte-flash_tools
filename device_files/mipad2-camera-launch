@@ -1,8 +1,12 @@
 #!/bin/sh
 set -eu
 
-mode=normal
+mode=fast
 case "${1:-}" in
+    --no-autofocus)
+        mode=normal
+        shift
+        ;;
     --autofocus)
         mode=fast
         shift
@@ -20,8 +24,9 @@ if command -v sudo >/dev/null 2>&1; then
     sudo -n /usr/local/sbin/mipad2-camera-init-focus >/dev/null 2>&1 || true
 fi
 
-# Autofocus is opt-in from the desktop action so the normal camera launch
-# remains immediate. Never prevent Snapshot from opening if AF cannot run.
+# Fast factory-range autofocus is the normal launch path. It runs before
+# Snapshot opens the AtomISP node, then exits completely; no AF daemon stays
+# resident. Never prevent Snapshot from opening if AF cannot run.
 case "$mode" in
     fast)
         timeout 10s /usr/local/bin/mipad2-camera-af --fast >/tmp/mipad2-camera-af.log 2>&1 || true
