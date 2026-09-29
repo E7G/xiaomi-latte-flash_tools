@@ -215,6 +215,9 @@ alias run="arch-chroot $mount_dir"
 install_packages() {
 	# 安装基础包
 	pacstrap -C "${device_file}"/pacman.conf -c $mount_dir base iptables-nft ${firmware[@]} grub efibootmgr sbsigntools
+	# pacstrap -C selects the build host's config but does not install that
+	# config into the target; keep the signed-package policy and mirrors there.
+	install -Dm0644 "$device_file/pacman.conf" "$mount_dir/etc/pacman.conf"
 
 	if [[ -z "$KERNEL_PACKAGE" ]]; then
 		KERNEL_PACKAGE="$(find "$device_file" -maxdepth 1 -name 'linux-latte-cachyos-*.pkg.tar.zst' -print -quit)"
@@ -242,13 +245,21 @@ EOF
 		cat <<EOF >> $mount_dir/etc/pacman.conf
 [archlinuxcn]
 SigLevel = Optional TrustAll
+Server = https://repo.archlinuxcn.org/\$arch
 Server = https://mirrors.cernet.edu.cn/archlinuxcn/\$arch
+Server = https://mirrors.bfsu.edu.cn/archlinuxcn/\$arch
 
 EOF
 	fi
 
 	# 添加源后必须立马更新，不让报错
+	run pacman-key --init
+	run pacman-key --populate archlinux
 	run pacman -Sy archlinuxcn-keyring --noconfirm
+	run pacman-key --populate archlinuxcn
+	# Only bootstrap the community keyring with TrustAll.  Every subsequent
+	# repository package must have a trusted signature.
+	sed -i '/^SigLevel = Optional TrustAll$/d' "$mount_dir/etc/pacman.conf"
 	run pacman -S yay timeshift pamac-aur plymouth brave-bin --noconfirm
 }
 
@@ -256,6 +267,8 @@ config_packages() {
 	echo 安装 pacman 内核签名 hook
 	install -Dm0755 "${device_file}"/mipad2-kernel-install $mount_dir/usr/local/sbin/mipad2-kernel-install
 	install -Dm0644 "${device_file}"/kernel.hook $mount_dir/etc/pacman.d/hooks/
+	install -Dm0755 "${device_file}"/mipad2-kernel-preflight $mount_dir/usr/local/sbin/mipad2-kernel-preflight
+	install -Dm0644 "${device_file}"/kernel-preflight.hook $mount_dir/etc/pacman.d/hooks/
 	echo 更新 udev hwdb
 	run udevadm hwdb --update
 
@@ -609,7 +622,18 @@ cleanup_rootfs() {
 }
 
 update_pkgfile() {
-    run pkgfile --update
+	# pkgfile's command lookup cache is optional at boot.  ArchlinuxCN mirrors
+	# intermittently close TLS connections, so an outage must not discard an
+	# otherwise valid rootfs after package installation and EFI signing.
+	for attempt in 1 2 3; do
+		if run pkgfile --update; then
+			return 0
+		fi
+		echo "pkgfile cache update failed (attempt $attempt/3)" >&2
+		[[ $attempt == 3 ]] || sleep 5
+	done
+	echo 'Continuing without the optional pkgfile cache' >&2
+	return 0
 }
 
 all() {
@@ -625,6 +649,13 @@ all() {
 	config_grub
 	update_pkgfile
 	cleanup_rootfs
+	# The GNOME profile lives in @home, not the default @ subvolume.  Fail
+	# before image conversion if that mount or its user configuration is lost.
+	if [[ $desktop_type == gnome ]]; then
+		findmnt --mountpoint "$mount_dir/home"
+		test -s "$mount_dir/home/$UserName/.config/brave-flags.conf"
+		test -s "$mount_dir/home/$UserName/.config/mimeapps.list"
+	fi
 
 	umount_img
 	convert

@@ -22,7 +22,18 @@ mkdir -p "${stage}/images" "${stage}/device_files" "${out}"
 
 install -m0644 images/gpt.bin images/xiaomi-latte-boot.img \
   images/xiaomi-latte-rootfs.img "${stage}/images/"
-cp -a device_files/. "${stage}/device_files/"
+# Only these files are read by flash-one-click.ps1.  Copying the whole build
+# directory would also publish the legacy MOK signing key in the artifact.
+install -m0644 \
+  device_files/fastboot.efi \
+  device_files/oemvars.txt \
+  device_files/oemvars-battery-config-fake-disabled.txt \
+  device_files/oemvars-battery-config-fake.txt \
+  "${stage}/device_files/"
+[[ ! -e "${stage}/device_files/MOK.key" ]] || {
+  echo 'Refusing to package a private MOK key' >&2
+  exit 1
+}
 install -m0644 DNX_flash_all.bat DNX_flash-boot.bat ONE_KEY_FLASH.bat \
   flash-one-click.ps1 "${stage}/"
 install -m0644 README.md "${stage}/README.md"

@@ -6,7 +6,9 @@ GNOME Wayland（构建脚本仍保留 Plasma 可选配置），内核来自 [`E7
 
 ## Secure Boot / MOK security note
 
-The current legacy Mi Pad 2 MOK is retained only for compatibility with tablets that already enrolled its certificate. The private key must never be copied into a finished image; the build now keeps it only in a temporary build-time path and deletes it immediately after signing. Because the legacy private key has existed in repository history, it should be considered compromised for trust purposes. A future device-side migration should generate a new MOK, enroll the new certificate on the tablet first, then switch signing to the new key and remove the legacy private key from active builds.
+The current legacy Mi Pad 2 MOK is retained only for compatibility with tablets that already enrolled its certificate. The private key must never be copied into a finished image or one-click flash package; the build now keeps it only in a temporary build-time path and deletes it immediately after signing, while the package stages only the four flasher inputs it needs. Because the legacy private key has existed in repository history, it should be considered compromised for trust purposes. A future device-side migration should generate a new MOK, enroll the new certificate on the tablet first, then switch signing to the new key and remove the legacy private key from active builds.
+
+Kernel upgrades now run a pre-transaction Secure Boot check. If Secure Boot is enabled and `/etc/mipad2-secureboot/MOK.key` or `/boot/EFI/MOK.crt` is missing, the upgrade is rejected before pacman changes the kernel package. Provision and enroll a new device-specific MOK before upgrading such a tablet; do not restore the compromised legacy private key to the image. Upgrades with Secure Boot disabled are unaffected.
 
 ## 一键刷机
 
@@ -23,7 +25,7 @@ The current legacy Mi Pad 2 MOK is retained only for compatibility with tablets 
 3. 启动原版 `fastboot.efi`；
 4. 验证设备代号必须为 `latte`；
 5. 写入原版 OEM 变量和 GPT；
-6. 写入 boot 与 CachyOS KDE system；
+6. 写入 boot 与 CachyOS GNOME system；
 7. 自动重启。
 
 任一步失败都会立即停止，不会继续写入后续分区。

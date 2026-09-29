@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
+# The pacman pre-transaction hook protects normal upgrades. Keep the same
+# check here so a manual invocation cannot replace a signed kernel either.
+/usr/local/sbin/mipad2-kernel-preflight
+
 pkgbase="linux-latte-cachyos"
 boot_image="/boot/vmlinuz-linux-latte-cachyos"
 mok_key="/etc/mipad2-secureboot/MOK.key"
@@ -34,7 +38,7 @@ if [[ -s "${mok_key}" && -s "${mok_cert}" ]]; then
     --cert "${mok_cert}" \
     --output "${tmp_image}" \
     "${source_image}"
-  /usr/bin/sbverify --list "${tmp_image}" >/dev/null
+  /usr/bin/sbverify --cert "${mok_cert}" "${tmp_image}" >/dev/null
   echo "Installed and signed ${source_image} -> ${boot_image}"
 else
   install -m 0755 "${source_image}" "${tmp_image}"
