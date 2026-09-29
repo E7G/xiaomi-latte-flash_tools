@@ -242,13 +242,21 @@ EOF
 		cat <<EOF >> $mount_dir/etc/pacman.conf
 [archlinuxcn]
 SigLevel = Optional TrustAll
+Server = https://repo.archlinuxcn.org/\$arch
 Server = https://mirrors.cernet.edu.cn/archlinuxcn/\$arch
+Server = https://mirrors.bfsu.edu.cn/archlinuxcn/\$arch
 
 EOF
 	fi
 
 	# 添加源后必须立马更新，不让报错
+	run pacman-key --init
+	run pacman-key --populate archlinux
 	run pacman -Sy archlinuxcn-keyring --noconfirm
+	run pacman-key --populate archlinuxcn
+	# Only bootstrap the community keyring with TrustAll.  Every subsequent
+	# repository package must have a trusted signature.
+	sed -i '/^SigLevel = Optional TrustAll$/d' "$mount_dir/etc/pacman.conf"
 	run pacman -S yay timeshift pamac-aur plymouth brave-bin --noconfirm
 }
 

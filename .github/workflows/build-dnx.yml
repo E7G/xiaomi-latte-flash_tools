@@ -239,6 +239,8 @@ jobs:
           test -x "$rootfs/usr/local/sbin/mipad2-gnome-osk-patch"
           test -s "$rootfs/etc/pacman.d/hooks/95-mipad2-gnome-osk.hook"
           test -s "$rootfs/etc/brave/policies/managed/lean-browser.json"
+          grep -qx 'SigLevel = Required DatabaseOptional' "$rootfs/etc/pacman.conf"
+          ! grep -qx 'SigLevel = Optional TrustAll' "$rootfs/etc/pacman.conf"
           # useradd creates mode-0700 homes; inspect @home as root.
           sudo test -s "$rootfs/home/user/.config/brave-flags.conf"
           grep -q '^wifi.powersave=2$' "$rootfs/etc/NetworkManager/conf.d/20-mipad2-wifi-powersave.conf"
