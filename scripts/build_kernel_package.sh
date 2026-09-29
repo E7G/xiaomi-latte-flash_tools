@@ -7,6 +7,17 @@ out_dir="${repo_root}/kernel-output"
 source_repo="${KERNEL_REPO:-E7G/linux_latte}"
 source_ref="${KERNEL_COMMIT:-${KERNEL_REF:-cachyos-mipad2}}"
 pkgbase="linux-latte-cachyos"
+kernel_commit="${KERNEL_COMMIT:-}"
+source_date_epoch="${SOURCE_DATE_EPOCH:-}"
+
+[[ "${kernel_commit}" =~ ^[0-9a-f]{40}$ ]] || {
+  echo "KERNEL_COMMIT must be a full 40-character SHA" >&2
+  exit 1
+}
+[[ "${source_date_epoch}" =~ ^[0-9]+$ ]] && (( source_date_epoch > 0 )) || {
+  echo "SOURCE_DATE_EPOCH must be a positive integer" >&2
+  exit 1
+}
 
 pacman -Syu --noconfirm --needed \
   base-devel bc bison clang cpio curl flex git kmod libelf lld llvm \
@@ -108,7 +119,13 @@ install -Dm0755 fix_file/tests/mipad2-hardware-smoke.sh \
 install -Dm0644 fix_file/tests/mipad2-hardware-audit.service \
   "${work_dir}/pkg/etc/systemd/system/mipad2-hardware-audit.service"
 
-pkgver="${kernel_release//-/_}"
+install -d "${work_dir}/pkg/usr/share/doc/${pkgbase}"
+printf '%s\n' "${kernel_commit}" > "${work_dir}/pkg/usr/share/doc/${pkgbase}/source-commit"
+printf '%s\n' "${source_repo}" > "${work_dir}/pkg/usr/share/doc/${pkgbase}/source-repository"
+printf '%s\n' "${kernel_release}" > "${work_dir}/pkg/usr/share/doc/${pkgbase}/kernel-release"
+
+source_stamp="$(date -u -d "@${source_date_epoch}" '+%Y%m%d%H%M%S')"
+pkgver="${kernel_release//-/_}.r${source_stamp}.g${kernel_commit:0:12}"
 pkgrel=1
 installed_size="$(du -sb "${work_dir}/pkg" | cut -f1)"
 cat > "${work_dir}/pkg/.PKGINFO" <<EOF
@@ -117,7 +134,7 @@ pkgbase = ${pkgbase}
 pkgver = ${pkgver}-${pkgrel}
 pkgdesc = Mi Pad 2 linux_latte kernel with CachyOS optimizations
 url = https://github.com/${source_repo}
-builddate = $(date +%s)
+builddate = ${source_date_epoch}
 packager = GitHub Actions
 size = ${installed_size}
 arch = x86_64
