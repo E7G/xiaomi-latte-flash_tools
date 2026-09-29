@@ -193,6 +193,12 @@ jobs:
           test -f images/gpt.bin
           test -f images/xiaomi-latte-boot.img
           test -f images/xiaomi-latte-rootfs.img
+          test ! -e device_files/MOK.key
+          test ! -e device_files/MOK.crt
+          test "$(find device_files -maxdepth 1 -type f | wc -l)" -eq 4
+          for file in fastboot.efi oemvars.txt oemvars-battery-config-fake-disabled.txt oemvars-battery-config-fake.txt; do
+            test -s "device_files/$file"
+          done
 
       - name: Verify boot image layout
         run: |
@@ -217,6 +223,8 @@ jobs:
           sudo mount -o loop,ro,subvol=@ work/dnx-package/images/xiaomi-latte-rootfs.img "$rootfs"
           sudo mount -o loop,ro,subvol=@home work/dnx-package/images/xiaomi-latte-rootfs.img "$rootfs/home"
           findmnt --mountpoint "$rootfs/home"
+          sudo test ! -e "$rootfs/root/.mipad2-build/MOK.key"
+          test ! -e "$esp/EFI/MOK.key"
           test -x "$rootfs/usr/local/sbin/mipad2-install-to-emmc"
           test -s "$rootfs/etc/systemd/system/mipad2-usb-installer.service"
           test -L "$rootfs/etc/systemd/system/multi-user.target.wants/mipad2-usb-installer.service"
