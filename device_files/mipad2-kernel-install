@@ -6,21 +6,25 @@ boot_image="/boot/vmlinuz-linux-latte-cachyos"
 mok_key="/etc/mipad2-secureboot/MOK.key"
 mok_cert="/boot/EFI/MOK.crt"
 
+mapfile -t owned_images < <(
+  pacman -Ql "${pkgbase}" \
+    | awk '$2 ~ "^/usr/lib/modules/[^/]+/vmlinuz$" { print $2 }'
+)
+
 matches=()
-for pkgbase_file in /usr/lib/modules/*/pkgbase; do
-  [[ -f "${pkgbase_file}" ]] || continue
-  [[ "$(<"${pkgbase_file}")" == "${pkgbase}" ]] || continue
-  candidate="${pkgbase_file%/pkgbase}/vmlinuz"
+for candidate in "${owned_images[@]}"; do
   [[ -s "${candidate}" ]] || continue
   matches+=("${candidate}")
 done
 
 if (( ${#matches[@]} != 1 )); then
-  echo "Expected exactly one installed ${pkgbase} kernel image, found ${#matches[@]}" >&2
+  echo "Expected exactly one pacman-owned ${pkgbase} kernel image, found ${#matches[@]}" >&2
+  printf 'Owned candidates: %s\n' "${owned_images[*]:-(none)}" >&2
   exit 1
 fi
 
 source_image="${matches[0]}"
+echo "Using $(pacman -Q "${pkgbase}") kernel image: ${source_image}"
 tmp_image="${boot_image}.new"
 trap 'rm -f "${tmp_image}"' EXIT
 
