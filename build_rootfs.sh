@@ -611,7 +611,18 @@ cleanup_rootfs() {
 }
 
 update_pkgfile() {
-    run pkgfile --update
+	# pkgfile's command lookup cache is optional at boot.  ArchlinuxCN mirrors
+	# intermittently close TLS connections, so an outage must not discard an
+	# otherwise valid rootfs after package installation and EFI signing.
+	for attempt in 1 2 3; do
+		if run pkgfile --update; then
+			return 0
+		fi
+		echo "pkgfile cache update failed (attempt $attempt/3)" >&2
+		[[ $attempt == 3 ]] || sleep 5
+	done
+	echo 'Continuing without the optional pkgfile cache' >&2
+	return 0
 }
 
 all() {
