@@ -5,6 +5,27 @@ efi_dir=/sys/firmware/efi
 efi_vars=${efi_dir}/efivars
 mok_key=/etc/mipad2-secureboot/MOK.key
 mok_cert=/boot/EFI/MOK.crt
+boot_dir=/boot
+min_boot_free_kib=65536
+
+# mkinitcpio writes a new image before replacing the old one.  A full or
+# unmounted ESP can otherwise leave pacman upgraded but the tablet unbootable.
+boot_fstype=$(/usr/bin/findmnt -rn -o FSTYPE --mountpoint "${boot_dir}") || {
+  echo 'Boot ESP is not mounted; refusing kernel upgrade' >&2
+  exit 1
+}
+if [[ ${boot_fstype} != vfat ]]; then
+  echo 'Boot ESP is not vfat; refusing kernel upgrade' >&2
+  exit 1
+fi
+boot_free_kib=$(/usr/bin/df -Pk "${boot_dir}" | /usr/bin/awk 'NR == 2 {print $4}') || {
+  echo 'Cannot determine boot ESP free space; refusing kernel upgrade' >&2
+  exit 1
+}
+if [[ ! ${boot_free_kib} =~ ^[0-9]+$ ]] || (( boot_free_kib < min_boot_free_kib )); then
+  echo "Boot ESP needs at least ${min_boot_free_kib} KiB free (found ${boot_free_kib:-unknown}); refusing kernel upgrade" >&2
+  exit 1
+fi
 
 # A non-UEFI boot cannot enforce UEFI Secure Boot. If UEFI is present, do not
 # silently treat an unreadable or malformed SecureBoot variable as disabled.
