@@ -116,6 +116,10 @@ install -Dm0644 fix_file/packages/mipad2-test-no-idle/src/mipad2-test-no-idle.se
   "${work_dir}/pkg/etc/systemd/system/mipad2-test-no-idle.service"
 install -Dm0755 fix_file/tests/mipad2-hardware-smoke.sh \
   "${work_dir}/pkg/usr/local/libexec/mipad2-hardware-smoke"
+install -Dm0755 fix_file/tests/mipad2-camera-test.sh \
+  "${work_dir}/pkg/usr/local/libexec/mipad2-camera-test"
+install -Dm0755 fix_file/tests/mipad2-camera-select.sh \
+  "${work_dir}/pkg/usr/local/libexec/mipad2-camera-select"
 install -Dm0644 fix_file/tests/mipad2-hardware-audit.service \
   "${work_dir}/pkg/etc/systemd/system/mipad2-hardware-audit.service"
 

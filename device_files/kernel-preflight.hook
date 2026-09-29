@@ -1,0 +1,11 @@
+[Trigger]
+Operation = Install
+Operation = Upgrade
+Type = Package
+Target = linux-latte-cachyos
+
+[Action]
+Description = Check Mi Pad 2 kernel signing before transaction
+When = PreTransaction
+Exec = /usr/local/sbin/mipad2-kernel-preflight
+AbortOnFail

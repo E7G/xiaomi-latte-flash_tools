@@ -11,3 +11,6 @@ Do not add a second kernel patch or config overlay here.
 The generated kernel package also carries the matching AtomISP firmware,
 ALSA UCM, BCM4356 board data, USB serial debugger, recovery helpers, and
 hardware smoke test from the same source commit.
+The package also installs the camera capture and input-selection regression
+helpers as `mipad2-camera-test` and `mipad2-camera-select` under
+`/usr/local/libexec/`.

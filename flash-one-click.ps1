@@ -141,7 +141,7 @@ try {
         Write-Step 'Flashing boot image'
         Invoke-Fastboot -Arguments @('flash', 'boot', $bootImage) | Out-Null
 
-        Write-Step 'Flashing CachyOS KDE system image'
+        Write-Step 'Flashing CachyOS GNOME system image'
         Invoke-Fastboot -Arguments @('flash', 'system', (Join-Path $Root 'images\xiaomi-latte-rootfs.img')) | Out-Null
     }
 

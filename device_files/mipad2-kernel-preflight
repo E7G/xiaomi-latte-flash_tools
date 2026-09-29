@@ -1,0 +1,54 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+efi_dir=/sys/firmware/efi
+efi_vars=${efi_dir}/efivars
+mok_key=/etc/mipad2-secureboot/MOK.key
+mok_cert=/boot/EFI/MOK.crt
+
+# A non-UEFI boot cannot enforce UEFI Secure Boot. If UEFI is present, do not
+# silently treat an unreadable or malformed SecureBoot variable as disabled.
+[[ -d ${efi_dir} ]] || exit 0
+shopt -s nullglob
+secure_boot_vars=("${efi_vars}"/SecureBoot-*)
+if (( ${#secure_boot_vars[@]} != 1 )); then
+  echo 'Cannot determine UEFI Secure Boot state; refusing kernel upgrade' >&2
+  exit 1
+fi
+
+secure_boot=$(od -An -j4 -N1 -tu1 "${secure_boot_vars[0]}") || {
+  echo 'Cannot read UEFI Secure Boot state; refusing kernel upgrade' >&2
+  exit 1
+}
+case ${secure_boot//[[:space:]]/} in
+  0) exit 0 ;;
+  1) ;;
+  *) echo 'Invalid UEFI Secure Boot state; refusing kernel upgrade' >&2; exit 1 ;;
+esac
+
+if [[ ! -s ${mok_key} || ! -s ${mok_cert} ]]; then
+  echo 'Secure Boot is enabled but MOK signing key/certificate is missing; refusing kernel upgrade' >&2
+  exit 1
+fi
+if [[ ! -x /usr/bin/sbsign || ! -x /usr/bin/sbverify ]]; then
+  echo 'Secure Boot is enabled but sbsigntools is missing; refusing kernel upgrade' >&2
+  exit 1
+fi
+if [[ ! -x /usr/bin/openssl ]]; then
+  echo 'Secure Boot is enabled but openssl is missing; refusing kernel upgrade' >&2
+  exit 1
+fi
+
+key_pub=$(/usr/bin/openssl pkey -in "${mok_key}" -pubout -outform DER 2>/dev/null | sha256sum) || {
+  echo 'Cannot read MOK private key; refusing kernel upgrade' >&2
+  exit 1
+}
+cert_pub=$(/usr/bin/openssl x509 -in "${mok_cert}" -pubkey -noout 2>/dev/null |
+  /usr/bin/openssl pkey -pubin -outform DER 2>/dev/null | sha256sum) || {
+  echo 'Cannot read MOK certificate; refusing kernel upgrade' >&2
+  exit 1
+}
+if [[ ${key_pub%% *} != "${cert_pub%% *}" ]]; then
+  echo 'MOK private key and certificate do not match; refusing kernel upgrade' >&2
+  exit 1
+fi
