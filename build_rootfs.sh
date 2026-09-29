@@ -215,6 +215,9 @@ alias run="arch-chroot $mount_dir"
 install_packages() {
 	# 安装基础包
 	pacstrap -C "${device_file}"/pacman.conf -c $mount_dir base iptables-nft ${firmware[@]} grub efibootmgr sbsigntools
+	# pacstrap -C selects the build host's config but does not install that
+	# config into the target; keep the signed-package policy and mirrors there.
+	install -Dm0644 "$device_file/pacman.conf" "$mount_dir/etc/pacman.conf"
 
 	if [[ -z "$KERNEL_PACKAGE" ]]; then
 		KERNEL_PACKAGE="$(find "$device_file" -maxdepth 1 -name 'linux-latte-cachyos-*.pkg.tar.zst' -print -quit)"
