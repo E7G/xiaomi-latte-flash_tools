@@ -216,6 +216,8 @@ jobs:
           cmp "$esp/EFI/BOOT/grubx64.efi" "$esp/EFI/BOOT/BOOTX64.EFI"
           sudo mount -o loop,ro,subvol=@ work/dnx-package/images/xiaomi-latte-rootfs.img "$rootfs"
           sudo mount -o loop,ro,subvol=@home work/dnx-package/images/xiaomi-latte-rootfs.img "$rootfs/home"
+          findmnt --mountpoint "$rootfs/home"
+          sudo find "$rootfs/home" -maxdepth 3 -mindepth 1 -printf '%y %p\n' | awk 'NR <= 80'
           test -x "$rootfs/usr/local/sbin/mipad2-install-to-emmc"
           test -s "$rootfs/etc/systemd/system/mipad2-usb-installer.service"
           test -L "$rootfs/etc/systemd/system/multi-user.target.wants/mipad2-usb-installer.service"

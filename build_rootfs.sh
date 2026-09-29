@@ -627,6 +627,13 @@ all() {
 	config_grub
 	update_pkgfile
 	cleanup_rootfs
+	# The GNOME profile lives in @home, not the default @ subvolume.  Fail
+	# before image conversion if that mount or its user configuration is lost.
+	if [[ $desktop_type == gnome ]]; then
+		findmnt --mountpoint "$mount_dir/home"
+		test -s "$mount_dir/home/$UserName/.config/brave-flags.conf"
+		test -s "$mount_dir/home/$UserName/.config/mimeapps.list"
+	fi
 
 	umount_img
 	convert
