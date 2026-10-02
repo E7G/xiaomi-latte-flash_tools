@@ -26,6 +26,7 @@ env:
   KERNEL_REPO: E7G/linux_latte
   KERNEL_REF: cachyos-mipad2
   KERNEL_JOBS: '4'
+  ARCHLINUX_ARCHIVE_DATE: '2026/09/29'
   ROOTFS_SIZE: 8G
 
 jobs:
@@ -71,7 +72,7 @@ jobs:
           SOURCE_DATE_EPOCH: ${{ steps.kernel-source.outputs.source_date_epoch }}
         run: |
           docker run --rm \
-            -e KERNEL_REPO -e KERNEL_REF -e KERNEL_COMMIT -e KERNEL_JOBS -e SOURCE_DATE_EPOCH \
+            -e KERNEL_REPO -e KERNEL_REF -e KERNEL_COMMIT -e KERNEL_JOBS -e SOURCE_DATE_EPOCH -e ARCHLINUX_ARCHIVE_DATE \
             -v "$PWD:/workspace" -w /workspace \
             archlinux:base-devel \
             bash ./scripts/build_kernel_package.sh
