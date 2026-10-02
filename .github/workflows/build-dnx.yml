@@ -24,7 +24,7 @@ concurrency:
 
 env:
   KERNEL_REPO: E7G/linux_latte
-  KERNEL_REF: cachyos-mipad2
+  KERNEL_REF: fix/mipad2-sensor-matrix-stable-20261003
   KERNEL_JOBS: '4'
   ROOTFS_SIZE: 8G
 
