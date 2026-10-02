@@ -9,6 +9,7 @@ source_ref="${KERNEL_COMMIT:-${KERNEL_REF:-cachyos-mipad2}}"
 pkgbase="linux-latte-cachyos"
 kernel_commit="${KERNEL_COMMIT:-}"
 source_date_epoch="${SOURCE_DATE_EPOCH:-}"
+archlinux_archive_date="${ARCHLINUX_ARCHIVE_DATE:-}"
 
 [[ "${kernel_commit}" =~ ^[0-9a-f]{40}$ ]] || {
   echo "KERNEL_COMMIT must be a full 40-character SHA" >&2
@@ -19,7 +20,16 @@ source_date_epoch="${SOURCE_DATE_EPOCH:-}"
   exit 1
 }
 
-pacman -Syu --noconfirm --needed \
+if [[ -n "${archlinux_archive_date}" ]]; then
+  [[ "${archlinux_archive_date}" =~ ^[0-9]{4}/[0-9]{2}/[0-9]{2}$ ]] || {
+    echo "ARCHLINUX_ARCHIVE_DATE must be YYYY/MM/DD" >&2
+    exit 1
+  }
+  printf 'Server = https://archive.archlinux.org/repos/%s/$repo/os/$arch\n' \
+    "${archlinux_archive_date}" > /etc/pacman.d/mirrorlist
+fi
+
+pacman -Syyu --noconfirm --needed \
   base-devel bc bison clang cpio curl flex git kmod libelf lld llvm \
   openssl pahole perl python rsync tar xz zstd
 
@@ -34,6 +44,8 @@ cd "${work_dir}/src"
 export KBUILD_BUILD_USER=github-actions
 export KBUILD_BUILD_HOST=archlinux
 export KBUILD_BUILD_TIMESTAMP="$(date -u -d "@${SOURCE_DATE_EPOCH:-0}" '+%a %b %d %T UTC %Y')"
+clang --version
+ld.lld --version
 build_flags=(LLVM=1 LLVM_IAS=1)
 
 # CachyOS/BORE source and the Mi Pad 2 profile live in linux_latte's
