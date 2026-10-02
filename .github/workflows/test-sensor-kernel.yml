@@ -2,6 +2,11 @@ name: Test Mi Pad 2 sensor kernel package
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - test/mipad2-sensor-matrix-20261003
+    paths:
+      - '.github/workflows/test-sensor-kernel.yml'
 
 permissions:
   contents: read
