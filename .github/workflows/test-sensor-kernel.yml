@@ -1,4 +1,5 @@
 name: Test Mi Pad 2 sensor kernel package
+# rebuild-marker: real-hid-8086-0001
 
 on:
   workflow_dispatch:
