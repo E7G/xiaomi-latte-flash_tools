@@ -31,13 +31,19 @@ curl --fail --location --retry 5 \
   | tar -xz --strip-components=1 -C "${work_dir}/src"
 
 cd "${work_dir}/src"
+
+# This integration branch is deliberately limited to the user's 6.14 target.
+grep -Eq '^VERSION[[:space:]]*=[[:space:]]*6$' Makefile
+grep -Eq '^PATCHLEVEL[[:space:]]*=[[:space:]]*14$' Makefile
+python "${repo_root}/scripts/stage_kernel_support.py" \
+  "${work_dir}/src" "${work_dir}/pkg" --dry-run >/dev/null
 export KBUILD_BUILD_USER=github-actions
 export KBUILD_BUILD_HOST=archlinux
 export KBUILD_BUILD_TIMESTAMP="$(date -u -d "@${SOURCE_DATE_EPOCH:-0}" '+%a %b %d %T UTC %Y')"
 build_flags=(LLVM=1 LLVM_IAS=1)
 
 # CachyOS/BORE source and the Mi Pad 2 profile live in linux_latte's
-# cachyos-mipad2 branch. Build it directly; applying another patch/config
+# codex/mipad2-6.14-integrated branch. Build it directly; applying another patch/config
 # overlay here would create an untracked second kernel variant.
 make "${build_flags[@]}" xiaomipad2_defconfig
 
@@ -85,43 +91,10 @@ install -Dm0644 .config "${mod_dir}/config"
 printf '%s\n' "${pkgbase}" > "${mod_dir}/pkgbase"
 rm -f "${mod_dir}/build" "${mod_dir}/source"
 
-# Ship the exact support payload validated with this kernel.  Keeping this in
-# the same package prevents a fresh DNX image from booting a new kernel with
-# stale camera firmware, UCM routes, or USB debug helpers.
-install -Dm0644 fix_file/packages/mipad2-camera-support/src/intel/ipu/shisp_2401a0_v21.bin \
-  "${work_dir}/pkg/usr/lib/firmware/intel/ipu/shisp_2401a0_v21.bin"
-install -Dm0644 fix_file/packages/mipad2-camera-support/src/mipad2-camera.conf \
-  "${work_dir}/pkg/etc/modules-load.d/mipad2-camera.conf"
-install -Dm0644 fix_file/brcmfmac4356-pcie.Xiaomi\ Inc-Mipad2.txt \
-  "${work_dir}/pkg/usr/lib/firmware/brcm/brcmfmac4356-pcie.Xiaomi Inc-Mipad2.txt"
-install -Dm0644 fix_file/BCM4356A2.hcd \
-  "${work_dir}/pkg/usr/lib/firmware/brcm/BCM4356A2.hcd"
-
-install -Dm0644 fix_file/packages/mipad2-alsa-ucm/src/cht-bsw-rt5659/cht-bsw-rt5659.conf \
-  "${work_dir}/pkg/usr/share/alsa/ucm2/conf.d/cht-bsw-rt5659/cht-bsw-rt5659.conf"
-install -Dm0644 fix_file/packages/mipad2-alsa-ucm/src/cht-bsw-rt5659/HiFi.conf \
-  "${work_dir}/pkg/usr/share/alsa/ucm2/conf.d/cht-bsw-rt5659/HiFi.conf"
-
-install -Dm0755 fix_file/packages/mipad2-usb-serial/src/mipad2-usb-serial \
-  "${work_dir}/pkg/usr/local/libexec/mipad2-usb-serial"
-install -Dm0644 fix_file/packages/mipad2-usb-serial/src/mipad2-usb-serial.service \
-  "${work_dir}/pkg/etc/systemd/system/mipad2-usb-serial.service"
-install -Dm0755 fix_file/packages/mipad2-recovery/src/mp2-backup \
-  "${work_dir}/pkg/usr/local/sbin/mp2-backup"
-install -Dm0755 fix_file/packages/mipad2-recovery/src/mp2-recover \
-  "${work_dir}/pkg/usr/local/sbin/mp2-recover"
-install -Dm0755 fix_file/packages/mipad2-test-no-idle/src/mp2-test-no-idle \
-  "${work_dir}/pkg/usr/local/sbin/mp2-test-no-idle"
-install -Dm0644 fix_file/packages/mipad2-test-no-idle/src/mipad2-test-no-idle.service \
-  "${work_dir}/pkg/etc/systemd/system/mipad2-test-no-idle.service"
-install -Dm0755 fix_file/tests/mipad2-hardware-smoke.sh \
-  "${work_dir}/pkg/usr/local/libexec/mipad2-hardware-smoke"
-install -Dm0755 fix_file/tests/mipad2-camera-test.sh \
-  "${work_dir}/pkg/usr/local/libexec/mipad2-camera-test"
-install -Dm0755 fix_file/tests/mipad2-camera-select.sh \
-  "${work_dir}/pkg/usr/local/libexec/mipad2-camera-select"
-install -Dm0644 fix_file/tests/mipad2-hardware-audit.service \
-  "${work_dir}/pkg/etc/systemd/system/mipad2-hardware-audit.service"
+# Stage tracked package sources from this exact kernel commit. makepkg's
+# generated src/ directories do not exist in a clean GitHub source archive.
+python "${repo_root}/scripts/stage_kernel_support.py" \
+  "${work_dir}/src" "${work_dir}/pkg"
 
 install -d "${work_dir}/pkg/usr/share/doc/${pkgbase}"
 printf '%s\n' "${kernel_commit}" > "${work_dir}/pkg/usr/share/doc/${pkgbase}/source-commit"

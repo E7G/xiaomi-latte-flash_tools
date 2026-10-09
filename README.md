@@ -4,6 +4,14 @@
 GNOME Wayland（构建脚本仍保留 Plasma 可选配置），内核来自 [`E7G/linux_latte`](https://github.com/E7G/linux_latte)。
 
 
+## 6.14 整合候选分支
+
+本分支 `codex/mipad2-6.14-integrated` 对接同名 Linux 6.14 整合分支；原
+`arch_linux` 不改。Actions 仅手动运行，必须填写已经推送的完整内核提交 SHA。
+修正清洁源码打包路径，并补入 USB 串口休眠恢复 hook；所有支持文件来自同一内核提交。
+目前没有完成本分支整套镜像构建或刷机验收，不替代已验证稳定系统。详见
+[内核整合说明](kernel/README.md)。
+
 ## Secure Boot / MOK security note
 
 The current legacy Mi Pad 2 MOK is retained only for compatibility with tablets that already enrolled its certificate. The private key must never be copied into a finished image or one-click flash package; the build now keeps it only in a temporary build-time path and deletes it immediately after signing, while the package stages only the four flasher inputs it needs. Because the legacy private key has existed in repository history, it should be considered compromised for trust purposes. A future device-side migration should generate a new MOK, enroll the new certificate on the tablet first, then switch signing to the new key and remove the legacy private key from active builds.

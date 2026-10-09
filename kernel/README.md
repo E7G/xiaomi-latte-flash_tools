@@ -1,16 +1,23 @@
-# Kernel source
+# Integrated Linux 6.14 kernel source
 
-Kernel patches and the optimized defconfig live in the
-[`E7G/linux_latte` `cachyos-mipad2`](https://github.com/E7G/linux_latte/tree/cachyos-mipad2)
-branch.
+This candidate image branch uses [E7G/linux_latte
+`codex/mipad2-6.14-integrated`](https://github.com/E7G/linux_latte/tree/codex/mipad2-6.14-integrated).
+The original `arch_linux` image branch and `cachyos-mipad2` kernel branch are
+not changed by publishing this integration branch.
 
-This image repository resolves that branch to an exact commit, uses the
-commit in the build cache key, and compiles `xiaomipad2_defconfig` directly.
-Do not add a second kernel patch or config overlay here.
+Builds are manual only and require an explicit published 40-character kernel
+commit. The workflow obtains its committer timestamp and pins both cache and
+package provenance to that commit. The builder rejects kernels outside 6.14.
+It builds `xiaomipad2_defconfig` directly, without secondary config/patch overlays.
 
-The generated kernel package also carries the matching AtomISP firmware,
-ALSA UCM, BCM4356 board data, USB serial debugger, recovery helpers, and
-hardware smoke test from the same source commit.
-The package also installs the camera capture and input-selection regression
-helpers as `mipad2-camera-test` and `mipad2-camera-select` under
-`/usr/local/libexec/`.
+`stage_kernel_support.py` copies the tracked `fix_file/packages/<package>/`
+sources, not generated makepkg `src/` directories. It verifies all sources
+before copying and records destination hashes/modes in the package's
+`usr/share/doc/linux-latte-cachyos/support-payload.json`. Firmware, ALSA UCM,
+board data, no-idle/recovery/camera helpers and the USB serial suspend/resume
+hook come from the same pinned kernel source. Cache keys include the stager.
+
+Host build/staging evidence is not a completed DNX image or an on-device
+acceptance test. r8/r9 camera ABI changes still require boot, dual-camera,
+frame-cadence, suspend/resume and user-visible preview validation. Keep a
+validated stable recovery/default boot entry during candidate testing.

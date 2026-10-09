@@ -1,19 +1,12 @@
-name: Build CachyOS DNX package
+name: Build integrated 6.14 candidate DNX package
 
 on:
   workflow_dispatch:
-  push:
-    branches: [arch_linux]
-    paths:
-      - '.github/workflows/build-dnx.yml'
-      - 'kernel/**'
-      - 'scripts/**'
-      - '*.bat'
-      - '*.ps1'
-      - 'build_rootfs.sh'
-      - 'device_files/**'
-      - 'gpt.ini'
-      - 'gpt_ini2bin.py'
+    inputs:
+      kernel_commit:
+        description: 'Published 6.14 integration commit (full 40-character SHA; candidate image)'
+        required: true
+        type: string
 
 permissions:
   contents: read
@@ -24,7 +17,7 @@ concurrency:
 
 env:
   KERNEL_REPO: E7G/linux_latte
-  KERNEL_REF: cachyos-mipad2
+  KERNEL_REF: codex/mipad2-6.14-integrated
   KERNEL_JOBS: '4'
   ROOTFS_SIZE: 8G
 
@@ -35,12 +28,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Resolve optimized kernel branch
+      - name: Resolve pinned integration kernel commit
         id: kernel-source
         shell: bash
+        env:
+          REQUESTED_KERNEL_COMMIT: ${{ inputs.kernel_commit }}
         run: |
-          commit="$(git ls-remote "https://github.com/${KERNEL_REPO}.git" "refs/heads/${KERNEL_REF}" | awk '{print $1}')"
-          test -n "$commit"
+          commit="${REQUESTED_KERNEL_COMMIT}"
+          [[ "$commit" =~ ^[0-9a-f]{40}$ ]] || { echo "A full kernel SHA is required" >&2; exit 1; }
           commit_date="$(curl --fail --silent --show-error --location \
             -H "Accept: application/vnd.github+json" \
             -H "Authorization: Bearer ${{ github.token }}" \
@@ -62,7 +57,7 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: kernel-output
-          key: latte-kernel-${{ runner.os }}-${{ steps.kernel-source.outputs.commit }}-${{ hashFiles('scripts/build_kernel_package.sh') }}
+          key: latte-kernel-${{ runner.os }}-${{ steps.kernel-source.outputs.commit }}-${{ hashFiles('scripts/build_kernel_package.sh', 'scripts/stage_kernel_support.py') }}
 
       - name: Build optimized linux_latte package
         if: steps.kernel-cache.outputs.cache-hit != 'true'
@@ -96,6 +91,8 @@ jobs:
           test "$(tar -xOf "$package" usr/share/doc/linux-latte-cachyos/source-commit)" = "${{ steps.kernel-source.outputs.commit }}"
           grep -q 'usr/lib/firmware/intel/ipu/shisp_2401a0_v21.bin' "$contents"
           grep -q 'usr/local/libexec/mipad2-usb-serial' "$contents"
+          grep -q 'usr/lib/systemd/system-sleep/mipad2-usb-serial' "$contents"
+          grep -q 'usr/share/doc/linux-latte-cachyos/support-payload.json' "$contents"
           grep -q 'usr/local/libexec/mipad2-hardware-smoke' "$contents"
           grep -q 'usr/local/libexec/mipad2-camera-test' "$contents"
           grep -q 'usr/local/libexec/mipad2-camera-select' "$contents"
