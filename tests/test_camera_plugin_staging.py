@@ -120,6 +120,69 @@ class StagingTests(unittest.TestCase):
         self.assertRaises(ValueError, self.run_stage)
         self.assertFalse(self.output.exists())
 
+    def aac_fixture(self):
+        root = self.root / 'aac'
+        plugins = root / 'plugins'
+        plugins.mkdir(parents=True)
+        for label, soname in [('codec', 'libavcodec.so.63'), ('util', 'libavutil.so.61')]:
+            source = self.root / (label + '.c')
+            source.write_text('int fixture_' + label + '(void) { return 1; }\n')
+            subprocess.run(['cc', '-shared', '-fPIC', str(source), '-o', str(self.root / ('lib'+label+'.so')),
+                            '-Wl,-soname,' + soname], check=True, capture_output=True)
+        source = self.root / 'aac.c'
+        source.write_text('extern int fixture_codec(void); extern int fixture_util(void);\nint test(void) { return fixture_codec()+fixture_util(); }\n')
+        plugin = plugins / 'libgstlibav.so'
+        subprocess.run(['cc', '-shared', '-fPIC', str(source), '-o', str(plugin),
+                        '-L'+str(self.root), '-lcodec', '-lutil'], check=True, capture_output=True)
+        receipt = dict(schema=1, state='aac-plugin-built-host-only', upstream_version='1.28.7',
+                       gstreamer_build_abi={key: '1.28.7' for key in stager.ABI},
+                       ffmpeg_build_abi=stager.AAC_ABI, recipe_sha256='e'*64,
+                       plugin='plugins/libgstlibav.so', build_rpath_removed=True,
+                       sdk_libraries_deployed=False, binary_sha256=stager.sha(plugin),
+                       bytes=plugin.stat().st_size, needed_libraries=stager.elf_check(plugin))
+        (root/'receipt.json').write_text(json.dumps(receipt))
+        return root, receipt
+
+    def test_optional_aac_adds_only_one_source_plugin(self):
+        root, receipt = self.aac_fixture()
+        result = stager.stage(self.build, self.output, self.receipt_sha,
+                              aac_root=root, aac_receipt_sha256=stager.sha(root/'receipt.json'))
+        self.assertEqual(len(result['files']), 4)
+        self.assertTrue(result['aac_included'])
+        self.assertFalse(result['app_included'])
+        self.assertFalse(result['sdk_libraries_deployed'])
+        self.assertEqual(len([p for p in self.output.rglob('*') if p.is_file()]), 5)
+
+    def test_aac_options_must_be_paired(self):
+        self.assertRaises(ValueError, stager.stage, self.build, self.output, self.receipt_sha, aac_root=self.root)
+        self.assertRaises(ValueError, stager.stage, self.build, self.output, self.receipt_sha, aac_receipt_sha256='0'*64)
+        self.assertFalse(self.output.exists())
+
+    def test_wrong_aac_receipt_or_abi_before_write(self):
+        root, receipt = self.aac_fixture()
+        self.assertRaises(ValueError, stager.stage, self.build, self.output, self.receipt_sha,
+                          aac_root=root, aac_receipt_sha256='0'*64)
+        receipt['ffmpeg_build_abi'] = dict(receipt['ffmpeg_build_abi'], libavcodec='62.28.102')
+        (root/'receipt.json').write_text(json.dumps(receipt))
+        self.assertRaises(ValueError, stager.stage, self.build, self.output, self.receipt_sha,
+                          aac_root=root, aac_receipt_sha256=stager.sha(root/'receipt.json'))
+        self.assertFalse(self.output.exists())
+
+    def test_tampered_aac_rejected_before_any_output(self):
+        root, receipt = self.aac_fixture()
+        (root/'plugins/libgstlibav.so').write_bytes(b'tampered')
+        self.assertRaises(ValueError, stager.stage, self.build, self.output, self.receipt_sha,
+                          aac_root=root, aac_receipt_sha256=stager.sha(root/'receipt.json'))
+        self.assertFalse(self.output.exists())
+
+    def test_symlinked_aac_root_rejected(self):
+        root, receipt = self.aac_fixture()
+        link = self.root/'linked-aac'
+        link.symlink_to(root, target_is_directory=True)
+        self.assertRaises(ValueError, stager.stage, self.build, self.output, self.receipt_sha,
+                          aac_root=link, aac_receipt_sha256=stager.sha(root/'receipt.json'))
+        self.assertFalse(self.output.exists())
+
 
 if __name__ == '__main__':
     unittest.main()

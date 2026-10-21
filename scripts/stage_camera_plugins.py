@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Stage a hash-pinned three-plugin source-build result into a NEW package tree.
+"""Stage hash-pinned functional plugins, optionally source AAC, into a NEW package tree.
 
-Not a complete camera package: no app, AAC, launcher, rootfs mutation or device
+Not a complete camera package: no app, launcher, rootfs mutation or device
 acceptance. Caller supplies the exact build receipt SHA, not an inferred latest.
 """
 import argparse
@@ -19,6 +19,8 @@ EXPECTED = {
 }
 ABI = {'gstreamer-1.0', 'gstreamer-base-1.0', 'gstreamer-video-1.0',
        'gstreamer-plugins-bad-1.0'}
+AAC_ABI = {'libavcodec': '63.1.101', 'libavformat': '63.1.101',
+           'libavfilter': '12.1.101', 'libavutil': '61.1.101'}
 
 
 def require(value, message):
@@ -49,7 +51,43 @@ def elf_check(path):
     return needed
 
 
-def stage(build_root, package_root, expected_receipt_sha256, dry_run=False):
+def aac_plan(root, package_root, receipt_sha256):
+    require(re.fullmatch(r'[0-9a-f]{64}', receipt_sha256 or ''), 'Explicit AAC receipt SHA required')
+    root = Path(root)
+    require(not root.is_symlink(), 'Symlinked AAC root')
+    root = root.resolve()
+    require(root != package_root and root not in package_root.parents,
+            'Package root must be outside AAC build tree')
+    path = root / 'receipt.json'
+    regular(path, 1024**2)
+    require(sha(path) == receipt_sha256, 'AAC receipt hash mismatch')
+    receipt = json.loads(path.read_text())
+    require(receipt.get('schema') == 1 and receipt.get('state') == 'aac-plugin-built-host-only'
+            and receipt.get('upstream_version') == '1.28.7', 'Wrong AAC build state/version')
+    require(set(receipt.get('gstreamer_build_abi', {})) == ABI
+            and all(v == '1.28.7' for v in receipt['gstreamer_build_abi'].values())
+            and receipt.get('ffmpeg_build_abi') == AAC_ABI, 'AAC build ABI mismatch')
+    recipe = receipt.get('recipe_sha256', '')
+    require(re.fullmatch(r'[0-9a-f]{64}', recipe), 'Missing AAC recipe hash')
+    require(receipt.get('plugin') == 'plugins/libgstlibav.so'
+            and receipt.get('build_rpath_removed') is True
+            and receipt.get('sdk_libraries_deployed') is False, 'Wrong AAC export plan')
+    require(not (root / 'plugins').is_symlink(), 'Symlinked AAC plugin directory')
+    source = root / 'plugins/libgstlibav.so'
+    regular(source, 32 * 1024**2)
+    require(sha(source) == receipt.get('binary_sha256')
+            and source.stat().st_size == receipt.get('bytes'), 'AAC plugin hash/size mismatch')
+    needed = elf_check(source)
+    require(needed == receipt.get('needed_libraries')
+            and {'libavcodec.so.63', 'libavutil.so.61'} <= set(needed), 'AAC dependency mismatch')
+    relative = 'usr/local/lib/mipad2-gst-aac-source/' + recipe + '/plugin/libgstlibav.so'
+    value = dict(sha256=receipt['binary_sha256'], bytes=receipt['bytes'], mode='0o755',
+                 needed_libraries=needed)
+    return source, relative, value, recipe
+
+
+def stage(build_root, package_root, expected_receipt_sha256, dry_run=False,
+          aac_root=None, aac_receipt_sha256=None):
     require(re.fullmatch(r'[0-9a-f]{64}', expected_receipt_sha256 or ''),
             'Explicit 64-character build receipt SHA-256 required')
     build_root, package_root = Path(build_root), Path(package_root)
@@ -58,6 +96,8 @@ def stage(build_root, package_root, expected_receipt_sha256, dry_run=False):
     require(not package_root.exists(), 'Package root must be new')
     require(package_root != build_root and build_root not in package_root.parents,
             'Package root must be outside the build tree')
+    require((aac_root is None) == (aac_receipt_sha256 is None),
+            'AAC root and explicit receipt SHA must be supplied together')
     receipt_path = build_root / 'receipt.json'
     regular(receipt_path, 1024**2)
     require(sha(receipt_path) == expected_receipt_sha256, 'Build receipt hash mismatch')
@@ -92,11 +132,21 @@ def stage(build_root, package_root, expected_receipt_sha256, dry_run=False):
         files[relative] = dict(sha256=component['binary_sha256'], bytes=component['bytes'],
                                mode='0o755', needed_libraries=needed)
         planned.append((source, package_root / relative))
+    aac_recipe = None
+    if aac_root is not None:
+        source, relative, value, aac_recipe = aac_plan(aac_root, package_root, aac_receipt_sha256)
+        require(relative not in files, 'Duplicate AAC payload destination')
+        files[relative] = value
+        planned.append((source, package_root / relative))
     manifest = dict(schema=1, source_build_receipt_sha256=expected_receipt_sha256,
                     recipe_sha256=recipe, upstream_version='1.28.7', files=files,
-                    app_included=False, aac_included=False, launcher_included=False,
+                    app_included=False, aac_included=aac_recipe is not None, launcher_included=False,
                     diagnostic_plugins_included=False, system_library_replacement=False,
                     image_qualified=False, device_acceptance_inferred=False)
+    if aac_recipe is not None:
+        manifest.update(aac_source_build_receipt_sha256=aac_receipt_sha256,
+                        aac_recipe_sha256=aac_recipe, aac_ffmpeg_build_abi=AAC_ABI,
+                        sdk_libraries_deployed=False)
     if dry_run:
         return manifest
     # All sources/receipt/ELF metadata checked before the first output write.
@@ -120,6 +170,8 @@ if __name__ == '__main__':
     parser.add_argument('package_root', type=Path)
     parser.add_argument('--receipt-sha256', required=True)
     parser.add_argument('--dry-run', action='store_true')
+    parser.add_argument('--aac-root', type=Path)
+    parser.add_argument('--aac-receipt-sha256')
     args = parser.parse_args()
     print(json.dumps(stage(args.build_root, args.package_root, args.receipt_sha256,
-                           args.dry_run), indent=2))
+                           args.dry_run, args.aac_root, args.aac_receipt_sha256), indent=2))

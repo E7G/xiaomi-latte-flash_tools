@@ -1,3 +1,5 @@
+> Optional source-built AAC can now be staged with an independently pinned receipt: [current four-plugin source requirements and tests](SOURCE_AAC.md). Default three-plugin mode below is unchanged. App/launcher/image integration remains pending.
+
 # Manual functional camera-plugin package staging
 
 Candidate-only; no rootfs/default/launcher installation is triggered.
