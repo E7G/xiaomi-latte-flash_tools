@@ -11,6 +11,20 @@ ROOTFS_SIZE="${ROOTFS_SIZE:-8G}"
 KERNEL_PACKAGE="${KERNEL_PACKAGE:-}"
 KERNEL_PKGBASE="linux-latte-cachyos"
 
+# Optional source-camera candidate. Validate its explicit manifest pin before
+# touching NBD, mounts or images. Default builds retain the stock camera path.
+CAMERA_CANDIDATE_PACKAGE="${CAMERA_CANDIDATE_PACKAGE:-}"
+CAMERA_CANDIDATE_MANIFEST_SHA256="${CAMERA_CANDIDATE_MANIFEST_SHA256:-}"
+if [[ -n "$CAMERA_CANDIDATE_PACKAGE" || -n "$CAMERA_CANDIDATE_MANIFEST_SHA256" ]]; then
+	[[ -n "$CAMERA_CANDIDATE_PACKAGE" && -n "$CAMERA_CANDIDATE_MANIFEST_SHA256" ]] || {
+		echo 'Camera candidate package and manifest SHA must be supplied together' >&2
+		exit 1
+	}
+	CAMERA_CANDIDATE_PACKAGE="$(realpath -e -- "$CAMERA_CANDIDATE_PACKAGE")"
+	python3 ./scripts/install_camera_candidate.py "$CAMERA_CANDIDATE_PACKAGE" \
+		--manifest-sha256 "$CAMERA_CANDIDATE_MANIFEST_SHA256" --validate-only
+fi
+
 if [[ ! -d /sys/module/nbd ]]; then
 	modprobe nbd max_part=8
 fi
@@ -646,6 +660,10 @@ all() {
 	install_packages
 	config_packages
 	config_user
+	if [[ -n "$CAMERA_CANDIDATE_PACKAGE" ]]; then
+		python3 ./scripts/install_camera_candidate.py "$CAMERA_CANDIDATE_PACKAGE" \
+			--manifest-sha256 "$CAMERA_CANDIDATE_MANIFEST_SHA256" --rootfs "$mount_dir"
+	fi
 	config_grub
 	update_pkgfile
 	cleanup_rootfs

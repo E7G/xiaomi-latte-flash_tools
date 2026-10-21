@@ -1,3 +1,5 @@
+> Opt-in source camera rootfs merge is now wired to build_rootfs.sh with pre-NBD hash validation and mandatory native loader checks: [usage and exact qualification limits](CAMERA_ROOTFS.md). Default builds do not promote this candidate.
+
 > Optional complete source-app/four-plugin candidate composition is now available via scripts/stage_camera_app.py: [requirements, isolation and unqualified foreground gate](SOURCE_APPLICATION.md). No automatic rootfs merge, flash or default promotion.
 
 > Optional source-built AAC can now be staged with an independently pinned receipt: [current four-plugin source requirements and tests](SOURCE_AAC.md). Default three-plugin mode below is unchanged. App/launcher/image integration remains pending.
