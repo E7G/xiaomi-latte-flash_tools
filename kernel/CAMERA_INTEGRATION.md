@@ -1,3 +1,11 @@
+> 2026-10-21 follow-up: a matching private1.28.7 SDK and all three functional
+> source plugins have now been built, corrected for build-tree RPATH leakage,
+> target-loaded and passed a scoped dual-camera recording test with stock V4L2.
+> [Manual pinned package staging](PLUGIN_STAGING.md) now exists and its nine
+> contracts/actual payload staging pass. This is NOT a full Snapshot/AAC/launcher
+> source package or built/flashed image. The initial source-only checkpoint
+> below remains historical evidence; its ABI rejection is not the current blocker.
+
 # Camera packaging gate: not yet closed
 
 This document is a candidate-branch integration ledger, not a completed image.
