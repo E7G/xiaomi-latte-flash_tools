@@ -1,3 +1,5 @@
+> Optional complete source-app/four-plugin candidate composition is now available via scripts/stage_camera_app.py: [requirements, isolation and unqualified foreground gate](SOURCE_APPLICATION.md). No automatic rootfs merge, flash or default promotion.
+
 > Optional source-built AAC can now be staged with an independently pinned receipt: [current four-plugin source requirements and tests](SOURCE_AAC.md). Default three-plugin mode below is unchanged. App/launcher/image integration remains pending.
 
 # Manual functional camera-plugin package staging
