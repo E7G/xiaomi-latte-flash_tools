@@ -1,0 +1,103 @@
+{
+  "schema": 1,
+  "date": "2026-10-22",
+  "scope": "verified binary repack and image-input integration, not complete device/image/parity acceptance",
+  "build": {
+    "schema": 1,
+    "state": "arch-package-built-native-query-pass",
+    "kernelrelease": "6.14.0-mipad2-integrated-r26",
+    "source_commit": "6074419168fbb70aa5685e976874da6cf86d1fae",
+    "bundle_sha256": "8f28943fb55fceecf5a147969daea543c9fb4883b55ffee733744601ba2b16b1",
+    "module_cert_sha256": "3784d19dd5020fb996e1f2c79ab9be8e30ca90b4e06761badc52ae597e74bf94",
+    "crypto_verified_modules": 34,
+    "recipe_sha256": "434ae99a9126243dd0bedd53c79add41c6d10ede0ba9aa7949d1ce9f925ce13d",
+    "pkgbuild_sha256": "341f129a547694d48ca422f4db889803e06b4b3243f77b1be18ada0c691cfa46",
+    "package_base": "linux-latte-integrated",
+    "package_version": "6.14.0.r26-1",
+    "packaging_epoch": 1792505535,
+    "kernel_recompiled": false,
+    "kernel_payload_changed": false,
+    "installed": false,
+    "boot_image_qualified": false,
+    "package_sha256": "be486e55d12e47deb6a5d7d1e8fa5e2d7f2b38b685ceedbf8f7176b9d59ff884",
+    "package_bytes": 37688784,
+    "original_bundle_files_preserved": 52,
+    "payload_files_verified": 56,
+    "standard_alpm_metadata_generated_by_makepkg": true,
+    "host_or_tablet_install_performed": false,
+    "local_package_pgp_signed": false
+  },
+  "target_query": {
+    "state": "native-target-package-query-pass",
+    "package_sha256": "be486e55d12e47deb6a5d7d1e8fa5e2d7f2b38b685ceedbf8f7176b9d59ff884",
+    "name": "linux-latte-integrated",
+    "version": "6.14.0.r26-1",
+    "architecture": "x86_64",
+    "required_paths_present": true,
+    "private_signing_keys_absent": true,
+    "installed": false,
+    "kernel_or_default_changed": false,
+    "rebooted": false
+  },
+  "image_input_preflight": {
+    "state": "integrated-kernel-package-preflight-pass",
+    "kernelrelease": "6.14.0-mipad2-integrated-r26",
+    "pkgbase": "linux-latte-integrated",
+    "package_sha256": "be486e55d12e47deb6a5d7d1e8fa5e2d7f2b38b685ceedbf8f7176b9d59ff884",
+    "source_commit": "6074419168fbb70aa5685e976874da6cf86d1fae",
+    "original_files_verified": 52,
+    "modules": 34,
+    "install_script_absent": true,
+    "original_payload_hashes_preserved": true,
+    "new_cryptographic_signature_validation": false,
+    "image_build_or_install_performed": false
+  },
+  "contracts": {
+    "state": "all-flash-contract-tests-pass",
+    "tests": [
+      {
+        "optimized": false,
+        "cases": 87,
+        "exit_code": 0
+      },
+      {
+        "optimized": true,
+        "cases": 87,
+        "exit_code": 0
+      }
+    ],
+    "device_changed": false
+  },
+  "tested_source_sha256": {
+    "build_rootfs.sh": "5ef6c7ee98143a5f9a61208fef42da45a9146e235ce1de9cda14e9fead391007",
+    "device_files/kernel-preflight.hook": "31c5a566c9ea572613368c469a53778e038afbfa94bae0245e44ac1566246422",
+    "device_files/kernel.hook": "e9285823299beee983df58dbcc420c0b7be4e926efee6c3abeb0c0b06e0956ef",
+    "device_files/mipad2-kernel-install": "36ac038e0078faedf7084ee514582347cb3e762b2a9b67e1b416c6c4251bbfa3",
+    "scripts/package_integrated_kernel.py": "434ae99a9126243dd0bedd53c79add41c6d10ede0ba9aa7949d1ce9f925ce13d",
+    "scripts/preflight_integrated_kernel_package.py": "2f4ba68b91cdc06971467a5bbe9851931d6926502a92d6c6e0d198306ba54deb",
+    "tests/test_integrated_kernel_packaging.py": "61e30843cfde30ea8364930c2a4761979dbf4fc94bc52631eb012b4de51c384b"
+  },
+  "anti_blank": {
+    "persisted": true,
+    "changed_fields": [
+      "power.idleDpmsEnabled"
+    ],
+    "observation_seconds": 630.03,
+    "sample_count": 21,
+    "all_samples_powered": true,
+    "all_unrelated_settings_unchanged": true,
+    "authentication_preserved": true,
+    "survived_subsequent_reboot": true
+  },
+  "current_runtime": {
+    "kernel": "6.14.0-mipad2-cachyos-navkeys-bqdiag1",
+    "new_r26_tests_performed": false,
+    "usb_attached": false
+  },
+  "normal_app_foreground_qualified": false,
+  "new_image_built": false,
+  "package_installed": false,
+  "default_changed": false,
+  "full_objective_complete": false,
+  "raw_media_device_logs_or_settings_exported": false
+}

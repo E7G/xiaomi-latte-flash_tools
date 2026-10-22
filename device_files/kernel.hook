@@ -3,9 +3,11 @@ Operation = Install
 Operation = Upgrade
 Type = Package
 Target = linux-latte-cachyos
+Target = linux-latte-integrated
 
 [Action]
 Description = Install and sign linux_latte kernel
 When = PostTransaction
 Exec = /usr/local/sbin/mipad2-kernel-install
 Depends = sbsigntools
+NeedsTargets

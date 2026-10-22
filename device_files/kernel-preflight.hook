@@ -3,6 +3,7 @@ Operation = Install
 Operation = Upgrade
 Type = Package
 Target = linux-latte-cachyos
+Target = linux-latte-integrated
 
 [Action]
 Description = Check Mi Pad 2 boot space and kernel signing before transaction

@@ -1,5 +1,9 @@
 # Integrated Linux 6.14 kernel source
 
+2026-10-21 update: [actual r26 Arch binary repack, pinned image-input gate and
+dual-package upgrade hooks](KERNEL_DELIVERY.md). Native package queries passed;
+no package installation or full image boot qualification is implied.
+
 This candidate image branch uses [E7G/linux_latte
 `codex/mipad2-6.14-integrated`](https://github.com/E7G/linux_latte/tree/codex/mipad2-6.14-integrated).
 The original `arch_linux` image branch and `cachyos-mipad2` kernel branch are

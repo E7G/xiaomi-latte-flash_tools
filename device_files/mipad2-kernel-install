@@ -5,10 +5,38 @@ set -Eeuo pipefail
 # check here so a manual invocation cannot replace a signed kernel either.
 /usr/local/sbin/mipad2-kernel-preflight
 
-pkgbase="linux-latte-cachyos"
-boot_image="/boot/vmlinuz-linux-latte-cachyos"
 mok_key="/etc/mipad2-secureboot/MOK.key"
 mok_cert="/boot/EFI/MOK.crt"
+
+# ALPM NeedsTargets passes every upgraded package on stdin. Manual invocations
+# may supply explicit supported bases; an ambiguous no-argument install fails.
+targets=("$@")
+if (( ${#targets[@]} == 0 )) && [[ ! -t 0 ]]; then
+  while IFS= read -r target; do
+    [[ -z "$target" ]] || targets+=("$target")
+  done
+fi
+if (( ${#targets[@]} == 0 )); then
+  for candidate_base in linux-latte-cachyos linux-latte-integrated; do
+    if pacman -Qq "$candidate_base" >/dev/null 2>&1; then targets+=("$candidate_base"); fi
+  done
+  if (( ${#targets[@]} != 1 )); then
+    echo 'Specify exactly which installed Mi Pad 2 kernel package to sign' >&2
+    exit 1
+  fi
+fi
+for pkgbase in "${targets[@]}"; do
+  case "$pkgbase" in
+    linux-latte-cachyos|linux-latte-integrated) ;;
+    *) echo 'Unsupported kernel package base' >&2; exit 1 ;;
+  esac
+done
+
+install_one_kernel() {
+local pkgbase="$1"
+local boot_image="/boot/vmlinuz-${pkgbase}"
+local source_image tmp_image candidate
+local -a owned_images matches
 
 mapfile -t owned_images < <(
   pacman -Ql "${pkgbase}" \
@@ -28,6 +56,10 @@ if (( ${#matches[@]} != 1 )); then
 fi
 
 source_image="${matches[0]}"
+if [[ "$pkgbase" == linux-latte-integrated && ! "$source_image" =~ /6\.14\.0-mipad2-integrated-r[0-9]+/vmlinuz$ ]]; then
+  echo 'Integrated kernel package must contain a Linux6.14 integrated release' >&2
+  exit 1
+fi
 echo "Using $(pacman -Q "${pkgbase}") kernel image: ${source_image}"
 tmp_image="${boot_image}.new"
 trap 'rm -f "${tmp_image}"' EXIT
@@ -48,3 +80,11 @@ fi
 chmod 0755 "${tmp_image}"
 mv -f "${tmp_image}" "${boot_image}"
 trap - EXIT
+}
+
+declare -A completed=()
+for pkgbase in "${targets[@]}"; do
+  [[ -v "completed[$pkgbase]" ]] && continue
+  install_one_kernel "$pkgbase"
+  completed[$pkgbase]=1
+done

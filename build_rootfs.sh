@@ -9,7 +9,7 @@ HostName="${HostName:-mipad2}"
 desktop_type="${desktop_type:-gnome}"
 ROOTFS_SIZE="${ROOTFS_SIZE:-8G}"
 KERNEL_PACKAGE="${KERNEL_PACKAGE:-}"
-KERNEL_PKGBASE="linux-latte-cachyos"
+KERNEL_PKGBASE="${KERNEL_PKGBASE:-}"
 
 # Optional source-camera candidate. Validate its explicit manifest pin before
 # touching NBD, mounts or images. Default builds retain the stock camera path.
@@ -23,6 +23,18 @@ if [[ -n "$CAMERA_CANDIDATE_PACKAGE" || -n "$CAMERA_CANDIDATE_MANIFEST_SHA256" ]
 	CAMERA_CANDIDATE_PACKAGE="$(realpath -e -- "$CAMERA_CANDIDATE_PACKAGE")"
 	python3 ./scripts/install_camera_candidate.py "$CAMERA_CANDIDATE_PACKAGE" \
 		--manifest-sha256 "$CAMERA_CANDIDATE_MANIFEST_SHA256" --validate-only
+fi
+
+# A pinned integrated-kernel input is validated before any NBD/image operation.
+# The explicit opt-in leaves legacy unpinned package selection unchanged.
+KERNEL_PACKAGE_SHA256="${KERNEL_PACKAGE_SHA256:-}"
+if [[ -n "$KERNEL_PACKAGE_SHA256" ]]; then
+	[[ -n "$KERNEL_PACKAGE" ]] || { echo 'Pinned kernel requires explicit KERNEL_PACKAGE' >&2; exit 1; }
+	[[ -z "$KERNEL_PKGBASE" || "$KERNEL_PKGBASE" == linux-latte-integrated ]] || {
+		echo 'Pinned integrated package conflicts with explicit kernel base' >&2; exit 1;
+	}
+	KERNEL_PACKAGE="$(realpath -e -- "$KERNEL_PACKAGE")"
+	python3 ./scripts/preflight_integrated_kernel_package.py "$KERNEL_PACKAGE" --sha256 "$KERNEL_PACKAGE_SHA256"
 fi
 
 if [[ ! -d /sys/module/nbd ]]; then
@@ -239,8 +251,27 @@ install_packages() {
 	[[ -f "$KERNEL_PACKAGE" ]] || { echo "Kernel package not found: $KERNEL_PACKAGE" >&2; exit 1; }
 	echo "Install $KERNEL_PACKAGE"
 	pacstrap -C "${device_file}"/pacman.conf -U $mount_dir "$KERNEL_PACKAGE"
-	kernel_release="$(find "$mount_dir/usr/lib/modules" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | head -n1)"
-	[[ -n "$kernel_release" ]] || { echo 'Installed kernel modules not found' >&2; exit 1; }
+	mapfile -t installed_releases < <(find "$mount_dir/usr/lib/modules" -mindepth 1 -maxdepth 1 -type d -printf '%f\n')
+	[[ ${#installed_releases[@]} == 1 ]] || { echo 'Expected exactly one image-build kernel release' >&2; exit 1; }
+	kernel_release="${installed_releases[0]}"
+	if [[ -f "$mount_dir/usr/lib/modules/$kernel_release/pkgbase" ]]; then
+		detected_pkgbase="$(cat "$mount_dir/usr/lib/modules/$kernel_release/pkgbase")"
+		[[ "$detected_pkgbase" == linux-latte-cachyos || "$detected_pkgbase" == linux-latte-integrated ]] || {
+			echo 'Unsupported kernel package base' >&2; exit 1;
+		}
+		[[ -z "$KERNEL_PKGBASE" || "$KERNEL_PKGBASE" == "$detected_pkgbase" ]] || {
+			echo 'Explicit kernel package base disagrees with installed package' >&2; exit 1;
+		}
+		KERNEL_PKGBASE="$detected_pkgbase"
+	else
+		KERNEL_PKGBASE="${KERNEL_PKGBASE:-linux-latte-cachyos}"
+	fi
+	[[ "$KERNEL_PKGBASE" == linux-latte-cachyos || "$KERNEL_PKGBASE" == linux-latte-integrated ]] || {
+		echo 'Unsupported kernel package base' >&2; exit 1;
+	}
+	if [[ "$KERNEL_PKGBASE" == linux-latte-integrated && ! "$kernel_release" =~ ^6\.14\.0-mipad2-integrated-r[0-9]+$ ]]; then
+		echo 'Integrated image requires a Linux6.14 integrated kernel' >&2; exit 1;
+	fi
 	install -Dm0644 "$mount_dir/usr/lib/modules/$kernel_release/vmlinuz" \
 		"$mount_dir/boot/vmlinuz-$KERNEL_PKGBASE"
 
