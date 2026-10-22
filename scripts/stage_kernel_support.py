@@ -20,6 +20,7 @@ PAYLOAD = [
     ('packages/mipad2-recovery/mp2-backup', 'usr/local/sbin/mp2-backup', 0o755),
     ('packages/mipad2-recovery/mp2-recover', 'usr/local/sbin/mp2-recover', 0o755),
     ('packages/mipad2-test-no-idle/mp2-test-no-idle', 'usr/local/sbin/mp2-test-no-idle', 0o755),
+    ('packages/mipad2-test-no-idle/mp2-test-no-idle-denial', 'usr/local/libexec/mp2-test-no-idle-denial', 0o755),
     ('packages/mipad2-test-no-idle/mipad2-test-no-idle.service', 'etc/systemd/system/mipad2-test-no-idle.service', 0o644),
     ('tests/mipad2-hardware-smoke.sh', 'usr/local/libexec/mipad2-hardware-smoke', 0o755),
     ('tests/mipad2-camera-test.sh', 'usr/local/libexec/mipad2-camera-test', 0o755),

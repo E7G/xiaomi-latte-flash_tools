@@ -4,6 +4,10 @@
 dual-package upgrade hooks](KERNEL_DELIVERY.md). Native package queries passed;
 no package installation or full image boot qualification is implied.
 
+[Denial compatibility for the existing no-idle service](DENIAL_NO_IDLE.md):
+native DPMS enable/status/restore support, preserving authentication. Requires
+the documented new kernel support-source commit; no additional service.
+
 This candidate image branch uses [E7G/linux_latte
 `codex/mipad2-6.14-integrated`](https://github.com/E7G/linux_latte/tree/codex/mipad2-6.14-integrated).
 The original `arch_linux` image branch and `cachyos-mipad2` kernel branch are
