@@ -4,11 +4,22 @@ set -Eeuo pipefail
 repo_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "${repo_root}"
 
-kernel_pkg="$(find kernel-output -maxdepth 1 -name 'linux-latte-cachyos-*.pkg.tar.zst' -print -quit)"
-[[ -n "${kernel_pkg}" ]] || { echo 'Kernel package not found' >&2; exit 1; }
+# Resolve the exact producer artifact, never the first matching filename.
+# Pins must cross the job boundary separately from the downloaded manifest.
+: "${EXPECTED_KERNEL_SOURCE_COMMIT:?Full producer source commit required}"
+: "${EXPECTED_KERNEL_SHA256:?Producer SHA256 required}"
+proof="$(python3 ./scripts/resolve_kernel_artifact.py verify \
+  --manifest kernel-output/kernel-artifact.json \
+  --expected-source-commit "$EXPECTED_KERNEL_SOURCE_COMMIT" \
+  --expected-sha256 "$EXPECTED_KERNEL_SHA256" --require-format source-ci)"
+kernel_pkg="$(python3 -c 'import json,sys; print(json.load(sys.stdin)["package"])' <<< "$proof")"
+export KERNEL_PKGBASE="$(python3 -c 'import json,sys; print(json.load(sys.stdin)["pkgbase"])' <<< "$proof")"
 install -Dm0644 "${kernel_pkg}" "device_files/$(basename "${kernel_pkg}")"
+install -Dm0644 kernel-output/kernel-artifact.json device_files/kernel-artifact.json
 
 export KERNEL_PACKAGE="./device_files/$(basename "${kernel_pkg}")"
+export KERNEL_ARTIFACT_MANIFEST="./device_files/kernel-artifact.json"
+export EXPECTED_KERNEL_SOURCE_COMMIT EXPECTED_KERNEL_SHA256
 export ROOTFS_SIZE="${ROOTFS_SIZE:-8G}"
 bash ./build_rootfs.sh
 

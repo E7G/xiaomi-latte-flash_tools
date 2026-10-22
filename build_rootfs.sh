@@ -28,7 +28,24 @@ fi
 # A pinned integrated-kernel input is validated before any NBD/image operation.
 # The explicit opt-in leaves legacy unpinned package selection unchanged.
 KERNEL_PACKAGE_SHA256="${KERNEL_PACKAGE_SHA256:-}"
-if [[ -n "$KERNEL_PACKAGE_SHA256" ]]; then
+KERNEL_ARTIFACT_MANIFEST="${KERNEL_ARTIFACT_MANIFEST:-}"
+if [[ -n "$KERNEL_ARTIFACT_MANIFEST" || -n "${EXPECTED_KERNEL_SOURCE_COMMIT:-}" || -n "${EXPECTED_KERNEL_SHA256:-}" ]]; then
+	[[ -n "$KERNEL_ARTIFACT_MANIFEST" && -n "$KERNEL_PACKAGE" && -n "${EXPECTED_KERNEL_SOURCE_COMMIT:-}" && -n "${EXPECTED_KERNEL_SHA256:-}" ]] || {
+		echo 'CI kernel requires artifact manifest, package, source commit and SHA256 together' >&2; exit 1;
+	}
+	[[ -z "$KERNEL_PACKAGE_SHA256" || "$KERNEL_PACKAGE_SHA256" == "$EXPECTED_KERNEL_SHA256" ]] || {
+		echo 'Conflicting kernel SHA256 pins' >&2; exit 1;
+	}
+	proof="$(python3 ./scripts/resolve_kernel_artifact.py verify \
+		--manifest "$KERNEL_ARTIFACT_MANIFEST" --package "$KERNEL_PACKAGE" \
+		--expected-source-commit "$EXPECTED_KERNEL_SOURCE_COMMIT" \
+		--expected-sha256 "$EXPECTED_KERNEL_SHA256" --require-format source-ci)"
+	artifact_base="$(python3 -c 'import json,sys; print(json.load(sys.stdin)["pkgbase"])' <<< "$proof")"
+	[[ -z "$KERNEL_PKGBASE" || "$KERNEL_PKGBASE" == "$artifact_base" ]] || {
+		echo 'Kernel artifact conflicts with explicit package base' >&2; exit 1;
+	}
+	KERNEL_PKGBASE="$artifact_base"
+elif [[ -n "$KERNEL_PACKAGE_SHA256" ]]; then
 	[[ -n "$KERNEL_PACKAGE" ]] || { echo 'Pinned kernel requires explicit KERNEL_PACKAGE' >&2; exit 1; }
 	[[ -z "$KERNEL_PKGBASE" || "$KERNEL_PKGBASE" == linux-latte-integrated || "$KERNEL_PKGBASE" == linux-latte-integrated-7-2 ]] || {
 		echo 'Pinned integrated package conflicts with explicit kernel base' >&2; exit 1;

@@ -26,6 +26,9 @@ jobs:
   kernel:
     runs-on: ubuntu-24.04
     timeout-minutes: 90
+    outputs:
+      sha256: ${{ steps.kernel-artifact.outputs.sha256 }}
+      source_commit: ${{ steps.kernel-artifact.outputs.source_commit }}
     steps:
       - uses: actions/checkout@v4
 
@@ -53,12 +56,19 @@ jobs:
           sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc
           docker system prune --all --force
 
+      - name: Test kernel artifact handoff contracts
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y python3-yaml zstd
+          PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover \
+            -s tests -p test_kernel_artifact_handoff.py -v
+
       - name: Restore kernel package cache
         id: kernel-cache
         uses: actions/cache/restore@v4
         with:
           path: kernel-output
-          key: latte-kernel-${{ runner.os }}-${{ steps.kernel-source.outputs.commit }}-${{ hashFiles('scripts/build_kernel_package.sh', 'scripts/stage_kernel_support.py') }}
+          key: latte-kernel-${{ runner.os }}-${{ steps.kernel-source.outputs.commit }}-${{ hashFiles('scripts/build_kernel_package.sh', 'scripts/stage_kernel_support.py', 'scripts/resolve_kernel_artifact.py', 'scripts/preflight_integrated_kernel_package.py') }}
 
       - name: Build optimized linux_latte package
         if: steps.kernel-cache.outputs.cache-hit != 'true'
@@ -80,11 +90,21 @@ jobs:
           key: ${{ steps.kernel-cache.outputs.cache-primary-key }}
 
       - name: Verify kernel package
+        id: kernel-artifact
+        env:
+          EXPECTED_KERNEL_SOURCE_COMMIT: ${{ steps.kernel-source.outputs.commit }}
         run: |
+          command -v zstd >/dev/null || { sudo apt-get update && sudo apt-get install -y zstd; }
+          artifact_sha="$(python3 -c 'import json; print(json.load(open("kernel-output/kernel-artifact.json"))["sha256"])')"
+          python3 scripts/resolve_kernel_artifact.py verify \
+            --manifest kernel-output/kernel-artifact.json \
+            --expected-source-commit "$EXPECTED_KERNEL_SOURCE_COMMIT" \
+            --expected-sha256 "$artifact_sha" --require-format source-ci \
+            --github-output "$GITHUB_OUTPUT"
           cd kernel-output
           sha256sum -c *.pkg.tar.zst.sha256
           contents="${RUNNER_TEMP}/latte-kernel-package-contents.txt"
-          package="$(find . -maxdepth 1 -type f -name '*.pkg.tar.zst' -print -quit)"
+          package="$(python3 -c 'import json; print(json.load(open("kernel-artifact.json"))["filename"])')"
           test -n "$package"
           pkgbase="$(cat pkgbase)"
           [[ "$pkgbase" == linux-latte-integrated-7-2 || "$pkgbase" == linux-latte-cachyos ]]
@@ -118,6 +138,7 @@ jobs:
           path: |
             kernel-output/*.pkg.tar.zst
             kernel-output/*.pkg.tar.zst.sha256
+            kernel-output/kernel-artifact.json
           if-no-files-found: error
           compression-level: 0
           retention-days: 1
@@ -140,18 +161,33 @@ jobs:
           name: xiaomi-latte-cachyos-kernel
           path: kernel-output
 
+      - name: Verify downloaded kernel before loading NBD
+        env:
+          EXPECTED_KERNEL_SOURCE_COMMIT: ${{ needs.kernel.outputs.source_commit }}
+          EXPECTED_KERNEL_SHA256: ${{ needs.kernel.outputs.sha256 }}
+        run: |
+          command -v zstd >/dev/null || { sudo apt-get update && sudo apt-get install -y zstd; }
+          python3 scripts/resolve_kernel_artifact.py verify \
+            --manifest kernel-output/kernel-artifact.json \
+            --expected-source-commit "$EXPECTED_KERNEL_SOURCE_COMMIT" \
+            --expected-sha256 "$EXPECTED_KERNEL_SHA256" --require-format source-ci
+
       - name: Prepare NBD devices
         run: |
           sudo modprobe nbd max_part=8
           ls -l /dev/nbd0 /dev/nbd1
 
       - name: Build rootfs and one-click package
+        env:
+          EXPECTED_KERNEL_SOURCE_COMMIT: ${{ needs.kernel.outputs.source_commit }}
+          EXPECTED_KERNEL_SHA256: ${{ needs.kernel.outputs.sha256 }}
         run: |
           docker run --rm --privileged \
             -e ROOTFS_SIZE -e GITHUB_RUN_NUMBER \
+            -e EXPECTED_KERNEL_SOURCE_COMMIT -e EXPECTED_KERNEL_SHA256 \
             -v "$PWD:/workspace" -w /workspace \
             archlinux:base-devel \
-            bash -lc 'pacman -Sy --noconfirm arch-install-scripts btrfs-progs dosfstools gptfdisk qemu-img xz zstd && bash ./scripts/build_dnx_package.sh'
+            bash -lc 'pacman -Sy --noconfirm arch-install-scripts btrfs-progs dosfstools gptfdisk qemu-img python xz zstd && bash ./scripts/build_dnx_package.sh'
 
       - name: Verify generated packages
         run: |

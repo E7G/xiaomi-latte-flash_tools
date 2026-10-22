@@ -146,3 +146,6 @@ pacman -Qp "${package}"
 (cd "${out_dir}" && sha256sum "$(basename "${package}")" > "$(basename "${package}").sha256")
 printf '%s\n' "${package}" > "${out_dir}/package-path"
 printf '%s\n' "${pkgbase}" > "${out_dir}/pkgbase"
+python "${repo_root}/scripts/resolve_kernel_artifact.py" create \
+  --package "${package}" --source-commit "${kernel_commit}" \
+  --output "${out_dir}/kernel-artifact.json"

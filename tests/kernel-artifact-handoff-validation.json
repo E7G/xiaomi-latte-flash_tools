@@ -1,0 +1,33 @@
+{
+  "state": "real-kernel-artifact-handoff-and-negative-gates-pass",
+  "artifact": {
+    "schema": 1,
+    "filename": "linux-latte-integrated-7-2-7.2.0_mipad2_integrated_r1.r20261022230752.gbebc5f0d17b9-1-x86_64.pkg.tar.zst",
+    "sha256": "7263b5d51dfa89364c6ad85eba0103c665ba68c1c41541bf037c7404a71f16f2",
+    "pkgbase": "linux-latte-integrated-7-2",
+    "pkgver": "7.2.0_mipad2_integrated_r1.r20261022230752.gbebc5f0d17b9-1",
+    "kernelrelease": "7.2.0-mipad2-integrated-r1",
+    "source_commit": "bebc5f0d17b9d4fa23ad469800341c1fe0c7498f",
+    "package_format": "source-ci"
+  },
+  "source_ci_modules_cms_verified": 31,
+  "certificate_sha256": "d2db9d084ee3aa044faf868ff8f587282407f7952d12c08a3d1ec1541f55f0a7",
+  "unchanged_bzimage_sha256": "50039ed386beaa88e2068ed38e29ee5448755cf930bf6fc87d1831a2cbe07df7",
+  "real_dnx_and_rootfs_validation_prefix": true,
+  "rootfs_stopped_before_nbd": true,
+  "actual_workflow_verification_body_pass": true,
+  "actual_job_outputs_match": true,
+  "native_kernel_only_format_understood_but_refused_for_full_image": true,
+  "host_tests": 148,
+  "new_handoff_tests": 30,
+  "actionlint": {
+    "version": "1.7.12",
+    "official_release": "https://github.com/rhysd/actionlint/releases/tag/v1.7.12",
+    "archive_sha256": "8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8",
+    "pass_workflow": true,
+    "shellcheck_and_pyflakes": false
+  },
+  "full_actions_run": false,
+  "complete_image_build": false,
+  "tablet_touched": false
+}

@@ -45,17 +45,68 @@ explicit synthetic controls. These are not physical DAPM, PCM or acoustic tests.
 
 ## Image and CI gates
 
-The image builder consumes an explicitly supplied `KERNEL_PACKAGE` with its
-mandatory `KERNEL_PACKAGE_SHA256`; `KERNEL_PKGBASE`, if supplied, must agree with
-the package metadata. Family/base mismatches fail before writing a boot image.
-118 host tests cover old behavior plus the separate 7.2 identity, coexistence,
-installer failure preservation, source-family/revision gating and unsafe pins.
+Two package formats intentionally have different consumers:
+
+* **verified-binary-repack** is the native makepkg kernel-only package above.
+  Its read-only `KERNEL_PACKAGE_SHA256` preflight verifies its bundle layout.
+  It does **not** supply the source-CI image's config alias, firmware or 23 support
+  files. Passing its preflight does not make it a complete image input.
+* **source-ci** is produced by `build_kernel_package.sh`, carrying the resolved
+  config, firmware and the complete 23-file support payload from the pinned
+  kernel source. Its ALPM archive is still constructed by bsdtar/.PKGINFO, not
+  the native makepkg path. Its global support paths can overlap older source-CI
+  packages: separate kernel identity alone is not proof of safe coinstallation
+  on an existing tablet. Use it for clean image builds, not blind live upgrades.
+
+The source producer now writes `kernel-output/kernel-artifact.json`: exact
+filename, SHA256, ALPM identity, kernel release, full source commit and format.
+The kernel job verifies the archive on both cache hits and fresh builds, then
+exports its SHA256 and source commit as **job outputs**. The DNX job receives
+those pins independently from the artifact download and verifies before loading
+NBD. `build_dnx_package.sh` selects the manifest's exact filename instead of the
+obsolete `linux-latte-cachyos-*` glob. After copying, `build_rootfs.sh` verifies
+again before image operations. Missing/conflicting pins, unsafe paths, changed
+bytes, identity mismatches and incomplete support fail closed. DNX requires
+`source-ci`; the kernel-only native format is deliberately refused there.
 
 The workflow remains **manual dispatch only**, requiring a published full source
-commit. Its source reference now identifies the 7.2 integration branch. It has
-not been dispatched or claimed green. The support manifest retains its legacy
-shared `usr/share/doc/linux-latte-cachyos/support-payload.json` location, while
-the source-commit and kernel-release provenance use the actual package base.
+commit. Its source reference identifies the 7.2 integration branch. The support
+manifest retains its legacy shared
+`usr/share/doc/linux-latte-cachyos/support-payload.json` location, while source
+commit/release provenance uses the actual package base. Caches include resolver
+changes in their key. The new 30-test handoff suite runs before restoring a cache.
+
+### 2026-10-23 host qualification, not a full Actions/image run
+
+* Reproduced the old DNX failure with a real 7.2 native artifact: the hardcoded
+  old filename found nothing and did not reach rootfs.
+* Ran the **actual source producer's packaging tail** against the already completed
+  7.2 r1 build and source `bebc5f0d17b9d4fa23ad469800341c1fe0c7498f` (the full
+  source build was not repeated). Actual pacman metadata query, all 23 support
+  hashes/modes and unchanged bzImage passed. All 31 modules' vermagic and actual
+  detached CMS signatures were independently verified again.
+* That real source-CI archive passed the actual DNX and rootfs **validation
+  prefixes**, deliberately stopped before NBD/image mutation. The actual kernel
+  workflow verification shell body and emitted job outputs passed locally with
+  its GitHub source expression resolved to the same pinned commit.
+* **148 host tests pass**, including 30 new handoff tests. Small archive fixtures
+  in the unit suite are synthetic; they are not hardware or signature evidence.
+  Actual actionlint 1.7.12 passed (official release archive checksum verified;
+  optional ShellCheck/Pyflakes integrations were disabled). Shell syntax passed.
+
+Source-CI packaging-tail archive SHA256:
+`7263b5d51dfa89364c6ad85eba0103c665ba68c1c41541bf037c7404a71f16f2`.
+This is a local qualification sample, **not a published image release**. No
+Actions dispatch, full source-CI rebuild, complete rootfs/DNX image build,
+tablet package install, boot-default change or 7.2 hardware test is claimed.
+Sanitized receipt: `tests/kernel-artifact-handoff-validation.json`.
+
+Reproduce host tests with Python 3, PyYAML, zstd and the existing test-suite
+compiler/OpenSSL prerequisites:
+
+```sh
+python3 -m unittest discover -s tests -v
+```
 
 ## Still required on the actual tablet
 
