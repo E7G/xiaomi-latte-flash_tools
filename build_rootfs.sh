@@ -30,7 +30,7 @@ fi
 KERNEL_PACKAGE_SHA256="${KERNEL_PACKAGE_SHA256:-}"
 if [[ -n "$KERNEL_PACKAGE_SHA256" ]]; then
 	[[ -n "$KERNEL_PACKAGE" ]] || { echo 'Pinned kernel requires explicit KERNEL_PACKAGE' >&2; exit 1; }
-	[[ -z "$KERNEL_PKGBASE" || "$KERNEL_PKGBASE" == linux-latte-integrated ]] || {
+	[[ -z "$KERNEL_PKGBASE" || "$KERNEL_PKGBASE" == linux-latte-integrated || "$KERNEL_PKGBASE" == linux-latte-integrated-7-2 ]] || {
 		echo 'Pinned integrated package conflicts with explicit kernel base' >&2; exit 1;
 	}
 	KERNEL_PACKAGE="$(realpath -e -- "$KERNEL_PACKAGE")"
@@ -256,7 +256,7 @@ install_packages() {
 	kernel_release="${installed_releases[0]}"
 	if [[ -f "$mount_dir/usr/lib/modules/$kernel_release/pkgbase" ]]; then
 		detected_pkgbase="$(cat "$mount_dir/usr/lib/modules/$kernel_release/pkgbase")"
-		[[ "$detected_pkgbase" == linux-latte-cachyos || "$detected_pkgbase" == linux-latte-integrated ]] || {
+		[[ "$detected_pkgbase" == linux-latte-cachyos || "$detected_pkgbase" == linux-latte-integrated || "$detected_pkgbase" == linux-latte-integrated-7-2 ]] || {
 			echo 'Unsupported kernel package base' >&2; exit 1;
 		}
 		[[ -z "$KERNEL_PKGBASE" || "$KERNEL_PKGBASE" == "$detected_pkgbase" ]] || {
@@ -266,11 +266,14 @@ install_packages() {
 	else
 		KERNEL_PKGBASE="${KERNEL_PKGBASE:-linux-latte-cachyos}"
 	fi
-	[[ "$KERNEL_PKGBASE" == linux-latte-cachyos || "$KERNEL_PKGBASE" == linux-latte-integrated ]] || {
+	[[ "$KERNEL_PKGBASE" == linux-latte-cachyos || "$KERNEL_PKGBASE" == linux-latte-integrated || "$KERNEL_PKGBASE" == linux-latte-integrated-7-2 ]] || {
 		echo 'Unsupported kernel package base' >&2; exit 1;
 	}
 	if [[ "$KERNEL_PKGBASE" == linux-latte-integrated && ! "$kernel_release" =~ ^6\.14\.0-mipad2-integrated-r[0-9]+$ ]]; then
 		echo 'Integrated image requires a Linux6.14 integrated kernel' >&2; exit 1;
+	fi
+	if [[ "$KERNEL_PKGBASE" == linux-latte-integrated-7-2 && ! "$kernel_release" =~ ^7\.2\.0-mipad2-integrated-r[0-9]+$ ]]; then
+		echo 'Linux7.2 image requires a Linux7.2 integrated kernel' >&2; exit 1;
 	fi
 	install -Dm0644 "$mount_dir/usr/lib/modules/$kernel_release/vmlinuz" \
 		"$mount_dir/boot/vmlinuz-$KERNEL_PKGBASE"

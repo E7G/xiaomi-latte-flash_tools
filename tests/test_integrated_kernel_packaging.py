@@ -83,6 +83,26 @@ class BundleTests(unittest.TestCase):
         self.assertEqual((out/'keep').read_text(),'keep')
 
 
+class Bundle72Tests(BundleTests):
+    def setUp(self):
+        super().setUp()
+        old=self.release
+        self.release='7.2.0-mipad2-integrated-r1'
+        self.boot='var/lib/mipad2-kernel/'+self.release
+        self.files={k.replace(old,self.release):v.replace(old.encode(),self.release.encode()) for k,v in self.files.items()}
+        self.manifest['kernelrelease']=self.release
+        self.write()
+
+    def test_separate_72_identity_and_recipe(self):
+        self.assertEqual(packager.identity(self.release),('linux-latte-integrated-7-2','7.2.0.r1'))
+        recipe=packager.recipe('7.2.0.r1','a'*64)
+        self.assertIn('pkgbase=linux-latte-integrated-7-2',recipe)
+        self.assertIn('pkgname=linux-latte-integrated-7-2',recipe)
+        self.assertIn('Linux7.2.0',recipe)
+        for bad in ['7.2.12-mipad2-integrated-r1','7.3.0-mipad2-integrated-r1','7.2.0-mipad2-integrated-r1/../r2']:
+            self.assertRaises(ValueError,packager.identity,bad)
+
+
 class KernelInstallTests(unittest.TestCase):
     def setUp(self):
         self.temp=tempfile.TemporaryDirectory();self.addCleanup(self.temp.cleanup)
@@ -183,6 +203,33 @@ cp "$3" "$2"''')
         self.assertEqual(subprocess.run(['bash','-n',str(REPO/'device_files/mipad2-kernel-install')]).returncode,0)
 
 
+class Kernel72InstallTests(KernelInstallTests):
+    def test_candidate_installs_without_replacing_stable_image(self):
+        self.package('linux-latte-integrated')
+        self.package('linux-latte-integrated-7-2','7.2.0-mipad2-integrated-r1')
+        old=self.root/'boot/vmlinuz-linux-latte-integrated';old.write_text('stable sentinel')
+        q=self.run_installer(['linux-latte-integrated-7-2'])
+        self.assertEqual(q.returncode,0,q.stderr)
+        self.assertEqual(old.read_text(),'stable sentinel')
+        self.assertEqual((self.root/'boot/vmlinuz-linux-latte-integrated-7-2').read_text(),'kernel linux-latte-integrated-7-2')
+
+    def test_candidate_wrong_family_rejected_before_boot_write(self):
+        self.package('linux-latte-integrated-7-2','6.14.0-mipad2-integrated-r27')
+        q=self.run_installer(['linux-latte-integrated-7-2'])
+        self.assertNotEqual(q.returncode,0)
+        self.assertFalse((self.root/'boot/vmlinuz-linux-latte-integrated-7-2').exists())
+
+    def test_72_cannot_replace_614_package_identity(self):
+        self.package('linux-latte-integrated','7.2.0-mipad2-integrated-r1')
+        q=self.run_installer(['linux-latte-integrated'])
+        self.assertNotEqual(q.returncode,0)
+        self.assertFalse((self.root/'boot/vmlinuz-linux-latte-integrated').exists())
+
+    def test_new_hook_targets(self):
+        for name in ['kernel.hook','kernel-preflight.hook']:
+            self.assertIn('Target = linux-latte-integrated-7-2',(REPO/'device_files'/name).read_text())
+
+
 class RootfsKernelBaseTests(unittest.TestCase):
     def setUp(self):
         self.temp=tempfile.TemporaryDirectory();self.addCleanup(self.temp.cleanup);self.root=Path(self.temp.name)
@@ -195,6 +242,17 @@ class RootfsKernelBaseTests(unittest.TestCase):
         if metadata is not None:(directory/'pkgbase').write_text(metadata+'\n')
         script='set -e\nmount_dir='+str(self.root)+'\nKERNEL_PKGBASE='+explicit+'\n'+self.block+'\nprintf "BASE=%s\\n" "$KERNEL_PKGBASE"\n'
         return subprocess.run(['bash','-c',script],capture_output=True,text=True)
+
+    def test_72_base_from_package_metadata(self):
+        q=self.run_block(release='7.2.0-mipad2-integrated-r1',metadata='linux-latte-integrated-7-2')
+        self.assertEqual(q.returncode,0,q.stderr)
+        self.assertIn('BASE=linux-latte-integrated-7-2',q.stdout)
+        self.assertTrue((self.root/'boot/vmlinuz-linux-latte-integrated-7-2').exists())
+
+    def test_72_base_rejects_614_release(self):
+        q=self.run_block(metadata='linux-latte-integrated-7-2')
+        self.assertNotEqual(q.returncode,0)
+        self.assertEqual(list((self.root/'boot').iterdir()),[])
 
     def test_integrated_base_derived_from_installed_package(self):
         q=self.run_block();self.assertEqual(q.returncode,0,q.stderr)
@@ -265,5 +323,36 @@ class PackagePreflightTests(unittest.TestCase):
     def test_bad_package_external_pin(self):
         p,pin=self.make_package();self.assertRaises(ValueError,preflight.check,p,'0'*64)
 
+
+
+
+class SourceBuild72GateTests(unittest.TestCase):
+    def test_source_family_and_revision_matrix(self):
+        import tempfile
+        text=(REPO/'scripts/build_kernel_package.sh').read_text()
+        a=text.index('# Accept only the two explicitly integrated kernel families')
+        b=text.index('python "${repo_root}/scripts/stage_kernel_support.py"',a)
+        block=text[a:b]
+        cases=[(6,14,0,'1',True),(7,2,0,'1',True),(7,2,0,'2',True),
+               (7,2,12,'1',False),(7,3,0,'1',False),(6,18,0,'1',False),
+               (7,2,0,'0',False),(7,2,0,'1; echo unsafe',False)]
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory)
+            for major,minor,sub,revision,ok in cases:
+                (root/'Makefile').write_text(f'VERSION = {major}\nPATCHLEVEL = {minor}\nSUBLEVEL = {sub}\n')
+                q=subprocess.run(['bash','-c','set -eu; pkgbase=linux-latte-cachyos;\n'+block+'\nprintf "%s|%s|%s\\n" "$pkgbase" "$localversion_suffix" "$expected_localversion"'],cwd=root,capture_output=True,text=True,env=dict(os.environ,KERNEL_INTEGRATED_REVISION=revision))
+                self.assertEqual(q.returncode==0,ok,(major,minor,sub,revision,q.stderr))
+                if ok and major==7:
+                    self.assertIn('linux-latte-integrated-7-2|-r'+revision,q.stdout)
+                    self.assertIn('CONFIG_LOCALVERSION="-mipad2-integrated"',q.stdout)
+                if ok and major==6:self.assertIn('linux-latte-cachyos||',q.stdout)
+
+    def test_manual_workflow_and_variable_expansion(self):
+        text=(REPO/'.github/workflows/build-dnx.yml').read_text()
+        self.assertIn('workflow_dispatch:',text)
+        self.assertNotIn('  push:',text)
+        self.assertIn('KERNEL_REF: codex/mipad2-7.2-integrated',text)
+        self.assertIn('grep -q "usr/share/doc/${pkgbase}/source-commit"',text)
+        self.assertNotIn("grep -q 'usr/share/doc/${pkgbase}/source-commit'",text)
 
 if __name__ == '__main__':unittest.main()

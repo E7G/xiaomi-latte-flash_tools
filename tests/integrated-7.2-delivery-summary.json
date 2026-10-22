@@ -1,0 +1,17 @@
+{
+  "state": "offline-delivery-contracts-pass-not-hardware-qualified",
+  "kernel_source": "b3d6da61c786c2dced579a935cf4498605db107e",
+  "kernel_release": "7.2.0-mipad2-integrated-r1",
+  "package_base": "linux-latte-integrated-7-2",
+  "kernel_package_sha256": "d74afcd7556e760a7e58e21841c1a64b19ee1d5e389d0412071c384d7c99826c",
+  "crypto_verified_modules": 31,
+  "ucm_package_sha256": "69cd3d3fa7ddcf1721a4bd66dcd093711852980fc8783d69371adc6c07b9f82e",
+  "ucm_package_version": "20260830-8",
+  "flash_host_tests": 118,
+  "alsa_parser_layout_cases": 16,
+  "wrong_channel_negatives_detected": 2,
+  "wrong_module_certificate_rejected": true,
+  "packages_installed": false,
+  "CI_dispatched": false,
+  "hardware_tested": false
+}

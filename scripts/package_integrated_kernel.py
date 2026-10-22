@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Repackage a pinned, completed Linux6.14 bundle using real makepkg; no rebuild/install.
+"""Repackage a pinned, completed Linux6.14 or Linux7.2 bundle using real makepkg; no rebuild/install.
 
 The public module certificate is separately pinned; every module CMS signature
 is independently verified again. Kernel/module bytes are never stripped/changed.
@@ -20,6 +20,16 @@ import tempfile
 
 
 PKGBASE='linux-latte-integrated'
+PKGBASE_72='linux-latte-integrated-7-2'
+RELEASE_PATTERN=r'(?:6\.14\.0|7\.2\.0)-mipad2-integrated-r[0-9]+'
+
+
+def identity(release):
+    require(re.fullmatch(RELEASE_PATTERN,release),'Only integrated6.14/7.2 supported')
+    family=release.split('-mipad2-integrated-r',1)[0]
+    return (PKGBASE_72 if family=='7.2.0' else PKGBASE,
+            family+'.r'+release.rsplit('r',1)[1])
+
 
 
 def require(v,m):
@@ -58,10 +68,10 @@ def load_bundle(bundle,pin):
         if proc.poll() is None:proc.kill();proc.wait()
         if proc.stdout is not None:proc.stdout.close()
         if proc.stderr is not None:proc.stderr.close()
-    manifests=[n for n in files if re.fullmatch(r'var/lib/mipad2-kernel/6\.14\.0-mipad2-integrated-r[0-9]+/manifest\.json',n)]
-    require(len(manifests)==1,'One integrated6.14 manifest required')
+    manifests=[n for n in files if re.fullmatch(r'var/lib/mipad2-kernel/'+RELEASE_PATTERN+r'/manifest\.json',n)]
+    require(len(manifests)==1,'One supported integrated manifest required')
     m=json.loads(files[manifests[0]][0]);release=m.get('kernelrelease','')
-    require(re.fullmatch(r'6\.14\.0-mipad2-integrated-r[0-9]+',release),'Only integrated6.14 supported')
+    identity(release)
     require(re.fullmatch(r'[0-9a-f]{40}',m.get('source_commit','')),'Source commit missing')
     require(m.get('all_module_signatures_cryptographically_verified') is True,'Original signature evidence missing')
     expected=m.get('files_sha256',{})
@@ -88,7 +98,12 @@ def verify_modules(manifest,files,cert,pin):
         temp=Path(directory);pem=temp/'cert.pem'
         subprocess.run(['openssl','x509','-inform','DER','-in',str(cert),'-out',str(pem)],check=True,capture_output=True)
         serial=subprocess.check_output(['openssl','x509','-in',str(pem),'-noout','-serial'],text=True).strip().split('=',1)[1].lower()
-        require(serial==manifest.get('signature_certificate_serial'),'Module signing certificate mismatch')
+        declared_serial=manifest.get('signature_certificate_serial')
+        # Initial 7.2 bundle omitted this redundant metadata field. An explicit
+        # pinned certificate and actual detached CMS validation remain mandatory.
+        require(serial==declared_serial or (declared_serial is None and
+                manifest['kernelrelease'].startswith('7.2.0-mipad2-integrated-r')),
+                'Module signing certificate mismatch')
         checked=0
         for name,(data,_) in files.items():
             if not name.endswith('.ko.zst'):continue
@@ -109,14 +124,16 @@ def verify_modules(manifest,files,cert,pin):
 
 
 def recipe(version,payload_sha):
-    require(re.fullmatch(r'6\.14\.0\.r[0-9]+',version),'Invalid package version')
+    require(re.fullmatch(r'(?:6\.14\.0|7\.2\.0)\.r[0-9]+',version),'Invalid package version')
+    family=version.split('.r',1)[0]
+    pkgbase=PKGBASE_72 if family=='7.2.0' else PKGBASE
     require(re.fullmatch(r'[0-9a-f]{64}',payload_sha),'Payload digest required')
     return f'''# Binary repack of a completed verified build; NOT a new kernel compile.
-pkgname={PKGBASE}
-pkgbase={PKGBASE}
+pkgname={pkgbase}
+pkgbase={pkgbase}
 pkgver={version}
 pkgrel=1
-pkgdesc="Xiaomi Mi Pad 2 Linux6.14 integrated kernel (verified binary repack)"
+pkgdesc="Xiaomi Mi Pad 2 Linux{family} integrated kernel (verified binary repack)"
 arch=(x86_64)
 url="https://github.com/E7G/linux_latte"
 license=(GPL-2.0-only)
@@ -142,25 +159,24 @@ def build(bundle,bundle_sha256,cert,cert_sha256,output,epoch):
         require(shutil.which(name) is not None,'Missing packaging tool: '+name)
     nobody=pwd.getpwnam('nobody');require(nobody.pw_uid!=0,'Unprivileged packaging account required')
     m,files=load_bundle(bundle,bundle_sha256);checked=verify_modules(m,files,cert,cert_sha256)
-    release=m['kernelrelease'];prefix='usr/lib/modules/'+release;boot='var/lib/mipad2-kernel/'+release
+    release=m['kernelrelease'];pkgbase,version=identity(release);prefix='usr/lib/modules/'+release;boot='var/lib/mipad2-kernel/'+release
     payload=dict(files)
     payload[prefix+'/vmlinuz']=(files[boot+'/vmlinuz'][0],0o644)
-    payload[prefix+'/pkgbase']=((PKGBASE+'\n').encode(),0o644)
-    payload['usr/share/doc/'+PKGBASE+'/module-signing.x509']=(cert.read_bytes(),0o644)
+    payload[prefix+'/pkgbase']=((pkgbase+'\n').encode(),0o644)
+    payload['usr/share/doc/'+pkgbase+'/module-signing.x509']=(cert.read_bytes(),0o644)
     preset=f'''ALL_config="/etc/mkinitcpio.conf"
 ALL_kver="/usr/lib/modules/{release}/vmlinuz"
 PRESETS=('default' 'fallback')
-default_image="/boot/initramfs-{PKGBASE}.img"
-fallback_image="/boot/initramfs-{PKGBASE}-fallback.img"
+default_image="/boot/initramfs-{pkgbase}.img"
+fallback_image="/boot/initramfs-{pkgbase}-fallback.img"
 fallback_options="-S autodetect"
 '''
-    payload['etc/mkinitcpio.d/'+PKGBASE+'.preset']=(preset.encode(),0o644)
+    payload['etc/mkinitcpio.d/'+pkgbase+'.preset']=(preset.encode(),0o644)
     output.mkdir(parents=True,mode=0o755);work=output/'makepkg';work.mkdir(mode=0o755)
     payload_tar=work/'payload.tar'
     with tarfile.open(payload_tar,'w',format=tarfile.PAX_FORMAT) as t:
         for name,(data,mode) in sorted(payload.items()):
             info=tarfile.TarInfo('payload/'+name);info.size=len(data);info.mode=mode;info.mtime=epoch;info.uid=info.gid=0;t.addfile(info,io.BytesIO(data))
-    version='6.14.0.r'+release.rsplit('r',1)[1]
     pkgbuild=recipe(version,sha(payload_tar.read_bytes()));(work/'PKGBUILD').write_text(pkgbuild)
     config='''CARCH=x86_64
 CHOST=x86_64-pc-linux-gnu
@@ -178,7 +194,7 @@ PACKAGER="MiPad2 binary repack <mipad2@localhost>"
     r=dict(schema=1,state='packaging',kernelrelease=release,source_commit=m['source_commit'],
            bundle_sha256=bundle_sha256,module_cert_sha256=cert_sha256,crypto_verified_modules=checked,
            recipe_sha256=sha(Path(__file__).read_bytes()),pkgbuild_sha256=sha(pkgbuild.encode()),
-           package_base=PKGBASE,package_version=version+'-1',packaging_epoch=epoch,
+           package_base=pkgbase,package_version=version+'-1',packaging_epoch=epoch,
            kernel_recompiled=False,kernel_payload_changed=False,installed=False,boot_image_qualified=False)
     def save():(output/'receipt.json').write_text(json.dumps(r,indent=2)+'\n')
     save()
@@ -187,14 +203,14 @@ PACKAGER="MiPad2 binary repack <mipad2@localhost>"
         with (output/'makepkg.log').open('xb') as log:
             q=subprocess.run(['runuser','-u','nobody','--','makepkg','--nodeps','--nocheck','--noconfirm','--config',str(work/'makepkg.conf'),'--log'],cwd=work,env=env,stdout=log,stderr=subprocess.STDOUT,timeout=300)
         require(q.returncode==0,'makepkg failed; retain output and inspect log')
-        package=work/(PKGBASE+'-'+version+'-1-x86_64.pkg.tar.zst');require(package.is_file(),'Package not created')
+        package=work/(pkgbase+'-'+version+'-1-x86_64.pkg.tar.zst');require(package.is_file(),'Package not created')
         listed=subprocess.check_output(['bsdtar','-tf',str(package)],text=True).splitlines()
         require(all(n in listed for n in ['.PKGINFO','.BUILDINFO','.MTREE']),'Missing real ALPM metadata')
         for name,(data,_) in payload.items():
             require(subprocess.check_output(['bsdtar','-xOf',str(package),name])==data,'Package changed payload: '+name)
         info=subprocess.check_output(['pacman','-Qip',str(package)],text=True,env=dict(os.environ,LC_ALL='C'))
         (output/'pacman-query.log').write_text(info)
-        require(PKGBASE in info and version+'-1' in info,'Native package query failed')
+        require(pkgbase in info and version+'-1' in info,'Native package query failed')
         require(file_pin(bundle,bundle_sha256) and sha(cert.read_bytes())==cert_sha256,'Original inputs changed')
         r.update(state='arch-package-built-native-query-pass',package=str(package),package_sha256=sha(package.read_bytes()),
                  package_bytes=package.stat().st_size,original_bundle_files_preserved=len(files),

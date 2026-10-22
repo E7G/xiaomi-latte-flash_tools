@@ -32,18 +32,35 @@ curl --fail --location --retry 5 \
 
 cd "${work_dir}/src"
 
-# This integration branch is deliberately limited to the user's 6.14 target.
-grep -Eq '^VERSION[[:space:]]*=[[:space:]]*6$' Makefile
-grep -Eq '^PATCHLEVEL[[:space:]]*=[[:space:]]*14$' Makefile
+# Accept only the two explicitly integrated kernel families, not arbitrary
+# newer releases. The 7.2 package must not replace the stable 6.14 package.
+version="$(sed -n 's/^VERSION[[:space:]]*=[[:space:]]*//p' Makefile)"
+patchlevel="$(sed -n 's/^PATCHLEVEL[[:space:]]*=[[:space:]]*//p' Makefile)"
+kernel_family="${version}.${patchlevel}"
+case "$kernel_family" in
+  6.14)
+    expected_localversion='CONFIG_LOCALVERSION="-mipad2-cachyos"'
+    localversion_suffix=''
+    ;;
+  7.2)
+    grep -Eq '^SUBLEVEL[[:space:]]*=[[:space:]]*0$' Makefile
+    pkgbase='linux-latte-integrated-7-2'
+    expected_localversion='CONFIG_LOCALVERSION="-mipad2-integrated"'
+    revision="${KERNEL_INTEGRATED_REVISION:-1}"
+    [[ "$revision" =~ ^[1-9][0-9]*$ ]] || { echo 'Positive integrated revision required' >&2; exit 1; }
+    localversion_suffix="-r${revision}"
+    ;;
+  *) echo 'Only integrated 6.14 and 7.2 kernel families are supported' >&2; exit 1 ;;
+esac
 python "${repo_root}/scripts/stage_kernel_support.py" \
   "${work_dir}/src" "${work_dir}/pkg" --dry-run >/dev/null
 export KBUILD_BUILD_USER=github-actions
 export KBUILD_BUILD_HOST=archlinux
 export KBUILD_BUILD_TIMESTAMP="$(date -u -d "@${SOURCE_DATE_EPOCH:-0}" '+%a %b %d %T UTC %Y')"
-build_flags=(LLVM=1 LLVM_IAS=1)
+build_flags=(LLVM=1 LLVM_IAS=1 LOCALVERSION="$localversion_suffix")
 
 # CachyOS/BORE source and the Mi Pad 2 profile live in linux_latte's
-# codex/mipad2-6.14-integrated branch. Build it directly; applying another patch/config
+# explicitly pinned integration branch. Build it directly; applying another patch/config
 # overlay here would create an untracked second kernel variant.
 make "${build_flags[@]}" xiaomipad2_defconfig
 
@@ -52,7 +69,7 @@ make "${build_flags[@]}" olddefconfig
 sh fix_file/tests/mipad2-kernel-config-audit.sh .config
 
 required=(
-  'CONFIG_LOCALVERSION="-mipad2-cachyos"'
+  "$expected_localversion"
   'CONFIG_MSILVERMONT=y'
   'CONFIG_CC_OPTIMIZE_FOR_PERFORMANCE_O3=y'
   'CONFIG_SCHED_BORE=y'
@@ -128,3 +145,4 @@ bsdtar --zstd -cf "${package}" -C "${work_dir}/pkg" .PKGINFO etc usr
 pacman -Qp "${package}"
 (cd "${out_dir}" && sha256sum "$(basename "${package}")" > "$(basename "${package}").sha256")
 printf '%s\n' "${package}" > "${out_dir}/package-path"
+printf '%s\n' "${pkgbase}" > "${out_dir}/pkgbase"

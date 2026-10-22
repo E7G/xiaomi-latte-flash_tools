@@ -4,6 +4,7 @@ Operation = Upgrade
 Type = Package
 Target = linux-latte-cachyos
 Target = linux-latte-integrated
+Target = linux-latte-integrated-7-2
 
 [Action]
 Description = Install and sign linux_latte kernel

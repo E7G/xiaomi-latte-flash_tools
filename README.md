@@ -4,7 +4,15 @@
 GNOME Wayland（构建脚本仍保留 Plasma 可选配置），内核来自 [`E7G/linux_latte`](https://github.com/E7G/linux_latte)。
 
 
-## 6.14 整合候选分支
+## 7.2 整合部署候选分支
+
+当前分支 `codex/mipad2-7.2-integrated` 提供独立 `linux-latte-integrated-7-2`
+包身份，保留 6.14 回退内核。离线原生 ALPM 打包、31 模块验签和 118 项主机测试通过。
+UCM pkgrel8 同时兼容两套功放控件名。尚未完成平板 7.2 启动或完整镜像验收；
+不修改原 `arch_linux` 默认构建，不自动触发 Actions，不代表 Android/Windows 功能对齐。
+详见 [7.2 部署证据与待验证项](kernel/KERNEL_DELIVERY_7_2.md)。
+
+## 6.14 整合候选分支（历史）
 
 本分支 `codex/mipad2-6.14-integrated` 对接同名 Linux 6.14 整合分支；原
 `arch_linux` 不改。Actions 仅手动运行，必须填写已经推送的完整内核提交 SHA。
