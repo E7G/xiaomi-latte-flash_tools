@@ -19,7 +19,7 @@ env:
   KERNEL_REPO: E7G/linux_latte
   KERNEL_REF: codex/mipad2-7.2-integrated
   KERNEL_JOBS: '4'
-  KERNEL_INTEGRATED_REVISION: '1'
+  KERNEL_INTEGRATED_REVISION: '2'
   ROOTFS_SIZE: 8G
 
 jobs:

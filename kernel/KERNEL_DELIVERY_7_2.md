@@ -4,6 +4,30 @@ This branch is `codex/mipad2-7.2-integrated`. The existing `arch_linux` and
 `codex/mipad2-6.14-integrated` branches are not changed. This is not an image
 release or a hardware/Android-parity sign-off.
 
+## Current r2 continuation
+
+The new kernel C change `7ea46f47b5dca725b4b1481a718983ae83e1202e` fixes the
+unchecked DDR DVFS mailbox RMW and its power-on error path. Source-builder and
+manual-workflow defaults now use **r2**, avoiding a new C build silently reusing
+the old r1 release. Explicit positive revisions remain supported. 149 flash host
+tests include an actual shell default-revision gate and matching workflow check.
+
+R2 completed bzImage/31-module build, 33 kernel host regression scripts, 196,608
+DDR interleaving/error cases, 280 power cases and three rejecting mutations.
+Actual detached CMS verification and native makepkg/pacman/preflight pass.
+
+| R2 artifact | SHA256 |
+| --- | --- |
+| bzImage | 952718955b3dd4bc5eb2e305aceea78d33fb41fcc7ef255ccce2b4b3cedfbecb |
+| Kernel bundle | dd08926c0ebbd1014ff28daa1223da316bcbe484fe750d9f1c9ed222f90167a2 |
+| linux-latte-integrated-7-2-7.2.0.r2-1-x86_64.pkg.tar.zst | d9ea223305432b00274de110d466832573160fbfbb8f8af70b789cd8aa60913b |
+
+The earlier r1 receipts below are historical, not r2 full-image/Actions evidence.
+R1 files are preserved. R2 is not yet a hardware/OEM-parity release; its DDR fix
+does not establish failed-reset DMA quiescence or S0I3. Three ThinLTO frame-size
+warnings remain and are recorded in the kernel validation summary. The native
+package remains **kernel-only**, not a complete source-CI image input.
+
 ## Separate kernel identity and rollback
 
 The 7.2 package base is **linux-latte-integrated-7-2**. It has independent module,

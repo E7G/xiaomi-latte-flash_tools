@@ -7,7 +7,8 @@ GNOME Wayland（构建脚本仍保留 Plasma 可选配置），内核来自 [`E7
 ## 7.2 整合部署候选分支
 
 当前分支 `codex/mipad2-7.2-integrated` 提供独立 `linux-latte-integrated-7-2`
-包身份，保留 6.14 回退内核。离线原生 ALPM 打包、31 模块验签和 148 项主机测试通过。
+包身份，保留 6.14 回退内核。离线原生 ALPM 打包、31 模块验签和 149 项主机测试通过。
+当前候选为 7.2 r2：修复 DDR DVFS 邮箱错误路径，构建器与手动 Actions 默认修订号同步。
 DNX 已改为按显式产物清单交接，独立传递源码 SHA／SHA256，并在 NBD／镜像操作前复核。
 UCM pkgrel8 同时兼容两套功放控件名。尚未完成平板 7.2 启动或完整镜像验收；
 不修改原 `arch_linux` 默认构建，不自动触发 Actions，不代表 Android/Windows 功能对齐。
