@@ -19,9 +19,34 @@ pinned r2 fails all four probes after successful compilation; fixed source passe
 All 34 kernel host scripts pass. These models do not prove physical DMA/locking.
 
 Builder and manual-workflow defaults now use **r3**, with the matching real shell
-default gate. R2/r1 artifacts remain historical and preserved. R3 still requires
-new linked/signed artifact verification and actual camera hardware validation.
+default gate. R2/r1 artifacts remain historical and preserved. The completed limited artifact/hardware gates follow; broader qualification remains open.
 Native packages remain kernel-only; no full image or OEM-parity claim is made.
+
+### R3 completed artifact and limited hardware gates
+
+Exact built C source remains `20f0304fc024a784dd2e356bd72331c9640d382e`.
+Full link and 31 real CMS signatures, embedded configuration and native ALPM
+preflight pass. One guarded warm boot verifies that image/config and five loaded
+critical-module srcversions. First-probe 51 checks pass, both default cameras
+deliver four actual frames, and 14 idle metadata IOCTL checks pass. Six real
+two-sensor/three-mode ownership/metadata cases add 288 frames, testing typed frame
+correlation, stale rejection, observer close, restart and owner takeover.
+Both sensors/ISP return to runtime suspend with usage zero. No kernel fault,
+manual reprobe, sensor-control write or global userspace replacement occurred.
+Stable 6.14 default and 686 protected software files/35 private aliases are kept.
+
+| R3 artifact | SHA256 |
+| --- | --- |
+| bzImage | 82edc85bab0631d310f74981720baba93aedeae2e06c168420e346f9b41bfe52 |
+| Kernel bundle | cd13256b368c2e69a73777214d614d0e5350245316578edda58ad36509b9c0a1 |
+| linux-latte-integrated-7-2-7.2.0.r3-1-x86_64.pkg.tar.zst | 3f2ce1bcae82756cca2a9d1a493327f452862e0d7fc2d2e874428b1651aa2f0c |
+
+Three existing ThinLTO frame warnings remain. R3 runs as a candidate, NOT a new
+saved default. These are transport/metadata/normal lifecycle gates, not controlled
+optical quality, application encoder cadence, audio, S5/S0I3 or failed-reset DMA
+qualification. Full early-boot serial replay is not established. Raw private
+traces remain on-device. No complete source-CI/DNX image or Actions run was made.
+
 
 ## Historical r2 continuation (camera-quarantined)
 
