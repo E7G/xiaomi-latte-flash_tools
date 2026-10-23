@@ -31,7 +31,12 @@ def environment(inherited, config, config_home, cache_home):
            if not k.startswith(('MIPAD2_', 'GST_')) and k not in {
                'LD_PRELOAD', 'LD_LIBRARY_PATH', 'GSK_DEBUG', 'GSK_RENDERER',
                'RUST_LOG', 'GSETTINGS_SCHEMA_DIR', 'GSETTINGS_BACKEND'}}
+    # Explicit package profile, never inherited environment or a global default.
+    raw_async = config.get('raw_async', False)
+    if not isinstance(raw_async, bool):
+        raise ValueError('raw_async must be a JSON boolean')
     env.update(PROFILE)
+    env['MIPAD2_CAPTURE_RAW_ASYNC'] = '1' if raw_async else '0'
     env.update(GSETTINGS_BACKEND='keyfile', XDG_CONFIG_HOME=str(config_home),
                XDG_CACHE_HOME=str(cache_home),
                GSETTINGS_SCHEMA_DIR=config['prefix']+'/share/glib-2.0/schemas',

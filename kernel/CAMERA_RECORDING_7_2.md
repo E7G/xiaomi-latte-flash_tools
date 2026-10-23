@@ -1,5 +1,11 @@
 # 7.2 camera recording: userspace rational-rate fix, cadence still open
 
+**Newer status:** [explicit raw async candidate and actual VB2 measurements](CAMERA_RAW_ASYNC_CANDIDATE_7_2.md).
+A subsequent user-confirmed device freeze is unresolved and the latest full
+postflight is unavailable. Successful health statements below are historical
+qualification of the earlier rational-rate experiment, not current device health.
+The async option defaults OFF; do not promote or install it as a stable fix.
+
 Requested kernel upstream remains `9928c7b8d00c500ee97903afa1cc76c1c36ab2bc`
 (7.2.0). Current physical test kernel remains `7.2.0-mipad2-integrated-r3`;
 no new kernel C change or build for this userspace defect.

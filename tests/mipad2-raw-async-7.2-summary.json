@@ -1,0 +1,152 @@
+{
+  "schema": 1,
+  "state": "opt-in-candidate-not-qualified",
+  "kernel": "7.2.0-mipad2-integrated-r3",
+  "source_commit": "0a7ce87affa902f33599819aed5c4123a548f1c6",
+  "application_sha256": "16bd4d3ea2d4347a7c049784760b0c305150c666241700671032e9e211bf13d9",
+  "va_binary_sha256": "ff5e4d0af2e339c5e4eeb0fc94bea0faf352bfbed994fd8b89fdbd9342e62cb1",
+  "host_tests": [
+    {
+      "name": "normal",
+      "cases": 154,
+      "returncode": 0
+    },
+    {
+      "name": "optimized",
+      "cases": 154,
+      "returncode": 0
+    }
+  ],
+  "host_package_manifest_sha256": "8a70d0db6eb48cb28020fbd913690b4d406afe51dd497efe61926c9a506cdc06",
+  "raw_async_default": false,
+  "package_installed_on_device": false,
+  "default_promoted": false,
+  "image_qualified": false,
+  "postflight_available": false,
+  "subsequent_user_confirmed_freeze": true,
+  "freeze_cause_known": false,
+  "raw_traces_media_and_timestamps_exported": false,
+  "runs": {
+    "a": {
+      "raw_async": false,
+      "metrics": {
+        "packets": 1002,
+        "fps": 29.971854602071982,
+        "pts_span_seconds": 33.398,
+        "max_pts_gap_seconds": 0.053,
+        "min_pts_gap_seconds": 0.02266666666666667,
+        "nonpositive_pts_intervals": 0,
+        "gaps_above50ms": 2,
+        "gaps_above100ms": 0,
+        "cadence_gate": false,
+        "stream_time_base": "1/3000",
+        "guessed_r_frame_rate_used": false,
+        "actual_video_bitrate": 15224144,
+        "actual_audio_bitrate": 197202,
+        "video_size": [
+          1920,
+          1080
+        ],
+        "audio_hz": 48000,
+        "audio_channels": 2
+      },
+      "decoded_frames": 1002,
+      "adjacent_exact_decoded_repeats": 0,
+      "video_and_audio_decode_pass": true,
+      "max_temp_millicelsius": 70000,
+      "observed_cpu_limits_khz": [
+        1840000,
+        2240000
+      ],
+      "done_to_dequeue_ms": {
+        "samples": 1041,
+        "min_ms": 0.06000000030326191,
+        "max_ms": 135.09999999951106,
+        "mean_ms": 68.12328434199753,
+        "p99_ms": 118.76800000027288,
+        "above50ms": 945,
+        "above100ms": 58,
+        "negative": 0
+      },
+      "dequeue_to_next_requeue_ms": {
+        "samples": 1041,
+        "min_ms": 1.516000000265194,
+        "max_ms": 17.805999999836786,
+        "mean_ms": 3.9946128722533505,
+        "p99_ms": 9.259000000383821,
+        "above50ms": 0,
+        "above100ms": 0,
+        "negative": 0
+      },
+      "owned_after_done": {
+        "min": 0,
+        "max": 3,
+        "zero_count_in_record_key_window": 109,
+        "total_in_record_key_window": 1005
+      },
+      "trace_ring_overruns": 0,
+      "matched_done_dequeues": 1041,
+      "software_completion_timestamps_not_sof": true
+    },
+    "b": {
+      "raw_async": true,
+      "metrics": {
+        "packets": 1005,
+        "fps": 30.001494098311667,
+        "pts_span_seconds": 33.465,
+        "max_pts_gap_seconds": 0.034,
+        "min_pts_gap_seconds": 0.03266666666666666,
+        "nonpositive_pts_intervals": 0,
+        "gaps_above50ms": 0,
+        "gaps_above100ms": 0,
+        "cadence_gate": true,
+        "stream_time_base": "1/3000",
+        "guessed_r_frame_rate_used": false,
+        "actual_video_bitrate": 15239141,
+        "actual_audio_bitrate": 192158,
+        "video_size": [
+          1920,
+          1080
+        ],
+        "audio_hz": 48000,
+        "audio_channels": 2
+      },
+      "decoded_frames": 1005,
+      "adjacent_exact_decoded_repeats": 0,
+      "video_and_audio_decode_pass": true,
+      "max_temp_millicelsius": 72000,
+      "observed_cpu_limits_khz": [
+        1840000
+      ],
+      "done_to_dequeue_ms": {
+        "samples": 1045,
+        "min_ms": 0.0579999996261904,
+        "max_ms": 3.4050000012939563,
+        "mean_ms": 0.2828641148227959,
+        "p99_ms": 1.6329999998561107,
+        "above50ms": 0,
+        "above100ms": 0,
+        "negative": 0
+      },
+      "dequeue_to_next_requeue_ms": {
+        "samples": 1044,
+        "min_ms": 1.3990000006742775,
+        "max_ms": 20.409999999174033,
+        "mean_ms": 3.886106321849647,
+        "p99_ms": 13.754999999946449,
+        "above50ms": 0,
+        "above100ms": 0,
+        "negative": 0
+      },
+      "owned_after_done": {
+        "min": 3,
+        "max": 3,
+        "zero_count_in_record_key_window": 0,
+        "total_in_record_key_window": 1007
+      },
+      "trace_ring_overruns": 0,
+      "matched_done_dequeues": 1045,
+      "software_completion_timestamps_not_sof": true
+    }
+  }
+}

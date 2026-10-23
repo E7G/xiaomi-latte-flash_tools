@@ -76,7 +76,8 @@ def app_plan(root, destination, pin):
 
 
 def compose(app_root, output, app_receipt_sha256, plugin_root, plugin_receipt_sha256,
-            aac_root, aac_receipt_sha256, dry_run=False):
+            aac_root, aac_receipt_sha256, dry_run=False, raw_async=False):
+    require(isinstance(raw_async, bool), 'raw_async must be boolean')
     output = Path(output)
     require(not output.is_symlink(), 'Symlinked output')
     output = output.resolve()
@@ -90,10 +91,10 @@ def compose(app_root, output, app_receipt_sha256, plugin_root, plugin_receipt_sh
     regular(launcher, 128*1024)
     compile(launcher.read_text(), str(launcher), 'exec')
     prefix = app['prefix']
-    name = 'mipad2-camera-source-'+app['source_commit'][:12]
+    name = 'mipad2-camera-source-'+app['source_commit'][:12] + ('-raw-async' if raw_async else '')
     config = dict(schema=1, prefix=prefix, source_commit=app['source_commit'], profile_name=name,
                   plugin_directories=sorted({str(PurePosixPath('/'+n).parent) for n in plugins['files']}),
-                  diagnostic_actions=False, background_capture=False)
+                  diagnostic_actions=False, background_capture=False, raw_async=raw_async)
     manifest = dict(schema=1, state='camera-candidate-planned', source_commit=app['source_commit'],
                     app_receipt_sha256=app_receipt_sha256, application_sha256=app['application_sha256'],
                     plugin_build_receipt_sha256=plugin_receipt_sha256,
@@ -103,7 +104,8 @@ def compose(app_root, output, app_receipt_sha256, plugin_root, plugin_receipt_sh
                     app_included=True, source_plugin_count=4, launcher_included=True,
                     private_settings=True, shutter_sound_default=False, dbus_activatable=False,
                     stable_desktop_changed=False, system_library_replacement=False,
-                    sdk_libraries_deployed=False, device_tested=False, image_qualified=False)
+                    sdk_libraries_deployed=False, device_tested=False, image_qualified=False,
+                    raw_async=raw_async)
     if dry_run:
         return manifest
     stage(plugin_root, output, plugin_receipt_sha256, False, aac_root, aac_receipt_sha256)
@@ -152,5 +154,7 @@ if __name__ == '__main__':
     for key in ['app-receipt-sha256', 'plugin-receipt-sha256', 'aac-receipt-sha256']:
         p.add_argument('--'+key, required=True)
     p.add_argument('--dry-run', action='store_true')
+    p.add_argument('--raw-async', action='store_true',
+                   help='Explicit copied native four-buffer scheduling candidate; not device acceptance')
     args = vars(p.parse_args())
     print(json.dumps(compose(**args), indent=2))

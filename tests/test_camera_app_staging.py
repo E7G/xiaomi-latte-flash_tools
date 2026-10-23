@@ -147,6 +147,51 @@ class CandidateTests(unittest.TestCase):
         for n, entry in r['files'].items():
             self.assertEqual(app.sha(self.out/n), entry['sha256'])
 
+    def test_async_profile_is_explicit_and_default_stays_off(self):
+        self.assertFalse(self.compose(dry_run=True)['raw_async'])
+        self.assertTrue(self.compose(dry_run=True, raw_async=True)['raw_async'])
+        self.assertFalse(self.out.exists())
+
+    def test_invalid_async_profile_rejected_before_output(self):
+        for value in [1, 0, 'true', '1', None, [], {}]:
+            with self.subTest(value=value):
+                self.assertRaises(ValueError, self.compose, raw_async=value)
+                self.assertFalse(self.out.exists())
+
+    def test_async_candidate_serialized_and_hash_pinned(self):
+        r = self.compose(raw_async=True)
+        config = self.out/self.prefix.lstrip('/')/'bin/candidate-profile.json'
+        self.assertIs(json.loads(config.read_text())['raw_async'], True)
+        self.assertEqual(json.loads(config.read_text())['profile_name'],
+                         'mipad2-camera-source-'+self.commit[:12]+'-raw-async')
+        self.assertEqual(r['files'][config.relative_to(self.out).as_posix()]['sha256'], app.sha(config))
+        self.assertFalse(r['device_tested'])
+        self.assertFalse(r['image_qualified'])
+        self.assertFalse(r['stable_desktop_changed'])
+
+    def test_async_launcher_changes_only_source_scheduling_switch(self):
+        cfg = dict(prefix=self.prefix, plugin_directories=['/one','/two'])
+        inherited = dict(MIPAD2_CAPTURE_RAW_ASYNC='1', MIPAD2_CAPTURE_DECOUPLE='1',
+                         MIPAD2_DIAGNOSTIC_ACTIONS='1', LD_PRELOAD='/tmp/trace.so')
+        off = launcher.environment(inherited, cfg, self.base/'config', self.base/'cache')
+        on = launcher.environment(inherited, dict(cfg, raw_async=True), self.base/'config', self.base/'cache')
+        self.assertEqual(off['MIPAD2_CAPTURE_RAW_ASYNC'], '0')
+        self.assertEqual(on['MIPAD2_CAPTURE_RAW_ASYNC'], '1')
+        self.assertEqual({k for k in off if off[k] != on[k]}, {'MIPAD2_CAPTURE_RAW_ASYNC'})
+        for key in ['MIPAD2_CAPTURE_RAW_DIRECT', 'MIPAD2_CAPTURE_COPY', 'MIPAD2_CAPTURE_ALLOCATION_GUARD']:
+            self.assertEqual(on[key], '1')
+        for key in ['MIPAD2_CAPTURE_DECOUPLE', 'MIPAD2_CAPTURE_DECOUPLE_SMALL']:
+            self.assertEqual(on[key], '0')
+        self.assertNotIn('MIPAD2_DIAGNOSTIC_ACTIONS', on)
+        self.assertNotIn('LD_PRELOAD', on)
+
+    def test_launcher_rejects_nonboolean_async_setting(self):
+        for value in [1, 0, 'true', '1', None, [], {}]:
+            with self.subTest(value=value):
+                self.assertRaises(ValueError, launcher.environment, {},
+                                  dict(prefix=self.prefix, plugin_directories=[], raw_async=value),
+                                  self.base/'config', self.base/'cache')
+
     def test_launcher_removes_diagnostic_and_library_injection(self):
         inherited = dict(MIPAD2_DIAGNOSTIC_ACTIONS='1', MIPAD2_DIAGNOSTIC_BACKGROUND_CAPTURE='1',
                          MIPAD2_ENCODE_INPUT_ONE='1', MIPAD2_PACING_FILE='/tmp/old',
