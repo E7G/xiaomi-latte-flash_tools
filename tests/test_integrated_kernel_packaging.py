@@ -347,7 +347,7 @@ class SourceBuild72GateTests(unittest.TestCase):
                     self.assertIn('CONFIG_LOCALVERSION="-mipad2-integrated"',q.stdout)
                 if ok and major==6:self.assertIn('linux-latte-cachyos||',q.stdout)
 
-    def test_default_revision_matches_r2_candidate_workflow(self):
+    def test_default_revision_matches_r3_candidate_workflow(self):
         text=(REPO/'scripts/build_kernel_package.sh').read_text()
         a=text.index('# Accept only the two explicitly integrated kernel families')
         b=text.index('python "${repo_root}/scripts/stage_kernel_support.py"',a)
@@ -355,10 +355,10 @@ class SourceBuild72GateTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root=Path(directory);(root/'Makefile').write_text('VERSION = 7\nPATCHLEVEL = 2\nSUBLEVEL = 0\n')
             q=subprocess.run(['bash','-c','set -eu; pkgbase=linux-latte-cachyos;\n'+text[a:b]+'\nprintf "%s" "$localversion_suffix"'],cwd=root,env=env,capture_output=True,text=True)
-            self.assertEqual(q.returncode,0,q.stderr);self.assertEqual(q.stdout,'-r2')
+            self.assertEqual(q.returncode,0,q.stderr);self.assertEqual(q.stdout,'-r3')
         import yaml
         workflow=yaml.safe_load((REPO/'.github/workflows/build-dnx.yml').read_text())
-        self.assertEqual(workflow['env']['KERNEL_INTEGRATED_REVISION'],'2')
+        self.assertEqual(workflow['env']['KERNEL_INTEGRATED_REVISION'],'3')
 
     def test_manual_workflow_and_variable_expansion(self):
         text=(REPO/'.github/workflows/build-dnx.yml').read_text()

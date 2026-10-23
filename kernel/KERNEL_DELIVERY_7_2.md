@@ -4,7 +4,26 @@ This branch is `codex/mipad2-7.2-integrated`. The existing `arch_linux` and
 `codex/mipad2-6.14-integrated` branches are not changed. This is not an image
 release or a hardware/Android-parity sign-off.
 
-## Current r2 continuation
+## Current r3 continuation: r2 camera entry quarantined
+
+R2 actually booted and passed 51 read-only native-probe checks, but its first
+default rear-camera capture returned zero bytes with QBUF EBUSY. The test stopped
+and stable 6.14 was restored, preserving boot/userspace/private evidence. R2's
+candidate GRUB entry is quarantined; do not reuse its passing host/artifact gates
+as a successful camera qualification.
+
+Kernel change `20f0304fc024a784dd2e356bd72331c9640d382e` fixes the real V4L2
+NULL callback/private file-context mismatch, retaining VB2 ownership isolation.
+The new sanitizer regression compiles actual core/VB2/AtomISP dispatch paths:
+pinned r2 fails all four probes after successful compilation; fixed source passes.
+All 34 kernel host scripts pass. These models do not prove physical DMA/locking.
+
+Builder and manual-workflow defaults now use **r3**, with the matching real shell
+default gate. R2/r1 artifacts remain historical and preserved. R3 still requires
+new linked/signed artifact verification and actual camera hardware validation.
+Native packages remain kernel-only; no full image or OEM-parity claim is made.
+
+## Historical r2 continuation (camera-quarantined)
 
 The new kernel C change `7ea46f47b5dca725b4b1481a718983ae83e1202e` fixes the
 unchecked DDR DVFS mailbox RMW and its power-on error path. Source-builder and

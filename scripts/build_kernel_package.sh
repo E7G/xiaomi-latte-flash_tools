@@ -46,7 +46,7 @@ case "$kernel_family" in
     grep -Eq '^SUBLEVEL[[:space:]]*=[[:space:]]*0$' Makefile
     pkgbase='linux-latte-integrated-7-2'
     expected_localversion='CONFIG_LOCALVERSION="-mipad2-integrated"'
-    revision="${KERNEL_INTEGRATED_REVISION:-2}"
+    revision="${KERNEL_INTEGRATED_REVISION:-3}"
     [[ "$revision" =~ ^[1-9][0-9]*$ ]] || { echo 'Positive integrated revision required' >&2; exit 1; }
     localversion_suffix="-r${revision}"
     ;;
