@@ -1,0 +1,108 @@
+{
+  "schema": 1,
+  "scope": "Immediate upward thermal policy escalation; no real hot-transition or recording/freezeroot-cause qualification",
+  "source_sha256": "be6131f3bb6d20222e4c1826e2b0936195d9e4eda46dd3242e24eabdc163aa51",
+  "host_tests": [
+    {
+      "optimized": false,
+      "exit": 0,
+      "tests": 164,
+      "output_tail": "....................................................................................................................................................................\n----------------------------------------------------------------------\nRan 164 tests in 8.691s\n\nOK\n"
+    },
+    {
+      "optimized": true,
+      "exit": 0,
+      "tests": 164,
+      "output_tail": "....................................................................................................................................................................\n----------------------------------------------------------------------\nRan 164 tests in 8.237s\n\nOK\n"
+    }
+  ],
+  "installed": {
+    "state": "installed-active-and-readback-verified",
+    "old_sha256": "18b4fc7bb83ecf2a5e8104b72e0673341e08210ecff9be42e56390bed2dbb0db",
+    "new_sha256": "be6131f3bb6d20222e4c1826e2b0936195d9e4eda46dd3242e24eabdc163aa51",
+    "new_reboots": 0,
+    "raw_data_exported": false,
+    "service_active": true,
+    "service_pid_changed": true,
+    "protected_files_checked": 686,
+    "intentional_protected_changes": [],
+    "unplanned_protected_changes": [],
+    "max_observed_temp": 53000,
+    "observed_cpu_limits": [
+      2240000
+    ],
+    "observation_seconds": 18,
+    "real_hot_transition_exercised": false,
+    "old_hard_freeze_fixed": false,
+    "rear_long_clip_predates_this_install": true
+  },
+  "postflight": {
+    "protected_files_checked": 686,
+    "changed_protected_files": [],
+    "kernel_faults": {
+      "panic": 0,
+      "BUG": 0,
+      "WARNING": 0,
+      "Oops": 0,
+      "GPU_HANG": 0,
+      "DDR_failure": 0,
+      "IUNIT_timeout": 0,
+      "stop_timeout": 0,
+      "SP_not_idle": 0,
+      "ISP_not_idle": 0,
+      "reset_failed": 0
+    },
+    "guards": {
+      "mipad2-test-no-idle.service": "active",
+      "mipad2-thermal-guard.service": "active"
+    },
+    "pm": {
+      "t4ka3": {
+        "runtime_status": "suspended",
+        "runtime_usage": "0"
+      },
+      "ov5693": {
+        "runtime_status": "suspended",
+        "runtime_usage": "0"
+      },
+      "isp": {
+        "runtime_status": "suspended",
+        "runtime_usage": "0"
+      }
+    },
+    "failed_units_count": 0,
+    "thermal_guard_source_matches": true,
+    "installed_thermal_policy_synthetic_cases_passed": 7,
+    "real_hot_thermal_transition_exercised": false,
+    "ucm8_sources_match": true
+  },
+  "existing_thresholds_millicelsius": [
+    67000,
+    74000,
+    80000
+  ],
+  "existing_cooling_millicelsius": [
+    61000,
+    68000,
+    74000
+  ],
+  "existing_frequency_ceilings_khz": [
+    2240000,
+    1840000,
+    1600000,
+    1330000
+  ],
+  "existing_poll_seconds": 3,
+  "old_hottest_transition_from_cool_poll_states": [
+    1,
+    2,
+    3
+  ],
+  "new_hottest_transition_from_cool_poll_states": [
+    3
+  ],
+  "new_rear_long_pass_predates_patch": true,
+  "old_rear_stop_remains_unknown": true,
+  "old_hard_freeze_unresolved": true,
+  "raw_logs_or_traces_exported": false
+}
