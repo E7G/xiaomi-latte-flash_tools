@@ -87,3 +87,7 @@ Required before promotion: freeze attribution/recovery evidence, repeatable
 long A/B/A with thermal/CPU observations, both cameras, reopen and suspend/PM,
 live preview/recording behavior, optical AE/AWB/focus and full image qualification.
 The complete MiPad2 kernel/system and Android/OEM parity goals remain open.
+
+## Later normal copied-async checkpoint (7.2 r3)
+
+[Normal front 60-second sample and incomplete rear](https://github.com/E7G/snapshot/blob/511510be29522db307025e6cafa3c5252f302611/MIPAD2_NORMAL_ASYNC_LONG_7_2.md): front1944frames/30.00154fps/max38ms; rear441frames/14.6603s, **requested60s not completed**, stop condition unlabelled. No diagnostic/background/trace capture; no default promotion or new kernel C/build. Previous hard-freeze recovery completed and7.2 restarted; root cause and failed-reset DMA quiescence remain open. Earlier negative recordings are not erased.
