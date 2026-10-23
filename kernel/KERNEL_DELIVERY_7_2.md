@@ -1,3 +1,5 @@
+> New userspace VA frame-rate fix and **still-failing long-recording cadence**: [source and limited hardware evidence](CAMERA_RECORDING_7_2.md). No new kernel or default camera promotion.
+
 # Linux 7.2 candidate delivery (offline qualification)
 
 This branch is `codex/mipad2-7.2-integrated`. The existing `arch_linux` and
