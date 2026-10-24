@@ -1,0 +1,52 @@
+diff --git a/src/i965_avc_encoder.c b/src/i965_avc_encoder.c
+--- a/src/i965_avc_encoder.c
++++ b/src/i965_avc_encoder.c
+@@ -3135,6 +3135,16 @@
+ 
+ 	// gen95 set curbe out of the brc. gen9 do it here
+ 	avc_state->mbenc_curbe_set_in_brc_update = !avc_state->decouple_mbenc_curbe_from_brc_enable;
++
++	/* IDRT and CURBE share the dynamic-state BO. Populate the descriptor
++	 * before BRC writes CURBE, avoiding a later CPU write map of a busy BO.
++	 * FEI selects a different MBEnc context and keeps the ordinary setup.
++	 */
++	if (avc_state->mbenc_curbe_set_in_brc_update && !encoder_context->fei_enabled) {
++		gpe->setup_interface_data(ctx, gpe_context);
++		avc_state->mbenc_idrt_prepared = gpe_context;
++	}
++
+ 	/*begin brc frame update*/
+ 	memset(&curbe_brc_param, 0, sizeof(struct brc_param));
+ 	curbe_brc_param.gpe_context_mbenc = gpe_context;
+@@ -5350,7 +5360,8 @@
+ 	/*send surface*/
+ 	generic_ctx->pfn_send_mbenc_surface(ctx, encode_state, gpe_context, encoder_context, &param);
+ 
+-	gpe->setup_interface_data(ctx, gpe_context);
++	if (avc_state->mbenc_idrt_prepared != gpe_context)
++		gpe->setup_interface_data(ctx, gpe_context);
+ 
+ 	/*walker setting*/
+ 	memset(&kernel_walker_param, 0, sizeof(kernel_walker_param));
+@@ -8632,6 +8643,9 @@
+ 	VAEncSliceParameterBufferH264 *slice_param = avc_state->slice_param[0];
+ 	int sfd_in_use = 0;
+ 
++	/* Never reuse descriptor readiness from a previous frame. */
++	avc_state->mbenc_idrt_prepared = NULL;
++
+ 	/* BRC init/reset needs to be called before HME since it will reset the Brc Distortion surface*/
+ 	if (!fei_enabled && generic_state->brc_enabled && (!generic_state->brc_inited || generic_state->brc_need_reset)) {
+ 		gen9_avc_kernel_brc_init_reset(ctx, encode_state, encoder_context);
+diff --git a/src/i965_avc_encoder_common.h b/src/i965_avc_encoder_common.h
+--- a/src/i965_avc_encoder_common.h
++++ b/src/i965_avc_encoder_common.h
+@@ -338,6 +338,8 @@
+ 	uint32_t reserved_g95 : 30;
+ 	uint32_t mbenc_brc_buffer_size;
+ 
++	/* CPU-side descriptor preparation is valid for this frame/context only. */
++	struct i965_gpe_context *mbenc_idrt_prepared;
+ };
+ 
+ extern int i965_avc_level_is_valid(int level_idc);

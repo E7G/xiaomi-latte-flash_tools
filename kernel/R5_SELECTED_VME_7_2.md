@@ -1,5 +1,21 @@
 # r5 actual H.264 VME path: diagnostic, not a fix
 
+## CONT31: short same-binary front-camera A/B, experimental
+
+OFF:29.336042 fps/max65.667 ms/14 gaps>50 ms. ON:30.001415 fps/max34 ms/zero gaps
+>50 ms. Requested10 s each; complete MP4 spans about14.1 s, not full30-second
+qualification. Same private binary,425 measured early preparations only in ON;
+installed driver/defaults unchanged. Waiting moves into BRC/constant-data
+preparation; whole encoder mean wall remains about26.2 ms, not a total speedup.
+Thermal/frequency conditions differ; no Android-parity or source-frame
+conservation claim. Both decode/restoration/fault checks pass. Full source-order
+host tests/negative controls pass, but sustained/reverse-order/dual-camera and
+resume qualification remain open.
+
+[Pinned measured evidence and explicit limits](https://github.com/E7G/linux_latte/blob/49b2748e2a7c11e017349d109a79baa69dd4ff9d/fix_file/MIPAD2_R5_SELECTED_VME_7_2.md).
+
+[Experimental patch only; not installed automatically](patches/experimental/I965_EARLY_IDRT.md).
+
 ## CONT30: IDRT preparation is the largest measured MBEnc stall
 
 Two more diagnostic windows still fail full-quality foreground recording

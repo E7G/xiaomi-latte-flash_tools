@@ -1,0 +1,2 @@
+# Unified-diff context prefixes are transport syntax, not source indentation.
+*.patch -whitespace
