@@ -10,3 +10,5 @@ Original settings/geometry/controls restored, apps terminal, sensors/ISP asleep;
 2214 protected files +48 payload hashes +35 private aliases unchanged/fault0.
 
 [Pinned failure evidence, comparison and limits](https://github.com/E7G/linux_latte/blob/bebc835f10a60a1e373d68311b21981a77d5f01a/fix_file/MIPAD2_R5_RECORDING_REGRESSION_7_2.md).
+
+[Later encoder wait localization, not a fix](R5_ENCODER_WAIT_7_2.md).
