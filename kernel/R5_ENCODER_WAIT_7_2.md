@@ -1,5 +1,7 @@
 # r5 encoded recording: waits localized, not fixed
 
+> Correction: the legacy Gen8 post-pack loop was not selected. See [measured Gen9 AVC delegation and VME-run timing](R5_SELECTED_VME_7_2.md). Cadence remains uncorrected.
+
 Three full-quality foreground diagnostic windows still fail cadence. Kernel
 trace shows completed buffers waiting a median102.414ms before DQ; native
 offsets remain consecutive. Actual VA H.264 encoder sink chain median32.949ms;
