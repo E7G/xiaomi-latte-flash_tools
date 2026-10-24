@@ -1,4 +1,11 @@
-# 7.2 physical AIF2 speaker graph candidate (not deployed)
+# 7.2 physical AIF2 speaker graph: r5 deployed
+
+CONT27 update: stock r5 idle/playback/mic/duplex electrical checks, two RTC
+cycles and native 960-frame dual-camera regression pass. See
+[deployment report and remaining limits](R5_DEPLOYMENT_7_2.md).
+No fresh human acoustic, wall-power or factory-DSP equivalence claim.
+
+## Preserved CONT25 candidate checkpoint (historical)
 
 Real r4 read-only DAPM witness shows inactive PCM/DAI streams but an active cycle:
 AIF1 Playback -> DAC_REF -> AIF2 Capture -> synthetic C2C capture -> AIF1 Playback.
