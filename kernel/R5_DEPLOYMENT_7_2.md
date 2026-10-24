@@ -1,5 +1,9 @@
 # MiPad2 7.2 r5 deployed: physical AIF2 speaker graph
 
+**Later normal encoded recording failed cadence on both cameras.** Electrical/
+native qualification below is not full video qualification. See
+[recording failure report](R5_RECORDING_REGRESSION_7_2.md).
+
 Image source `8bc6bf83ae3f3104a5649036c013bac4a0155bdd`; exact r4 stock-backend
 config. Complete bzImage/31 module build, CMS signatures, ALPM query/preflight
 pass. Three pre-existing LTO stack warnings retained. Not installed via pacman.
