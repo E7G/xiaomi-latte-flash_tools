@@ -1,5 +1,17 @@
 # r5 actual H.264 VME path: diagnostic, not a fix
 
+## CONT32/33: front full interval passed experimentally; rear thermal stop
+
+Front963 frames/32.064667 s/30.001871 fps/max34 ms/zero gaps>50 ms,
+with963 observed native-to-encoder-to-MP4 metadata associations. Kernel window
+966 matched completions/dequeues, done-to-DQ median0.211 ms/max3.901 ms;
+not every physical sensor SOF or pixel-payload proof. Front has kernel/pad
+instrumentation. Rear stopped at80 C after126 frames/4.164667 s: explicitly
+NOT a sustained pass. No thresholds relaxed, default driver/installers unchanged.
+Repeated/uninstrumented/dual-camera/thermal/resume qualification remains open.
+
+[Pinned evidence, existing GStreamer PTS rule and limits](https://github.com/E7G/linux_latte/blob/a4642afd95379ef4a5c90dcb90fc70ed5d2e8e29/fix_file/MIPAD2_R5_SELECTED_VME_7_2.md).
+
 ## CONT31: short same-binary front-camera A/B, experimental
 
 OFF:29.336042 fps/max65.667 ms/14 gaps>50 ms. ON:30.001415 fps/max34 ms/zero gaps
