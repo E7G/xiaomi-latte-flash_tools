@@ -172,7 +172,13 @@ fallback_image="/boot/initramfs-{pkgbase}-fallback.img"
 fallback_options="-S autodetect"
 '''
     payload['etc/mkinitcpio.d/'+pkgbase+'.preset']=(preset.encode(),0o644)
-    output.mkdir(parents=True,mode=0o755);work=output/'makepkg';work.mkdir(mode=0o755)
+    output.mkdir(parents=True,mode=0o755)
+    # A restrictive caller umask must not prevent the unprivileged packaging
+    # account from traversing the newly created public output directory. Never
+    # chmod an existing directory or any signing input; logs retain their umask.
+    output.chmod(0o755)
+    work=output/'makepkg';work.mkdir(mode=0o755)
+    work.chmod(0o755)
     payload_tar=work/'payload.tar'
     with tarfile.open(payload_tar,'w',format=tarfile.PAX_FORMAT) as t:
         for name,(data,mode) in sorted(payload.items()):
