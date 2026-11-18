@@ -29,6 +29,11 @@ fi
 # The explicit opt-in leaves legacy unpinned package selection unchanged.
 KERNEL_PACKAGE_SHA256="${KERNEL_PACKAGE_SHA256:-}"
 KERNEL_ARTIFACT_MANIFEST="${KERNEL_ARTIFACT_MANIFEST:-}"
+KERNEL_ARTIFACT_REQUIRE_FORMAT="${KERNEL_ARTIFACT_REQUIRE_FORMAT:-source-ci}"
+case "$KERNEL_ARTIFACT_REQUIRE_FORMAT" in
+  source-ci|verified-binary-repack) ;;
+  *) echo 'Unsupported required kernel artifact format' >&2; exit 1 ;;
+esac
 if [[ -n "$KERNEL_ARTIFACT_MANIFEST" || -n "${EXPECTED_KERNEL_SOURCE_COMMIT:-}" || -n "${EXPECTED_KERNEL_SHA256:-}" ]]; then
 	[[ -n "$KERNEL_ARTIFACT_MANIFEST" && -n "$KERNEL_PACKAGE" && -n "${EXPECTED_KERNEL_SOURCE_COMMIT:-}" && -n "${EXPECTED_KERNEL_SHA256:-}" ]] || {
 		echo 'CI kernel requires artifact manifest, package, source commit and SHA256 together' >&2; exit 1;
@@ -39,7 +44,7 @@ if [[ -n "$KERNEL_ARTIFACT_MANIFEST" || -n "${EXPECTED_KERNEL_SOURCE_COMMIT:-}" 
 	proof="$(python3 ./scripts/resolve_kernel_artifact.py verify \
 		--manifest "$KERNEL_ARTIFACT_MANIFEST" --package "$KERNEL_PACKAGE" \
 		--expected-source-commit "$EXPECTED_KERNEL_SOURCE_COMMIT" \
-		--expected-sha256 "$EXPECTED_KERNEL_SHA256" --require-format source-ci)"
+		--expected-sha256 "$EXPECTED_KERNEL_SHA256" --require-format "$KERNEL_ARTIFACT_REQUIRE_FORMAT")"
 	artifact_base="$(python3 -c 'import json,sys; print(json.load(sys.stdin)["pkgbase"])' <<< "$proof")"
 	[[ -z "$KERNEL_PKGBASE" || "$KERNEL_PKGBASE" == "$artifact_base" ]] || {
 		echo 'Kernel artifact conflicts with explicit package base' >&2; exit 1;
@@ -47,11 +52,16 @@ if [[ -n "$KERNEL_ARTIFACT_MANIFEST" || -n "${EXPECTED_KERNEL_SOURCE_COMMIT:-}" 
 	KERNEL_PKGBASE="$artifact_base"
 elif [[ -n "$KERNEL_PACKAGE_SHA256" ]]; then
 	[[ -n "$KERNEL_PACKAGE" ]] || { echo 'Pinned kernel requires explicit KERNEL_PACKAGE' >&2; exit 1; }
-	[[ -z "$KERNEL_PKGBASE" || "$KERNEL_PKGBASE" == linux-latte-integrated || "$KERNEL_PKGBASE" == linux-latte-integrated-7-2 ]] || {
+	[[ -z "$KERNEL_PKGBASE" || "$KERNEL_PKGBASE" == linux-latte-integrated || "$KERNEL_PKGBASE" == linux-latte-integrated-7-2 || "$KERNEL_PKGBASE" == linux-latte-integrated-7-2-daily3 || "$KERNEL_PKGBASE" == linux-latte-integrated-7-2-adc1 || "$KERNEL_PKGBASE" == linux-latte-integrated-7-2-adc2 ]] || {
 		echo 'Pinned integrated package conflicts with explicit kernel base' >&2; exit 1;
 	}
 	KERNEL_PACKAGE="$(realpath -e -- "$KERNEL_PACKAGE")"
-	python3 ./scripts/preflight_integrated_kernel_package.py "$KERNEL_PACKAGE" --sha256 "$KERNEL_PACKAGE_SHA256"
+	proof="$(python3 ./scripts/preflight_integrated_kernel_package.py "$KERNEL_PACKAGE" --sha256 "$KERNEL_PACKAGE_SHA256")"
+	artifact_base="$(python3 -c 'import json,sys; print(json.load(sys.stdin)["pkgbase"])' <<< "$proof")"
+	[[ -z "$KERNEL_PKGBASE" || "$KERNEL_PKGBASE" == "$artifact_base" ]] || {
+		echo 'Pinned kernel package conflicts with explicit package base' >&2; exit 1;
+	}
+	KERNEL_PKGBASE="$artifact_base"
 fi
 
 if [[ ! -d /sys/module/nbd ]]; then
@@ -273,7 +283,7 @@ install_packages() {
 	kernel_release="${installed_releases[0]}"
 	if [[ -f "$mount_dir/usr/lib/modules/$kernel_release/pkgbase" ]]; then
 		detected_pkgbase="$(cat "$mount_dir/usr/lib/modules/$kernel_release/pkgbase")"
-		[[ "$detected_pkgbase" == linux-latte-cachyos || "$detected_pkgbase" == linux-latte-integrated || "$detected_pkgbase" == linux-latte-integrated-7-2 ]] || {
+		[[ "$detected_pkgbase" == linux-latte-cachyos || "$detected_pkgbase" == linux-latte-integrated || "$detected_pkgbase" == linux-latte-integrated-7-2 || "$detected_pkgbase" == linux-latte-integrated-7-2-daily3 || "$detected_pkgbase" == linux-latte-integrated-7-2-adc1 || "$detected_pkgbase" == linux-latte-integrated-7-2-adc2 ]] || {
 			echo 'Unsupported kernel package base' >&2; exit 1;
 		}
 		[[ -z "$KERNEL_PKGBASE" || "$KERNEL_PKGBASE" == "$detected_pkgbase" ]] || {
@@ -283,7 +293,7 @@ install_packages() {
 	else
 		KERNEL_PKGBASE="${KERNEL_PKGBASE:-linux-latte-cachyos}"
 	fi
-	[[ "$KERNEL_PKGBASE" == linux-latte-cachyos || "$KERNEL_PKGBASE" == linux-latte-integrated || "$KERNEL_PKGBASE" == linux-latte-integrated-7-2 ]] || {
+	[[ "$KERNEL_PKGBASE" == linux-latte-cachyos || "$KERNEL_PKGBASE" == linux-latte-integrated || "$KERNEL_PKGBASE" == linux-latte-integrated-7-2 || "$KERNEL_PKGBASE" == linux-latte-integrated-7-2-daily3 || "$KERNEL_PKGBASE" == linux-latte-integrated-7-2-adc1 || "$KERNEL_PKGBASE" == linux-latte-integrated-7-2-adc2 ]] || {
 		echo 'Unsupported kernel package base' >&2; exit 1;
 	}
 	if [[ "$KERNEL_PKGBASE" == linux-latte-integrated && ! "$kernel_release" =~ ^6\.14\.0-mipad2-integrated-r[0-9]+$ ]]; then
@@ -292,6 +302,15 @@ install_packages() {
 	if [[ "$KERNEL_PKGBASE" == linux-latte-integrated-7-2 && ! "$kernel_release" =~ ^7\.2\.0-mipad2-integrated-r[0-9]+$ ]]; then
 		echo 'Linux7.2 image requires a Linux7.2 integrated kernel' >&2; exit 1;
 	fi
+	case "$KERNEL_PKGBASE" in
+	  linux-latte-integrated-7-2-daily3|linux-latte-integrated-7-2-adc1|linux-latte-integrated-7-2-adc2)
+	    flavor="${KERNEL_PKGBASE#linux-latte-integrated-7-2-}"
+	    release_pattern="^7\\.2\\.(0|[1-9][0-9]*)-mipad2-integrated-${flavor}$"
+	    [[ "$kernel_release" =~ $release_pattern ]] || {
+	      echo 'Image kernel release does not match candidate package flavor' >&2; exit 1;
+	    }
+	    ;;
+	esac
 	install -Dm0644 "$mount_dir/usr/lib/modules/$kernel_release/vmlinuz" \
 		"$mount_dir/boot/vmlinuz-$KERNEL_PKGBASE"
 

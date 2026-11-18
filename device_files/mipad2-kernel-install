@@ -17,7 +17,7 @@ if (( ${#targets[@]} == 0 )) && [[ ! -t 0 ]]; then
   done
 fi
 if (( ${#targets[@]} == 0 )); then
-  for candidate_base in linux-latte-cachyos linux-latte-integrated linux-latte-integrated-7-2; do
+  for candidate_base in linux-latte-cachyos linux-latte-integrated linux-latte-integrated-7-2 linux-latte-integrated-7-2-daily3 linux-latte-integrated-7-2-adc1 linux-latte-integrated-7-2-adc2; do
     if pacman -Qq "$candidate_base" >/dev/null 2>&1; then targets+=("$candidate_base"); fi
   done
   if (( ${#targets[@]} != 1 )); then
@@ -27,7 +27,7 @@ if (( ${#targets[@]} == 0 )); then
 fi
 for pkgbase in "${targets[@]}"; do
   case "$pkgbase" in
-    linux-latte-cachyos|linux-latte-integrated|linux-latte-integrated-7-2) ;;
+    linux-latte-cachyos|linux-latte-integrated|linux-latte-integrated-7-2|linux-latte-integrated-7-2-daily3|linux-latte-integrated-7-2-adc1|linux-latte-integrated-7-2-adc2) ;;
     *) echo 'Unsupported kernel package base' >&2; exit 1 ;;
   esac
 done
@@ -64,6 +64,15 @@ if [[ "$pkgbase" == linux-latte-integrated-7-2 && ! "$source_image" =~ /7\.2\.0-
   echo 'Linux7.2 package must contain a Linux7.2 integrated release' >&2
   exit 1
 fi
+case "$pkgbase" in
+  linux-latte-integrated-7-2-daily3|linux-latte-integrated-7-2-adc1|linux-latte-integrated-7-2-adc2)
+    local flavor="${pkgbase#linux-latte-integrated-7-2-}"
+    local release_pattern="/7\\.2\\.(0|[1-9][0-9]*)-mipad2-integrated-${flavor}/vmlinuz$"
+    [[ "$source_image" =~ $release_pattern ]] || {
+      echo 'Modern kernel release does not match candidate package flavor' >&2; exit 1;
+    }
+    ;;
+esac
 echo "Using $(pacman -Q "${pkgbase}") kernel image: ${source_image}"
 tmp_image="${boot_image}.new"
 trap 'rm -f "${tmp_image}"' EXIT

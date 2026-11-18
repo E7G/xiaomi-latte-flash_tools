@@ -5,6 +5,9 @@ Type = Package
 Target = linux-latte-cachyos
 Target = linux-latte-integrated
 Target = linux-latte-integrated-7-2
+Target = linux-latte-integrated-7-2-daily3
+Target = linux-latte-integrated-7-2-adc1
+Target = linux-latte-integrated-7-2-adc2
 
 [Action]
 Description = Install and sign linux_latte kernel

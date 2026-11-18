@@ -13,6 +13,11 @@ BASES={'linux-latte-cachyos':r'6\.14\.0-mipad2-cachyos',
        'linux-latte-integrated':r'6\.14\.0-mipad2-integrated-r[0-9]+',
        'linux-latte-integrated-7-2':r'7\.2\.0-mipad2-integrated-r[0-9]+'}
 FIELDS={'schema','filename','sha256','pkgbase','pkgver','kernelrelease','source_commit','package_format'}
+MODERN_BASES={}
+for flavor in ['daily3','adc1','adc2']:
+    base='linux-latte-integrated-7-2-'+flavor
+    MODERN_BASES[base]=r'7\.2\.(?:0|[1-9][0-9]*)-mipad2-integrated-'+flavor
+BASES.update(MODERN_BASES)
 
 def strict_json(data):
     def unique(pairs):
@@ -74,6 +79,8 @@ def inspect(package,pin,source_commit):
     offset=struct.unpack_from('<H',image,0x20e)[0]+0x200
     require(offset<len(image) and image[offset:].split(b'\0',1)[0].startswith((release+' ').encode()),'Kernel release banner mismatch')
     manifest_path='var/lib/mipad2-kernel/'+release+'/manifest.json'
+    if base in MODERN_BASES:
+        require(manifest_path in files,'Modern candidate requires original verified bundle manifest')
     if manifest_path in files:
         from preflight_integrated_kernel_package import check
         proof=check(package,pin);require(proof['source_commit']==source_commit,'Source pin mismatch')

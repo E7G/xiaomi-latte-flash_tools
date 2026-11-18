@@ -1,4 +1,4 @@
-name: Check integrated binary package formats
+name: Check integrated kernel packaging and handoff
 on:
   workflow_dispatch:
   push:
@@ -8,6 +8,19 @@ on:
       - scripts/preflight_integrated_kernel_package.py
       - tests/test_integrated_kernel_packaging*.py
       - tests/test_modern_integrated_packaging.py
+      - scripts/resolve_kernel_artifact.py
+      - device_files/mipad2-kernel-install
+      - device_files/kernel.hook
+      - device_files/kernel-preflight.hook
+      - build_rootfs.sh
+      - scripts/build_dnx_package.sh
+      - scripts/build_kernel_package.sh
+      - scripts/stage_kernel_support.py
+      - device_files/mipad2-kernel-preflight
+      - tests/test_kernel_artifact_handoff.py
+      - tests/test_kernel_preflight.py
+      - tests/test_modern_kernel_handoff.py
+      - .github/workflows/build-dnx.yml
       - .github/workflows/integrated-package-check.yml
 permissions:
   contents: read
@@ -17,16 +30,20 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
-      - name: Install fixture compression dependency
-        run: sudo apt-get update && sudo apt-get install -y zstd
+      - name: Install fixture dependencies
+        run: sudo apt-get update && sudo apt-get install -y zstd python3-yaml openssl
       - name: Test legacy and modern readers, identity and real nobody boundary
         run: |
           sudo env PYTHONPATH="$PWD/scripts:$PWD/tests" python3 -m unittest \
-            test_integrated_kernel_packaging.BundleTests \
-            test_integrated_kernel_packaging.Bundle72Tests \
-            test_integrated_kernel_packaging.PackagePreflightTests \
+            test_integrated_kernel_packaging \
             test_integrated_kernel_packaging_umask \
             test_modern_integrated_packaging.ModernTests
+      - name: Test artifact pins, install hooks and rootfs handoff without device access
+        run: |
+          for script in build_rootfs.sh device_files/mipad2-kernel-install device_files/mipad2-kernel-preflight; do bash -n "$script"; done
+          sudo env PYTHONPATH="$PWD/scripts:$PWD/tests" python3 -m unittest \
+            test_kernel_artifact_handoff test_modern_kernel_handoff
+          python3 tests/test_kernel_preflight.py
       # These unsigned fixtures validate format/error handling only. Real module
       # CMS, makepkg, pacman query and byte-preserving package qualification are
       # separate gates against an externally pinned completed kernel artifact.
