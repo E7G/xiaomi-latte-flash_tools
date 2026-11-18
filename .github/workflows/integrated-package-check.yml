@@ -1,0 +1,32 @@
+name: Check integrated binary package formats
+on:
+  workflow_dispatch:
+  push:
+    branches: [codex/mipad2-7.2-integrated]
+    paths:
+      - scripts/package_integrated_kernel.py
+      - scripts/preflight_integrated_kernel_package.py
+      - tests/test_integrated_kernel_packaging*.py
+      - tests/test_modern_integrated_packaging.py
+      - .github/workflows/integrated-package-check.yml
+permissions:
+  contents: read
+jobs:
+  format-regression:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install fixture compression dependency
+        run: sudo apt-get update && sudo apt-get install -y zstd
+      - name: Test legacy and modern readers, identity and real nobody boundary
+        run: |
+          sudo env PYTHONPATH="$PWD/scripts:$PWD/tests" python3 -m unittest \
+            test_integrated_kernel_packaging.BundleTests \
+            test_integrated_kernel_packaging.Bundle72Tests \
+            test_integrated_kernel_packaging.PackagePreflightTests \
+            test_integrated_kernel_packaging_umask \
+            test_modern_integrated_packaging.ModernTests
+      # These unsigned fixtures validate format/error handling only. Real module
+      # CMS, makepkg, pacman query and byte-preserving package qualification are
+      # separate gates against an externally pinned completed kernel artifact.

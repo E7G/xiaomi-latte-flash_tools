@@ -6,7 +6,7 @@ from pathlib import Path, PurePosixPath
 import re
 import subprocess
 import tarfile
-from package_integrated_kernel import PKGBASE,PKGBASE_72,file_pin,require,sha,identity
+from package_integrated_kernel import PKGBASE,PKGBASE_72,file_pin,require,sha,identity,release_from_version,boot_files,module_count,modern
 
 
 def check(package,pin):
@@ -36,12 +36,12 @@ def check(package,pin):
         if ' = ' in line:
             key,value=line.split(' = ',1);info.setdefault(key,[]).append(value)
     pkgbase=info.get('pkgbase',[''])[0]
-    require(pkgbase in [PKGBASE,PKGBASE_72],'Unsupported package base')
+    require(pkgbase in [PKGBASE,PKGBASE_72,*[PKGBASE_72+'-'+f for f in ['daily3','adc1','adc2']]],'Unsupported package base')
     for key,value in [('pkgname',pkgbase),('pkgbase',pkgbase),('arch','x86_64')]:
         require(info.get(key)==[value],'Unexpected ALPM identity/architecture')
     require(len(info.get('pkgver',[]))==1,'Ambiguous package version')
-    match=re.fullmatch(r'(6\.14\.0|7\.2\.0)\.r([0-9]+)-1',info['pkgver'][0]);require(match is not None,'Unsupported integrated package version')
-    release=match[1]+'-mipad2-integrated-r'+match[2]
+    require(info['pkgver'][0].endswith('-1'),'Unsupported package revision')
+    release=release_from_version(info['pkgver'][0][:-2])
     require(identity(release)[0]==pkgbase,'Package base/kernel family mismatch')
     boot='var/lib/mipad2-kernel/'+release
     manifest_path=boot+'/manifest.json';require(manifest_path in files,'Original build manifest missing')
@@ -51,7 +51,7 @@ def check(package,pin):
     require(set(files)==set(originals)|{manifest_path}|metadata|additions,'Unexpected/missing package payload')
     for name,digest in originals.items():
         relative=name[len(prefix)+1:] if name.startswith(prefix+'/') else ''
-        allowed=(name in [boot+'/'+n for n in ['vmlinuz','config','System.map']]
+        allowed=(name in [boot+'/'+n for n in boot_files(release)]
                  or (relative.startswith('kernel/') and relative.endswith('.ko.zst'))
                  or re.fullmatch(r'modules\.[a-z0-9_.]+',relative) is not None)
         require(allowed and sha(files[name])==digest,'Original kernel/module path or hash changed')
@@ -60,7 +60,11 @@ def check(package,pin):
     require('ALL_kver="/usr/lib/modules/'+release+'/vmlinuz"' in preset
             and 'default_image="/boot/initramfs-'+pkgbase+'.img"' in preset,'Preset points at a different kernel')
     count=sum(n.endswith('.ko.zst') for n in files)
-    require(type(m.get('modules')) is int and count==m['modules']>0,'Module count mismatch')
+    require(count==module_count(m),'Module count mismatch')
+    if modern(release):
+        cert=files['usr/share/doc/'+pkgbase+'/module-signing.x509']
+        require(cert==files[boot+'/module-signing-public.x509'] and sha(cert)==m['module_certificate_sha256'],
+                'Package public certificate mismatch')
     return dict(state='integrated-kernel-package-preflight-pass',kernelrelease=release,pkgbase=pkgbase,
                 package_sha256=pin,source_commit=m.get('source_commit'),original_files_verified=len(originals)+1,
                 modules=count,install_script_absent=True,original_payload_hashes_preserved=True,
