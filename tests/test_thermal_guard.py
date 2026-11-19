@@ -7,23 +7,24 @@ import random
 import re
 import subprocess
 from pathlib import Path
+import tempfile
 import unittest
 
 ROOT=Path(__file__).resolve().parents[1]
 SOURCE=ROOT/'device_files/mipad2-thermal-guard'
 
 
-def policy_source():
+def function_source(name):
     text=SOURCE.read_text()
-    start=text.index('next_state() {')
+    start=text.index(name+'() {')
     end=text.index('\n}\n',start)+3
     return text[start:end]
 
 
 def decisions(rows):
-    script='set -u\n'+policy_source()+\
+    script='set -u\n'+function_source('next_state')+\
       '\nwhile IFS=" " read -r state temp; do\n'+\
-      ' if out=$(next_state "$state" "$temp"); then printf "%s\\n" "$out"; else printf "ERROR\\n"; fi\n'+\
+      ' if next_state "$state" "$temp" out; then printf "%s\\n" "$out"; else printf "ERROR\\n"; fi\n'+\
       'done\n'
     p=subprocess.run(['bash','-c',script],input=''.join(f'{s} {t}\n' for s,t in rows),capture_output=True,text=True,timeout=30)
     if p.returncode or p.stderr:
@@ -71,13 +72,71 @@ class ThermalGuardTests(unittest.TestCase):
 
     def test_main_only_commits_successful_state(self):
         text=SOURCE.read_text()
-        self.assertIn('new_state=$(next_state "$state" "$t") || { sleep 3; continue; }\n    state=$new_state',text)
-        self.assertNotIn('state=$(next_state',text.replace('new_state=$(next_state',''))
+        self.assertIn('next_state "$state" "$t" new_state || { sleep 3; continue; }\n    state=$new_state', text)
+        self.assertNotIn('$(', function_source('next_state'))
 
     def test_existing_ceiling_values_and_period_unchanged(self):
         text=SOURCE.read_text()
         self.assertEqual(re.findall(r'[0-3]\) maxfreq=(\d+);',text),['2240000','1840000','1600000','1330000'])
         self.assertIn('sleep 3\ndone',text)
+
+
+class ThermalSamplingTests(unittest.TestCase):
+    def setUp(self):
+        self.workspace = tempfile.TemporaryDirectory(prefix="mipad2-thermal-sysfs-")
+        self.addCleanup(self.workspace.cleanup)
+        root = Path(self.workspace.name)
+        self.thermal = root / "thermal"
+        self.hwmon = root / "hwmon"
+        self.thermal.mkdir()
+        self.hwmon.mkdir()
+
+    def files_in(self, directory, entries):
+        directory.mkdir(parents=True, exist_ok=True)
+        for name, text in entries.items():
+            (directory / name).write_text(text + "\n")
+
+    def samples(self, script='read_temp "$1" "$2" temp; printf "%s\\n" "$temp"'):
+        result = subprocess.run(
+            ['bash', '-c', 'set -eu\n' + function_source('read_temp') + script,
+             'mipad2-thermal-guard', str(self.thermal), str(self.hwmon)],
+            check=True, capture_output=True, text=True, timeout=10,
+        )
+        self.assertEqual(result.stderr, "")
+        return [int(value) for value in result.stdout.splitlines()]
+
+    def test_selects_maximum_across_supported_sensor_types(self):
+        self.files_in(self.thermal / "thermal_zone0", {"type": "soc_dts0", "temp": "42000"})
+        self.files_in(self.thermal / "thermal_zone1", {"type": "x86_pkg_temp", "temp": "58000"})
+        self.files_in(self.thermal / "thermal_zone2", {"type": "PNIT", "temp": "56000"})
+        self.files_in(self.thermal / "thermal_zone3", {"type": "chtwc-sys0", "temp": "99000"})
+        self.files_in(self.hwmon / "hwmon0",
+                      {"name": "coretemp", "temp1_input": "62000", "temp2_input": "61000"})
+        self.files_in(self.hwmon / "hwmon1", {"name": "bq25890", "temp1_input": "100000"})
+        self.assertEqual(self.samples(), [62000])
+
+    def test_missing_and_invalid_samples_are_ignored(self):
+        self.files_in(self.thermal / "thermal_zone0", {"type": "soc_dts0"})
+        self.files_in(self.thermal / "thermal_zone1", {"type": "PNIT", "temp": "-273150"})
+        self.files_in(self.thermal / "thermal_zone2", {"type": "soc_dts1", "temp": "120000"})
+        self.files_in(self.hwmon / "hwmon0", {"name": "coretemp", "temp1_input": "NaN"})
+        self.assertEqual(self.samples(), [0])
+
+    def test_discovers_sensor_added_between_polls(self):
+        new_zone = self.thermal / "thermal_zone9"
+        new_zone.mkdir()
+        script = """\
+read_temp "$1" "$2" temp; printf '%s\\n' "$temp"
+printf 'pkg_temp1\\n' > "$1/thermal_zone9/type"
+printf '54000\\n' > "$1/thermal_zone9/temp"
+read_temp "$1" "$2" temp; printf '%s\\n' "$temp"
+"""
+        self.assertEqual(self.samples(script), [0, 54000])
+
+    def test_sampling_loop_uses_shell_builtins(self):
+        source = function_source('read_temp')
+        self.assertNotIn('$(', source)
+        self.assertNotRegex(source, r'\bcat\b')
 
 
 if __name__=='__main__':
