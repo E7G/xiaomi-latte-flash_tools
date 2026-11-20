@@ -10,7 +10,7 @@ class ModernInstallerTests(KernelInstallTests):
     def test_all_flavors_install_only_their_own_image(self):
         self.package('linux-latte-integrated')
         old=self.root/'boot/vmlinuz-linux-latte-integrated';old.write_text('stable sentinel')
-        for flavor in ['daily3','adc1','adc2']:
+        for flavor in ['daily3','adc1','adc2','lpat9']:
             base='linux-latte-integrated-7-2-'+flavor
             self.package(base,'7.2.15-mipad2-integrated-'+flavor)
             q=self.run_installer([base]);self.assertEqual(q.returncode,0,q.stderr)
@@ -32,14 +32,14 @@ class ModernInstallerTests(KernelInstallTests):
     def test_hook_targets_each_flavor_explicitly(self):
         for name in ['kernel.hook','kernel-preflight.hook']:
             text=(Path(__file__).resolve().parents[1]/'device_files'/name).read_text()
-            for flavor in ['daily3','adc1','adc2']:
+            for flavor in ['daily3','adc1','adc2','lpat9']:
                 self.assertIn('Target = linux-latte-integrated-7-2-'+flavor,text)
 
 
 class ModernRootfsTests(RootfsKernelBaseTests):
     def test_all_flavors_select_distinct_boot_images(self):
         # Each fixture has exactly one release, as a real rootfs build requires.
-        for flavor in ['daily3','adc1','adc2']:
+        for flavor in ['daily3','adc1','adc2','lpat9']:
             with self.subTest(flavor=flavor):
                 fixture=RootfsKernelBaseTests('test_integrated_base_derived_from_installed_package');fixture.setUp()
                 try:
@@ -61,7 +61,7 @@ class ModernRootfsTests(RootfsKernelBaseTests):
 class ModernResolverIdentityTests(unittest.TestCase):
     def test_only_matching_flavor_release_patterns(self):
         import re
-        for flavor in ['daily3','adc1','adc2']:
+        for flavor in ['daily3','adc1','adc2','lpat9']:
             pattern=resolver.BASES['linux-latte-integrated-7-2-'+flavor]
             self.assertIsNotNone(re.fullmatch(pattern,'7.2.15-mipad2-integrated-'+flavor))
             self.assertIsNone(re.fullmatch(pattern,'7.3.0-mipad2-integrated-'+flavor))
