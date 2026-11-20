@@ -1,0 +1,12 @@
+# libalpm runs this before the mkinitcpio PostTransaction hook.
+post_install() {
+    local preset=/etc/mkinitcpio.d/linux-latte-cachyos.preset
+
+    [[ -f "$preset" && ! -L "$preset" ]] || return 0
+    grep -qE '^ALL_kver="/usr/lib/modules/[^"/]+-mipad2-cachyos[^"/]*/vmlinuz"$' "$preset" || return 0
+    sed -i -E 's@^ALL_kver="/usr/lib/modules/[^"/]+-mipad2-cachyos[^"/]*/vmlinuz"$@ALL_kver="/usr/lib/mipad2-kernel/vmlinuz"@' "$preset"
+}
+
+post_upgrade() {
+    post_install
+}
