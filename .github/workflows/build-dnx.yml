@@ -90,10 +90,14 @@ jobs:
           contents="${RUNNER_TEMP}/latte-kernel-package-contents.txt"
           package="$(find . -maxdepth 1 -type f -name '*.pkg.tar.zst' -print -quit)"
           test -n "$package"
-          [[ "$(basename "$package")" =~ ^linux-latte-cachyos-.+\.r[0-9]{14}\.g[0-9a-f]{12}-1-x86_64\.pkg\.tar\.zst$ ]]
+          [[ "$(basename "$package")" =~ ^linux-latte-cachyos-.+\.r[0-9]{14}\.g[0-9a-f]{12}-2-x86_64\.pkg\.tar\.zst$ ]]
           tar -tf "$package" > "$contents"
           grep -q 'usr/share/doc/linux-latte-cachyos/source-commit' "$contents"
           test "$(tar -xOf "$package" usr/share/doc/linux-latte-cachyos/source-commit)" = "${{ steps.kernel-source.outputs.commit }}"
+          release="$(tar -xOf "$package" usr/share/doc/linux-latte-cachyos/kernel-release)"
+          grep -Fxq "usr/lib/modules/$release/vmlinuz" "$contents"
+          tar -tvf "$package" usr/lib/mipad2-kernel/vmlinuz | grep -Fq "usr/lib/mipad2-kernel/vmlinuz -> ../modules/$release/vmlinuz"
+          grep -Fxq '.INSTALL' "$contents"
           toolchain="$(tar -xOf "$package" usr/share/doc/linux-latte-cachyos/toolchain-packages)"
           for compiler_package in clang22 lld22 llvm22; do
             grep -Eq "^${compiler_package} 22\." <<< "$toolchain"
@@ -164,6 +168,7 @@ jobs:
           bash -n device_files/mipad2-kernel-install
           bash -n device_files/mipad2-kernel-preflight
           python tests/test_kernel_preflight.py
+          python tests/test_kernel_preset.py
           cc -O2 -Wall -Wextra device_files/mipad2-camera-af.c -o /tmp/mipad2-camera-af-ci
           grep -q 'desktop_type="${desktop_type:-gnome}"' build_rootfs.sh
           grep -q 'qt6-base qt6-wayland qt6-5compat iio-sensor-proxy' build_rootfs.sh
@@ -228,6 +233,8 @@ jobs:
           sudo mount -o loop,ro,subvol=@ work/dnx-package/images/xiaomi-latte-rootfs.img "$rootfs"
           sudo mount -o loop,ro,subvol=@home work/dnx-package/images/xiaomi-latte-rootfs.img "$rootfs/home"
           findmnt --mountpoint "$rootfs/home"
+          grep -Fqx 'ALL_kver="/usr/lib/mipad2-kernel/vmlinuz"' "$rootfs/etc/mkinitcpio.d/linux-latte-cachyos.preset"
+          test -s "$rootfs/usr/lib/mipad2-kernel/vmlinuz"
           sudo test ! -e "$rootfs/root/.mipad2-build/MOK.key"
           test ! -e "$esp/EFI/MOK.key"
           test -x "$rootfs/usr/local/sbin/mipad2-install-to-emmc"

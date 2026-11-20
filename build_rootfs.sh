@@ -234,7 +234,7 @@ install_packages() {
 	pacstrap -C "${device_file}"/pacman.conf -c $mount_dir ${packages[@]} ${desktop[@]} mkinitcpio
 	cat > "$mount_dir/etc/mkinitcpio.d/$KERNEL_PKGBASE.preset" <<EOF
 ALL_config="/etc/mkinitcpio.conf"
-ALL_kver="/usr/lib/modules/$kernel_release/vmlinuz"
+ALL_kver="/usr/lib/mipad2-kernel/vmlinuz"
 PRESETS=('default' 'fallback')
 default_image="/boot/initramfs-$KERNEL_PKGBASE.img"
 fallback_image="/boot/initramfs-$KERNEL_PKGBASE-fallback.img"

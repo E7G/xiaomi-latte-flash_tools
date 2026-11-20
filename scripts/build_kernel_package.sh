@@ -86,6 +86,8 @@ mod_dir="${work_dir}/pkg/usr/lib/modules/${kernel_release}"
 make "${build_flags[@]}" INSTALL_MOD_PATH="${work_dir}/pkg/usr" \
   INSTALL_MOD_STRIP=1 DEPMOD=true modules_install
 install -Dm0644 "$(make -s "${build_flags[@]}" image_name)" "${mod_dir}/vmlinuz"
+install -d "${work_dir}/pkg/usr/lib/mipad2-kernel"
+ln -s "../modules/${kernel_release}/vmlinuz" "${work_dir}/pkg/usr/lib/mipad2-kernel/vmlinuz"
 install -Dm0644 .config "${mod_dir}/config"
 printf '%s\n' "${pkgbase}" > "${mod_dir}/pkgbase"
 rm -f "${mod_dir}/build" "${mod_dir}/source"
@@ -136,7 +138,7 @@ pacman -Q "${toolchain_packages[@]}" > "${work_dir}/pkg/usr/share/doc/${pkgbase}
 
 source_stamp="$(date -u -d "@${source_date_epoch}" '+%Y%m%d%H%M%S')"
 pkgver="${kernel_release//-/_}.r${source_stamp}.g${kernel_commit:0:12}"
-pkgrel=1
+pkgrel=2
 installed_size="$(du -sb "${work_dir}/pkg" | cut -f1)"
 cat > "${work_dir}/pkg/.PKGINFO" <<EOF
 pkgname = ${pkgbase}
@@ -157,7 +159,8 @@ optdepend = v4l-utils: camera topology and smoke tests
 EOF
 
 package="${out_dir}/${pkgbase}-${pkgver}-${pkgrel}-x86_64.pkg.tar.zst"
-bsdtar --zstd -cf "${package}" -C "${work_dir}/pkg" .PKGINFO etc usr
+install -m 0644 "${repo_root}/device_files/mipad2-kernel-package.install" "${work_dir}/pkg/.INSTALL"
+bsdtar --zstd -cf "${package}" -C "${work_dir}/pkg" .PKGINFO .INSTALL etc usr
 pacman -Qp "${package}"
 (cd "${out_dir}" && sha256sum "$(basename "${package}")" > "$(basename "${package}").sha256")
 printf '%s\n' "${package}" > "${out_dir}/package-path"
