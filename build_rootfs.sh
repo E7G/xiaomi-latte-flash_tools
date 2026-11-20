@@ -52,7 +52,7 @@ if [[ -n "$KERNEL_ARTIFACT_MANIFEST" || -n "${EXPECTED_KERNEL_SOURCE_COMMIT:-}" 
 	KERNEL_PKGBASE="$artifact_base"
 elif [[ -n "$KERNEL_PACKAGE_SHA256" ]]; then
 	[[ -n "$KERNEL_PACKAGE" ]] || { echo 'Pinned kernel requires explicit KERNEL_PACKAGE' >&2; exit 1; }
-	[[ -z "$KERNEL_PKGBASE" || "$KERNEL_PKGBASE" == linux-latte-integrated || "$KERNEL_PKGBASE" == linux-latte-integrated-7-2 || "$KERNEL_PKGBASE" == linux-latte-integrated-7-2-daily3 || "$KERNEL_PKGBASE" == linux-latte-integrated-7-2-adc1 || "$KERNEL_PKGBASE" == linux-latte-integrated-7-2-adc2 ]] || {
+	[[ -z "$KERNEL_PKGBASE" || "$KERNEL_PKGBASE" == linux-latte-integrated || "$KERNEL_PKGBASE" == linux-latte-integrated-7-2 || "$KERNEL_PKGBASE" == linux-latte-integrated-7-2-daily3 || "$KERNEL_PKGBASE" == linux-latte-integrated-7-2-adc1 || "$KERNEL_PKGBASE" == linux-latte-integrated-7-2-adc2 || "$KERNEL_PKGBASE" == linux-latte-integrated-7-2-lpat9 ]] || {
 		echo 'Pinned integrated package conflicts with explicit kernel base' >&2; exit 1;
 	}
 	KERNEL_PACKAGE="$(realpath -e -- "$KERNEL_PACKAGE")"
@@ -283,7 +283,7 @@ install_packages() {
 	kernel_release="${installed_releases[0]}"
 	if [[ -f "$mount_dir/usr/lib/modules/$kernel_release/pkgbase" ]]; then
 		detected_pkgbase="$(cat "$mount_dir/usr/lib/modules/$kernel_release/pkgbase")"
-		[[ "$detected_pkgbase" == linux-latte-cachyos || "$detected_pkgbase" == linux-latte-integrated || "$detected_pkgbase" == linux-latte-integrated-7-2 || "$detected_pkgbase" == linux-latte-integrated-7-2-daily3 || "$detected_pkgbase" == linux-latte-integrated-7-2-adc1 || "$detected_pkgbase" == linux-latte-integrated-7-2-adc2 ]] || {
+		[[ "$detected_pkgbase" == linux-latte-cachyos || "$detected_pkgbase" == linux-latte-integrated || "$detected_pkgbase" == linux-latte-integrated-7-2 || "$detected_pkgbase" == linux-latte-integrated-7-2-daily3 || "$detected_pkgbase" == linux-latte-integrated-7-2-adc1 || "$detected_pkgbase" == linux-latte-integrated-7-2-adc2 || "$detected_pkgbase" == linux-latte-integrated-7-2-lpat9 ]] || {
 			echo 'Unsupported kernel package base' >&2; exit 1;
 		}
 		[[ -z "$KERNEL_PKGBASE" || "$KERNEL_PKGBASE" == "$detected_pkgbase" ]] || {
@@ -293,7 +293,7 @@ install_packages() {
 	else
 		KERNEL_PKGBASE="${KERNEL_PKGBASE:-linux-latte-cachyos}"
 	fi
-	[[ "$KERNEL_PKGBASE" == linux-latte-cachyos || "$KERNEL_PKGBASE" == linux-latte-integrated || "$KERNEL_PKGBASE" == linux-latte-integrated-7-2 || "$KERNEL_PKGBASE" == linux-latte-integrated-7-2-daily3 || "$KERNEL_PKGBASE" == linux-latte-integrated-7-2-adc1 || "$KERNEL_PKGBASE" == linux-latte-integrated-7-2-adc2 ]] || {
+	[[ "$KERNEL_PKGBASE" == linux-latte-cachyos || "$KERNEL_PKGBASE" == linux-latte-integrated || "$KERNEL_PKGBASE" == linux-latte-integrated-7-2 || "$KERNEL_PKGBASE" == linux-latte-integrated-7-2-daily3 || "$KERNEL_PKGBASE" == linux-latte-integrated-7-2-adc1 || "$KERNEL_PKGBASE" == linux-latte-integrated-7-2-adc2 || "$KERNEL_PKGBASE" == linux-latte-integrated-7-2-lpat9 ]] || {
 		echo 'Unsupported kernel package base' >&2; exit 1;
 	}
 	if [[ "$KERNEL_PKGBASE" == linux-latte-integrated && ! "$kernel_release" =~ ^6\.14\.0-mipad2-integrated-r[0-9]+$ ]]; then
@@ -303,7 +303,7 @@ install_packages() {
 		echo 'Linux7.2 image requires a Linux7.2 integrated kernel' >&2; exit 1;
 	fi
 	case "$KERNEL_PKGBASE" in
-	  linux-latte-integrated-7-2-daily3|linux-latte-integrated-7-2-adc1|linux-latte-integrated-7-2-adc2)
+	  linux-latte-integrated-7-2-daily3|linux-latte-integrated-7-2-adc1|linux-latte-integrated-7-2-adc2|linux-latte-integrated-7-2-lpat9)
 	    flavor="${KERNEL_PKGBASE#linux-latte-integrated-7-2-}"
 	    release_pattern="^7\\.2\\.(0|[1-9][0-9]*)-mipad2-integrated-${flavor}$"
 	    [[ "$kernel_release" =~ $release_pattern ]] || {

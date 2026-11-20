@@ -1,6 +1,8 @@
 name: Check integrated kernel packaging and handoff
 on:
   workflow_dispatch:
+  pull_request:
+    branches: [codex/mipad2-7.2-integrated]
   push:
     branches: [codex/mipad2-7.2-integrated]
     paths:

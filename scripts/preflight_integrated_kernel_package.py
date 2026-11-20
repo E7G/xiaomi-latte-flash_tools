@@ -6,7 +6,7 @@ from pathlib import Path, PurePosixPath
 import re
 import subprocess
 import tarfile
-from package_integrated_kernel import PKGBASE,PKGBASE_72,file_pin,require,sha,identity,release_from_version,boot_files,module_count,modern
+from package_integrated_kernel import PKGBASE,PKGBASE_72,MODERN_FLAVORS,file_pin,require,sha,identity,release_from_version,boot_files,module_count,modern
 
 
 def check(package,pin):
@@ -36,7 +36,7 @@ def check(package,pin):
         if ' = ' in line:
             key,value=line.split(' = ',1);info.setdefault(key,[]).append(value)
     pkgbase=info.get('pkgbase',[''])[0]
-    require(pkgbase in [PKGBASE,PKGBASE_72,*[PKGBASE_72+'-'+f for f in ['daily3','adc1','adc2']]],'Unsupported package base')
+    require(pkgbase in [PKGBASE,PKGBASE_72,*[PKGBASE_72+'-'+f for f in MODERN_FLAVORS]],'Unsupported package base')
     for key,value in [('pkgname',pkgbase),('pkgbase',pkgbase),('arch','x86_64')]:
         require(info.get(key)==[value],'Unexpected ALPM identity/architecture')
     require(len(info.get('pkgver',[]))==1,'Ambiguous package version')

@@ -32,12 +32,12 @@ class ModernTests(unittest.TestCase):
 
     def test_identity_version_recipe_roundtrip(self):
         bases=set()
-        for flavor in ['daily3','adc1','adc2']:
+        for flavor in ['daily3','adc1','adc2','lpat9']:
             release='7.2.15-mipad2-integrated-'+flavor
             base,version=p.identity(release);bases.add(base)
             self.assertEqual(p.release_from_version(version),release)
             self.assertIn('pkgbase='+base,p.recipe(version,'a'*64))
-        self.assertEqual(len(bases),3)
+        self.assertEqual(len(bases),4)
         self.assertNotIn(p.PKGBASE_72,bases)
 
     def test_unsupported_versions(self):

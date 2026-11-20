@@ -6,7 +6,7 @@ new module-CMS, PE-signature, image-boot or hardware qualification.
 """
 import argparse,hashlib,json,re,subprocess,tarfile
 from pathlib import Path,PurePosixPath
-from package_integrated_kernel import require
+from package_integrated_kernel import MODERN_FLAVORS,MODERN_VERSION_PATTERN,PKGBASE_72,require
 from stage_kernel_support import PAYLOAD
 
 BASES={'linux-latte-cachyos':r'6\.14\.0-mipad2-cachyos',
@@ -14,9 +14,9 @@ BASES={'linux-latte-cachyos':r'6\.14\.0-mipad2-cachyos',
        'linux-latte-integrated-7-2':r'7\.2\.0-mipad2-integrated-r[0-9]+'}
 FIELDS={'schema','filename','sha256','pkgbase','pkgver','kernelrelease','source_commit','package_format'}
 MODERN_BASES={}
-for flavor in ['daily3','adc1','adc2']:
-    base='linux-latte-integrated-7-2-'+flavor
-    MODERN_BASES[base]=r'7\.2\.(?:0|[1-9][0-9]*)-mipad2-integrated-'+flavor
+for flavor in MODERN_FLAVORS:
+    base=PKGBASE_72+'-'+flavor
+    MODERN_BASES[base]=MODERN_VERSION_PATTERN+'-mipad2-integrated-'+flavor
 BASES.update(MODERN_BASES)
 
 def strict_json(data):

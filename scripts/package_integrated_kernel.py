@@ -21,8 +21,11 @@ import tempfile
 
 PKGBASE='linux-latte-integrated'
 PKGBASE_72='linux-latte-integrated-7-2'
+MODERN_FLAVORS=('daily3','adc1','adc2','lpat9')
+MODERN_FLAVOR_PATTERN='|'.join(MODERN_FLAVORS)
+MODERN_VERSION_PATTERN=r'7\.2\.(?:0|[1-9][0-9]*)'
 LEGACY_PATTERN=r'(?:6\.14\.0|7\.2\.0)-mipad2-integrated-r[0-9]+'
-MODERN_PATTERN=r'7\.2\.(?:0|[1-9][0-9]*)-mipad2-integrated-(?:daily3|adc1|adc2)'
+MODERN_PATTERN=MODERN_VERSION_PATTERN+'-mipad2-integrated-(?:'+MODERN_FLAVOR_PATTERN+')'
 RELEASE_PATTERN=r'(?:'+LEGACY_PATTERN+'|'+MODERN_PATTERN+')'
 
 
@@ -45,7 +48,7 @@ def identity(release):
 def release_from_version(version):
     match=re.fullmatch(r'(6\.14\.0|7\.2\.0)\.r([0-9]+)',version)
     if match:return match[1]+'-mipad2-integrated-r'+match[2]
-    match=re.fullmatch(r'(7\.2\.(?:0|[1-9][0-9]*))\.(daily3|adc1|adc2)',version)
+    match=re.fullmatch(r'('+MODERN_VERSION_PATTERN+r')\.('+MODERN_FLAVOR_PATTERN+')',version)
     require(match is not None,'Invalid package version')
     return match[1]+'-mipad2-integrated-'+match[2]
 
