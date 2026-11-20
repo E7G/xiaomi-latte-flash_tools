@@ -6,13 +6,17 @@ GNOME Wayland（构建脚本仍保留 Plasma 可选配置），内核来自 [`E7
 
 ## 7.2 整合部署候选分支
 
-当前分支 `codex/mipad2-7.2-integrated` 提供独立 `linux-latte-integrated-7-2`
-包身份，保留 6.14 回退内核。离线原生 ALPM 打包、31 模块验签和 149 项主机测试通过。
-当前候选为 7.2 r2：修复 DDR DVFS 邮箱错误路径，构建器与手动 Actions 默认修订号同步。
-DNX 已改为按显式产物清单交接，独立传递源码 SHA／SHA256，并在 NBD／镜像操作前复核。
-UCM pkgrel8 同时兼容两套功放控件名。尚未完成平板 7.2 启动或完整镜像验收；
-不修改原 `arch_linux` 默认构建，不自动触发 Actions，不代表 Android/Windows 功能对齐。
-详见 [7.2 部署证据与待验证项](kernel/KERNEL_DELIVERY_7_2.md)。
+`codex/mipad2-7.2-integrated` 支持 `7.2.15-mipad2-integrated-lpat9` 的独立 Arch
+包。该内核已在平板上通过启动、双摄采集、亮度及 S0i3 唤醒测试，Arch 包保留了原始
+内核及 37 个签名模块。源码改动见 [linux_latte #52](https://github.com/E7G/linux_latte/pull/52)。
+
+本地构建 DNX 时，将 Arch 包及 `kernel-artifact.json` 放到 `kernel-output/`，把
+`EXPECTED_KERNEL_SOURCE_COMMIT`、`EXPECTED_KERNEL_SHA256` 分别设为可信的产物源码提交
+和 Arch 包 SHA‑256。设置 `KERNEL_ARTIFACT_REQUIRE_FORMAT=verified-binary-repack`，将
+`KERNEL_SUPPORT_REPO` 指向含该提交的 `linux_latte` Git 仓库，然后在 Arch 构建环境中
+运行 `bash scripts/build_dnx_package.sh`。构建器使用同一提交里的板载固件和配置。
+
+此前候选版本的测试记录见 [7.2 部署证据](kernel/KERNEL_DELIVERY_7_2.md)。
 
 ## 6.14 整合候选分支（历史）
 

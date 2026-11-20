@@ -30,6 +30,7 @@ fi
 KERNEL_PACKAGE_SHA256="${KERNEL_PACKAGE_SHA256:-}"
 KERNEL_ARTIFACT_MANIFEST="${KERNEL_ARTIFACT_MANIFEST:-}"
 KERNEL_ARTIFACT_REQUIRE_FORMAT="${KERNEL_ARTIFACT_REQUIRE_FORMAT:-source-ci}"
+KERNEL_SUPPORT_REPO="${KERNEL_SUPPORT_REPO:-}"
 case "$KERNEL_ARTIFACT_REQUIRE_FORMAT" in
   source-ci|verified-binary-repack) ;;
   *) echo 'Unsupported required kernel artifact format' >&2; exit 1 ;;
@@ -62,6 +63,14 @@ elif [[ -n "$KERNEL_PACKAGE_SHA256" ]]; then
 		echo 'Pinned kernel package conflicts with explicit package base' >&2; exit 1;
 	}
 	KERNEL_PKGBASE="$artifact_base"
+fi
+
+if [[ "$KERNEL_ARTIFACT_REQUIRE_FORMAT" == verified-binary-repack ]]; then
+	: "${KERNEL_ARTIFACT_MANIFEST:?A verified release requires a kernel artifact manifest}"
+	: "${KERNEL_SUPPORT_REPO:?A verified release requires its kernel source Git repository}"
+	KERNEL_SUPPORT_REPO="$(realpath -e -- "$KERNEL_SUPPORT_REPO")"
+	python3 ./scripts/stage_kernel_support.py "$KERNEL_SUPPORT_REPO" ./rootfs \
+		--source-commit "$EXPECTED_KERNEL_SOURCE_COMMIT" --dry-run >/dev/null
 fi
 
 if [[ ! -d /sys/module/nbd ]]; then
@@ -728,6 +737,10 @@ all() {
 	mount_img
 
 	install_packages
+	if [[ "$KERNEL_ARTIFACT_REQUIRE_FORMAT" == verified-binary-repack ]]; then
+		python3 ./scripts/stage_kernel_support.py "$KERNEL_SUPPORT_REPO" "$mount_dir" \
+			--source-commit "$EXPECTED_KERNEL_SOURCE_COMMIT" >/dev/null
+	fi
 	config_packages
 	config_user
 	if [[ -n "$CAMERA_CANDIDATE_PACKAGE" ]]; then

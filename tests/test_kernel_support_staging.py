@@ -2,6 +2,7 @@
 import importlib.util
 import json
 from pathlib import Path
+import subprocess
 import tempfile
 import unittest
 
@@ -74,6 +75,31 @@ class StagingTests(unittest.TestCase):
         for name in ('../outside', '/absolute'):
             with self.assertRaises(ValueError):
                 stager.contained(self.root, name)
+
+    def commit_sources(self):
+        git = ['git', '-C', str(self.source)]
+        subprocess.run([*git, 'init', '--quiet'], check=True)
+        subprocess.run([*git, 'add', 'fix_file'], check=True)
+        subprocess.run([*git, '-c', 'user.name=Mi Pad 2 test', '-c', 'user.email=test@localhost',
+                        'commit', '--quiet', '-m', 'Fixture support files'], check=True)
+        return subprocess.check_output([*git, 'rev-parse', 'HEAD'], text=True).strip()
+
+    def test_pinned_source_uses_committed_bytes(self):
+        commit = self.commit_sources()
+        name, destination, _ = stager.PAYLOAD[0]
+        (self.source / 'fix_file' / name).write_bytes(b'uncommitted content')
+        manifest = stager.stage(self.source, self.package, source_commit=commit)
+        self.assertEqual((self.package / destination).read_bytes(), ('tracked ' + name + '\n').encode())
+        self.assertEqual(manifest['source_commit'], commit)
+
+    def test_pinned_symlink_rejected_before_copy(self):
+        path = self.source / 'fix_file' / stager.PAYLOAD[0][0]
+        path.unlink()
+        path.symlink_to('other-firmware')
+        commit = self.commit_sources()
+        with self.assertRaisesRegex(ValueError, 'regular tracked file'):
+            stager.stage(self.source, self.package, source_commit=commit)
+        self.assertFalse(self.package.exists())
 
 
 if __name__ == '__main__':
