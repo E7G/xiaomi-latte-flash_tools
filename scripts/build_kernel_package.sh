@@ -9,6 +9,8 @@ source_ref="${KERNEL_COMMIT:-${KERNEL_REF:-cachyos-mipad2}}"
 pkgbase="linux-latte-cachyos"
 kernel_commit="${KERNEL_COMMIT:-}"
 source_date_epoch="${SOURCE_DATE_EPOCH:-}"
+llvm_bin=/usr/lib/llvm22/bin
+toolchain_packages=(clang22 lld22 llvm22)
 
 [[ "${kernel_commit}" =~ ^[0-9a-f]{40}$ ]] || {
   echo "KERNEL_COMMIT must be a full 40-character SHA" >&2
@@ -20,7 +22,7 @@ source_date_epoch="${SOURCE_DATE_EPOCH:-}"
 }
 
 pacman -Syu --noconfirm --needed \
-  base-devel bc bison clang cpio curl flex git kmod libelf lld llvm \
+  "${toolchain_packages[@]}" base-devel bc bison cpio curl flex git kmod libelf \
   openssl pahole perl python rsync tar xz zstd
 
 rm -rf "${work_dir}" "${out_dir}"
@@ -34,7 +36,10 @@ cd "${work_dir}/src"
 export KBUILD_BUILD_USER=github-actions
 export KBUILD_BUILD_HOST=archlinux
 export KBUILD_BUILD_TIMESTAMP="$(date -u -d "@${SOURCE_DATE_EPOCH:-0}" '+%a %b %d %T UTC %Y')"
-build_flags=(LLVM=1 LLVM_IAS=1)
+# The 6.14 tree's compressed x86 boot image fails to link with LLD 23.
+"${llvm_bin}/clang" --version
+"${llvm_bin}/ld.lld" --version
+build_flags=("LLVM=${llvm_bin}/" LLVM_IAS=1)
 
 # CachyOS/BORE source and the Mi Pad 2 profile live in linux_latte's
 # cachyos-mipad2 branch. Build it directly; applying another patch/config
@@ -127,6 +132,7 @@ install -d "${work_dir}/pkg/usr/share/doc/${pkgbase}"
 printf '%s\n' "${kernel_commit}" > "${work_dir}/pkg/usr/share/doc/${pkgbase}/source-commit"
 printf '%s\n' "${source_repo}" > "${work_dir}/pkg/usr/share/doc/${pkgbase}/source-repository"
 printf '%s\n' "${kernel_release}" > "${work_dir}/pkg/usr/share/doc/${pkgbase}/kernel-release"
+pacman -Q "${toolchain_packages[@]}" > "${work_dir}/pkg/usr/share/doc/${pkgbase}/toolchain-packages"
 
 source_stamp="$(date -u -d "@${source_date_epoch}" '+%Y%m%d%H%M%S')"
 pkgver="${kernel_release//-/_}.r${source_stamp}.g${kernel_commit:0:12}"

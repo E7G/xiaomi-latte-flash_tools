@@ -94,6 +94,10 @@ jobs:
           tar -tf "$package" > "$contents"
           grep -q 'usr/share/doc/linux-latte-cachyos/source-commit' "$contents"
           test "$(tar -xOf "$package" usr/share/doc/linux-latte-cachyos/source-commit)" = "${{ steps.kernel-source.outputs.commit }}"
+          toolchain="$(tar -xOf "$package" usr/share/doc/linux-latte-cachyos/toolchain-packages)"
+          for compiler_package in clang22 lld22 llvm22; do
+            grep -Eq "^${compiler_package} 22\." <<< "$toolchain"
+          done
           grep -q 'usr/lib/firmware/intel/ipu/shisp_2401a0_v21.bin' "$contents"
           grep -q 'usr/local/libexec/mipad2-usb-serial' "$contents"
           grep -q 'usr/local/libexec/mipad2-hardware-smoke' "$contents"
