@@ -8,10 +8,11 @@ cd "${repo_root}"
 # Pins must cross the job boundary separately from the downloaded manifest.
 : "${EXPECTED_KERNEL_SOURCE_COMMIT:?Full producer source commit required}"
 : "${EXPECTED_KERNEL_SHA256:?Producer SHA256 required}"
+export KERNEL_ARTIFACT_REQUIRE_FORMAT="${KERNEL_ARTIFACT_REQUIRE_FORMAT:-source-ci}"
 proof="$(python3 ./scripts/resolve_kernel_artifact.py verify \
   --manifest kernel-output/kernel-artifact.json \
   --expected-source-commit "$EXPECTED_KERNEL_SOURCE_COMMIT" \
-  --expected-sha256 "$EXPECTED_KERNEL_SHA256" --require-format source-ci)"
+  --expected-sha256 "$EXPECTED_KERNEL_SHA256" --require-format "$KERNEL_ARTIFACT_REQUIRE_FORMAT")"
 kernel_pkg="$(python3 -c 'import json,sys; print(json.load(sys.stdin)["package"])' <<< "$proof")"
 export KERNEL_PKGBASE="$(python3 -c 'import json,sys; print(json.load(sys.stdin)["pkgbase"])' <<< "$proof")"
 install -Dm0644 "${kernel_pkg}" "device_files/$(basename "${kernel_pkg}")"

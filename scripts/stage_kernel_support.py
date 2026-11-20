@@ -4,7 +4,8 @@ import argparse
 import hashlib
 import json
 from pathlib import Path
-import shutil
+import re
+import subprocess
 
 
 PAYLOAD = [
@@ -45,33 +46,61 @@ def contained(root, relative):
     return target
 
 
-def stage(source_root, package_root, dry_run=False):
+def tracked_payload(source_root, commit):
+    if re.fullmatch(r'[0-9a-f]{40}', commit) is None:
+        raise ValueError('A full kernel support commit is required')
+    git = ['git', '--no-replace-objects', '-C', str(source_root)]
+    subprocess.run([*git, 'cat-file', '-e', commit + '^{commit}'], check=True)
+    paths = ['fix_file/' + source for source, _, _ in PAYLOAD]
+    entries = subprocess.check_output([*git, 'ls-tree', '-rz', commit, '--', *paths])
+    blobs = {}
+    for entry in entries.rstrip(b'\0').split(b'\0') if entries else []:
+        fields, path = entry.decode().split('\t', 1)
+        mode, kind, oid = fields.split(' ')
+        if kind != 'blob' or mode not in ('100644', '100755'):
+            raise ValueError(f'Kernel support source is not a regular tracked file: {path}')
+        blobs[path] = oid
+    if set(blobs) != set(paths):
+        raise ValueError('Kernel support commit does not contain the full payload')
+    return {path: subprocess.check_output([*git, 'cat-file', 'blob', oid])
+            for path, oid in blobs.items()}
+
+
+def stage(source_root, package_root, dry_run=False, source_commit=None):
     source_root = Path(source_root).resolve()
     package_root = Path(package_root).resolve()
     if source_root == package_root or source_root in package_root.parents:
         raise ValueError('Stage outside the source tree')
     prepared = []
     seen = set()
+    tracked = tracked_payload(source_root, source_commit) if source_commit else None
     # Validate the complete plan before creating/writing anything.
     for source, destination, mode in PAYLOAD:
-        src = contained(source_root, 'fix_file/' + source)
+        relative = 'fix_file/' + source
         dst = contained(package_root, destination)
         if destination in seen:
             raise ValueError(f'Duplicate payload destination: {destination}')
         seen.add(destination)
-        if not src.is_file():
-            raise FileNotFoundError(f'Kernel source payload missing: {src}')
-        prepared.append((src, dst, mode, hashlib.sha256(src.read_bytes()).hexdigest()))
+        if tracked is None:
+            src = contained(source_root, relative)
+            if not src.is_file():
+                raise FileNotFoundError(f'Kernel source payload missing: {src}')
+            data = src.read_bytes()
+        else:
+            data = tracked[relative]
+        prepared.append((relative, dst, mode, data, hashlib.sha256(data).hexdigest()))
     manifest_path = contained(package_root, MANIFEST)
     manifest = {'schema': 1, 'source_layout': 'tracked fix_file package sources',
                 'files': {str(dst.relative_to(package_root)): {
-                    'source': str(src.relative_to(source_root)), 'sha256': sha, 'mode': oct(mode)}
-                    for src, dst, mode, sha in prepared}}
+                    'source': relative, 'sha256': sha, 'mode': oct(mode)}
+                    for relative, dst, mode, _, sha in prepared}}
+    if source_commit:
+        manifest['source_commit'] = source_commit
     if dry_run:
         return manifest
-    for src, dst, mode, sha in prepared:
+    for _, dst, mode, data, sha in prepared:
         dst.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copyfile(src, dst)
+        dst.write_bytes(data)
         dst.chmod(mode)
         if hashlib.sha256(dst.read_bytes()).hexdigest() != sha:
             raise RuntimeError(f'Payload copy verification failed: {dst}')
@@ -86,6 +115,7 @@ if __name__ == '__main__':
     parser.add_argument('source_root')
     parser.add_argument('package_root')
     parser.add_argument('--dry-run', action='store_true')
+    parser.add_argument('--source-commit')
     args = parser.parse_args()
-    result = stage(args.source_root, args.package_root, args.dry_run)
+    result = stage(args.source_root, args.package_root, args.dry_run, args.source_commit)
     print(json.dumps(result, indent=2))
