@@ -35,6 +35,30 @@ die() {
 	exit 1
 }
 
+# BEGIN MIPAD2_72_INSTALL_TARGET
+require_mipad2_72_install_target() {
+	local release="$1" dmi="$2" block="$3" vendor product media removable
+
+	case "$release" in
+	  7.2.*-mipad2-integrated-*) ;;
+	  *) return 0 ;;
+	esac
+
+	# A fixed mmcblk0 by itself also exists on unrelated UEFI machines.
+	# Use the same system identity as the Mi Pad 2 board support and distinguish
+	# MMC from SD while leaving the older image path unchanged.
+	vendor=$(cat "$dmi/sys_vendor" 2>/dev/null) &&
+	product=$(cat "$dmi/product_name" 2>/dev/null) &&
+	[ "$vendor" = 'Xiaomi Inc' ] && [ "$product" = Mipad2 ] ||
+		die "目标机型不是小米平板 2；未写入 eMMC"
+
+	media=$(cat "$block/device/type" 2>/dev/null) &&
+	removable=$(cat "$block/removable" 2>/dev/null) &&
+	[ "$media" = MMC ] && [ "$removable" = 0 ] ||
+		die "无法确认目标为不可移动的内部 MMC；未写入 eMMC"
+}
+# END MIPAD2_72_INSTALL_TARGET
+
 # BEGIN LEGACY_INSTALL_SECURE_BOOT_GATE
 require_legacy_boot_mode() {
 	local flag="$1/efivars/SecureBoot-8be4df61-93ca-11d2-aa0d-00e098032b8c" raw
@@ -231,11 +255,13 @@ fi
 
 # Rebuilding GRUB cannot update an authenticated UKI root pointer once the
 # target Btrfs UUID changes. Do not let this path wipe a Secure Boot tablet.
+release=$(uname -r)
+require_mipad2_72_install_target "$release" /sys/class/dmi/id /sys/block/mmcblk0
 require_legacy_boot_mode /sys/firmware/efi
 require_install_tools
 require_local_esp_loader /boot
 source_boot_uuid=$(read_esp_uuid "$source_boot")
-configure_btrfs_snapshot_transport "$(uname -r)"
+configure_btrfs_snapshot_transport "$release"
 
 source_bytes=$(blockdev --getsize64 "$source_root")
 target_bytes=$(blockdev --getsize64 "$target")

@@ -78,7 +78,7 @@ target_top='target mount'
         self.assertEqual(run.stdout.count("send:source mount/root snapshot"), 1)
 
     def test_configuration_precedes_erase_and_mount_precedes_streams(self):
-        config = TEXT.index('\nconfigure_btrfs_snapshot_transport "$(uname -r)"')
+        config = TEXT.index('\nconfigure_btrfs_snapshot_transport "$release"')
         erase = TEXT.index('\nsgdisk --zap-all')
         mount = TEXT.index('\nmount -o "$snapshot_receive_opts" "$target_root" "$target_top"')
         send = TEXT.index('\nbtrfs send "$' + '{snapshot_send_args[@]}" "$source_top/$root_snap"')
