@@ -4,6 +4,10 @@ After=systemd-udev-trigger.service
 
 [Service]
 Type=oneshot
+# The ISP PCI function exists before the sensors finish probing. Keep the
+# existing bounded OTP wait on the tablet, but skip a host with no AtomISP.
+ExecCondition=/usr/bin/grep -qx 0x8086 /sys/bus/pci/devices/0000:00:03.0/vendor
+ExecCondition=/usr/bin/grep -qx 0x22b8 /sys/bus/pci/devices/0000:00:03.0/device
 ExecStart=/usr/local/sbin/mipad2-camera-init-focus
 
 [Install]
