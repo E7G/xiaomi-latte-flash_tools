@@ -1,4 +1,5 @@
 from pathlib import Path
+import shlex
 import stat
 import subprocess
 import tempfile
@@ -122,6 +123,22 @@ sleep() {
         self.assertEqual(exhausted.stdout.count("attempt "), 3)
         self.assertEqual(exhausted.stdout.count("retry wait"), 2)
         self.assertIn("Continuing without", exhausted.stderr)
+
+
+class OptionalInstallerTests(unittest.TestCase):
+    def test_missing_emmc_skips_destructive_installer(self):
+        root = Path(__file__).resolve().parents[1]
+        lines = (root / "device_files/mipad2-usb-installer.service").read_text().splitlines()
+        starts = [shlex.split(x.split("=",1)[1]) for x in lines if x.startswith("ExecCondition=")]
+        self.assertEqual(starts, [["/usr/bin/test", "-b", "/dev/mmcblk0"]])
+        self.assertIn("ExecStart=/usr/local/sbin/mipad2-install-to-emmc", lines)
+        with tempfile.TemporaryDirectory(prefix="mipad2-no-emmc-") as tmp:
+            fixture = Path(tmp) / "mmcblk0"
+            for exists in (False, True):
+                if exists:
+                    fixture.touch()
+                result = subprocess.run(starts[0][:2] + [str(fixture)], capture_output=True)
+                self.assertEqual(result.returncode, 1)  # systemd skips ExecStart (not an error)
 
 
 if __name__ == "__main__":
