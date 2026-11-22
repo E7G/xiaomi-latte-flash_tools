@@ -31,6 +31,11 @@ KERNEL_PACKAGE_SHA256="${KERNEL_PACKAGE_SHA256:-}"
 KERNEL_ARTIFACT_MANIFEST="${KERNEL_ARTIFACT_MANIFEST:-}"
 KERNEL_ARTIFACT_REQUIRE_FORMAT="${KERNEL_ARTIFACT_REQUIRE_FORMAT:-source-ci}"
 KERNEL_SUPPORT_REPO="${KERNEL_SUPPORT_REPO:-}"
+family_args=()
+if [[ -n "${EXPECTED_KERNEL_FAMILY:-}" ]]; then
+	[[ -n "$KERNEL_ARTIFACT_MANIFEST" ]] || { echo 'Kernel family pin requires an artifact manifest' >&2; exit 1; }
+	family_args=(--require-family "$EXPECTED_KERNEL_FAMILY")
+fi
 case "$KERNEL_ARTIFACT_REQUIRE_FORMAT" in
   source-ci|verified-binary-repack) ;;
   *) echo 'Unsupported required kernel artifact format' >&2; exit 1 ;;
@@ -45,7 +50,7 @@ if [[ -n "$KERNEL_ARTIFACT_MANIFEST" || -n "${EXPECTED_KERNEL_SOURCE_COMMIT:-}" 
 	proof="$(python3 ./scripts/resolve_kernel_artifact.py verify \
 		--manifest "$KERNEL_ARTIFACT_MANIFEST" --package "$KERNEL_PACKAGE" \
 		--expected-source-commit "$EXPECTED_KERNEL_SOURCE_COMMIT" \
-		--expected-sha256 "$EXPECTED_KERNEL_SHA256" --require-format "$KERNEL_ARTIFACT_REQUIRE_FORMAT")"
+		--expected-sha256 "$EXPECTED_KERNEL_SHA256" --require-format "$KERNEL_ARTIFACT_REQUIRE_FORMAT" "${family_args[@]}")"
 	artifact_base="$(python3 -c 'import json,sys; print(json.load(sys.stdin)["pkgbase"])' <<< "$proof")"
 	[[ -z "$KERNEL_PKGBASE" || "$KERNEL_PKGBASE" == "$artifact_base" ]] || {
 		echo 'Kernel artifact conflicts with explicit package base' >&2; exit 1;
@@ -326,7 +331,7 @@ install_packages() {
 	if [[ "$KERNEL_PKGBASE" == linux-latte-integrated && ! "$kernel_release" =~ ^6\.14\.0-mipad2-integrated-r[0-9]+$ ]]; then
 		echo 'Integrated image requires a Linux6.14 integrated kernel' >&2; exit 1;
 	fi
-	if [[ "$KERNEL_PKGBASE" == linux-latte-integrated-7-2 && ! "$kernel_release" =~ ^7\.2\.0-mipad2-integrated-r[0-9]+$ ]]; then
+	if [[ "$KERNEL_PKGBASE" == linux-latte-integrated-7-2 && ! "$kernel_release" =~ ^7\.2\.(0|[1-9][0-9]*)-mipad2-integrated-r[0-9]+$ ]]; then
 		echo 'Linux7.2 image requires a Linux7.2 integrated kernel' >&2; exit 1;
 	fi
 	case "$KERNEL_PKGBASE" in

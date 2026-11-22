@@ -19,6 +19,7 @@ on:
       - tests/test_mpv_image_defaults.py
       - scripts/build_dnx_package.sh
       - scripts/build_kernel_package.sh
+      - tests/test_release_72_modules.py
       - scripts/stage_kernel_support.py
       - device_files/mipad2-kernel-preflight
       - tests/test_kernel_artifact_handoff.py
@@ -50,6 +51,8 @@ jobs:
       - uses: actions/checkout@v4
       - name: Install fixture dependencies
         run: sudo apt-get update && sudo apt-get install -y zstd python3-yaml openssl
+      - name: Check required 7.2 modules before packaging
+        run: python3 tests/test_release_72_modules.py
       - name: Test legacy and modern readers, identity and real nobody boundary
         run: |
           sudo env PYTHONPATH="$PWD/scripts:$PWD/tests" python3 -m unittest \
