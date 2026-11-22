@@ -15,6 +15,8 @@ on:
       - device_files/kernel.hook
       - device_files/kernel-preflight.hook
       - build_rootfs.sh
+      - device_files/mipad2-mpv.conf
+      - tests/test_mpv_image_defaults.py
       - scripts/build_dnx_package.sh
       - scripts/build_kernel_package.sh
       - scripts/stage_kernel_support.py
@@ -43,6 +45,7 @@ jobs:
             test_modern_integrated_packaging.ModernTests
       - name: Test artifact pins, install hooks and rootfs handoff without device access
         run: |
+          python3 tests/test_mpv_image_defaults.py
           for script in build_rootfs.sh device_files/mipad2-kernel-install device_files/mipad2-kernel-preflight; do bash -n "$script"; done
           sudo env PYTHONPATH="$PWD/scripts:$PWD/tests" python3 -m unittest \
             test_kernel_artifact_handoff test_modern_kernel_handoff test_kernel_support_staging
