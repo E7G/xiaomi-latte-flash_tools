@@ -59,6 +59,21 @@ require_legacy_boot_mode() {
 }
 # END LEGACY_INSTALL_SECURE_BOOT_GATE
 
+# BEGIN CHECK_INSTALL_SNAPSHOT
+require_complete_install_snapshot() {
+	local snapshot="$1" subvol="$2" nested
+
+	# Snapshots do not include nested subvolumes. Btrfs leaves an empty
+	# directory with inode 2, and send does not transfer even that stub.
+	# Inspect the immutable snapshot so later source edits cannot race the
+	# check or hide an omission in precisely what we are about to send.
+	nested=$(LC_ALL=C find "$snapshot" -xdev -type d -inum 2 -printf '1' -quit) ||
+		die "无法检查 Btrfs 子卷 $subvol 的快照；未写入 eMMC"
+	[[ -z "$nested" ]] ||
+		die "Btrfs 子卷 $subvol 含嵌套子卷，无法完整迁移；未写入 eMMC"
+}
+# END CHECK_INSTALL_SNAPSHOT
+
 # BEGIN ACTIVATE_RECEIVED_SUBVOLUMES
 activate_received_subvolumes() {
 	local top="$1" incoming_root="$2" incoming_home="$3" root_id
@@ -135,6 +150,8 @@ mount -o subvolid=5 "$source_root" "$source_top"
 btrfs filesystem sync "$source_top"
 btrfs subvolume snapshot -r "$source_top/@" "$source_top/$root_snap"
 btrfs subvolume snapshot -r "$source_top/@home" "$source_top/$home_snap"
+require_complete_install_snapshot "$source_top/$root_snap" @
+require_complete_install_snapshot "$source_top/$home_snap" @home
 
 echo '[2/7] 清理内部 eMMC'
 swapoff "$target_boot" "$target_root" 2>/dev/null || true
