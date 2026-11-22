@@ -17,6 +17,7 @@ on:
       - build_rootfs.sh
       - scripts/build_dnx_package.sh
       - scripts/build_kernel_package.sh
+      - tests/test_release_72_modules.py
       - scripts/stage_kernel_support.py
       - device_files/mipad2-kernel-preflight
       - tests/test_kernel_artifact_handoff.py
@@ -47,6 +48,7 @@ jobs:
           sudo env PYTHONPATH="$PWD/scripts:$PWD/tests" python3 -m unittest \
             test_kernel_artifact_handoff test_modern_kernel_handoff test_kernel_support_staging
           python3 tests/test_kernel_preflight.py
+          python3 tests/test_release_72_modules.py
       # These unsigned fixtures validate format/error handling only. Real module
       # CMS, makepkg, pacman query and byte-preserving package qualification are
       # separate gates against an externally pinned completed kernel artifact.
