@@ -580,17 +580,27 @@ LIBVA_DRIVER_NAME=i965
 EOF
 }
 
+config_zsh_profile() {
+	local user_rc="/home/$UserName/.zshrc"
+	local plugins='plugins=(git sudo safe-paste extract command-not-found zsh-autosuggestions zsh-syntax-highlighting)'
+
+	# Do not modify the package template or run an interactive omz command
+	# in the chroot. Give the new user a readable file even under umask 077.
+	run install -m 0600 -o "$UserName" -g "$UserName" /usr/share/oh-my-zsh/zshrc "$user_rc"
+	run sed -i -e 's|^[#[:space:]]*ZSH_CUSTOM=.*|ZSH_CUSTOM=/usr/share/zsh|' \
+		-e 's/^ZSH_THEME=.*/ZSH_THEME="ys"/' -e "s/^plugins=.*/$plugins/" "$user_rc"
+	run grep -qxF 'ZSH_CUSTOM=/usr/share/zsh' "$user_rc"
+	run grep -qxF 'ZSH_THEME="ys"' "$user_rc"
+	run grep -qxF "$plugins" "$user_rc"
+	run zsh -n "$user_rc"
+	run install -m 0600 -o root -g root "$user_rc" /root/.zshrc
+}
+
 config_user() {
 	echo 添加 $UserName 用户
 	run useradd -m -G wheel,lp,video -s '/usr/bin/zsh' $UserName
 	run pacman -S oh-my-zsh-git --noconfirm
-
-	run sed -i 's|#[[:space:]]*ZSH_CUSTOM=.*|ZSH_CUSTOM=/usr/share/zsh|' /usr/share/oh-my-zsh/zshrc
-	run chmod -R 666 /usr/share/oh-my-zsh/zshrc
-	run cp /usr/share/oh-my-zsh/zshrc /home/$UserName/.zshrc
-	run su $UserName -c 'source ~/.zshrc;omz theme set ys;omz plugin enable sudo safe-paste extract command-not-found zsh-autosuggestions zsh-syntax-highlighting'
-	run cp /home/$UserName/.zshrc /root/.zshrc
-	run chown root:root /root/.zshrc
+	config_zsh_profile
 	mkdir -p "$mount_dir/home/$UserName/.config/autostart"
 	if [[ $desktop_type =~ 'plasma' ]]; then
 		cat > "$mount_dir/home/$UserName/.config/kwinrc" <<'EOF'
