@@ -740,11 +740,19 @@ update_pkgfile() {
 	# pkgfile's command lookup cache is optional at boot.  ArchlinuxCN mirrors
 	# intermittently close TLS connections, so an outage must not discard an
 	# otherwise valid rootfs after package installation and EFI signing.
+	local attempt status
 	for attempt in 1 2 3; do
-		if run pkgfile --update; then
+		if run timeout --kill-after=5s 60s pkgfile --update; then
 			return 0
+		else
+			status=$?
 		fi
-		echo "pkgfile cache update failed (attempt $attempt/3)" >&2
+		echo "pkgfile cache update failed (attempt $attempt/3, status $status)" >&2
+		# Don't start another full transfer after the deadline, kill,
+		# or a missing executable. Retry short transient failures only.
+		case "$status" in
+			124|125|126|127|137) break ;;
+		esac
 		[[ $attempt == 3 ]] || sleep 5
 	done
 	echo 'Continuing without the optional pkgfile cache' >&2

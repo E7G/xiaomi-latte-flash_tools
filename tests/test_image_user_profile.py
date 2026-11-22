@@ -9,6 +9,7 @@ SCRIPT = (Path(__file__).resolve().parents[1] / "build_rootfs.sh").read_text()
 START = SCRIPT.index("config_zsh_profile() {")
 END = SCRIPT.index("\nconfig_user() {", START)
 PROFILE = SCRIPT[START:END]
+PKGFILE = SCRIPT[SCRIPT.index("update_pkgfile() {"):SCRIPT.index("\nall() {")]
 
 FIXTURE = r"""
 umask 077
@@ -76,6 +77,51 @@ class ImageProfileTests(unittest.TestCase):
         p, result = self.invoke('# ZSH_CUSTOM=/default\nplugins=(git)\n')
         self.assertNotEqual(result.returncode, 0)
         self.assertFalse((p / "root/.zshrc").exists())
+
+
+class OptionalPackageIndexTests(unittest.TestCase):
+    def invoke(self, statuses):
+        fixture = """
+n=0
+run() {
+    test "$*" = 'timeout --kill-after=5s 60s pkgfile --update'
+    n=$((n+1))
+    echo "attempt $n"
+    return "${statuses[$((n-1))]}"
+}
+sleep() {
+    test "$1" = 5
+    echo 'retry wait'
+}
+"""
+        shell = f"statuses=({' '.join(map(str, statuses))})\n" + fixture + PKGFILE + "\nupdate_pkgfile\n"
+        return subprocess.run(["bash", "-e", "-c", shell], text=True, capture_output=True)
+
+    def test_success_and_short_retry(self):
+        good = self.invoke([0])
+        self.assertEqual(good.returncode, 0)
+        self.assertEqual(good.stdout.splitlines(), ["attempt 1"])
+        self.assertEqual(good.stderr, "")
+        recovered = self.invoke([7, 0])
+        self.assertEqual(recovered.returncode, 0)
+        self.assertEqual(recovered.stdout.splitlines(), ["attempt 1", "retry wait", "attempt 2"])
+        self.assertNotIn("Continuing without", recovered.stderr)
+
+    def test_timeout_is_nonfatal_without_restart(self):
+        for status in (124, 125, 127, 137):
+            with self.subTest(status=status):
+                stopped = self.invoke([status])
+                self.assertEqual(stopped.returncode, 0)
+                self.assertEqual(stopped.stdout.splitlines(), ["attempt 1"])
+                self.assertIn(f"status {status}", stopped.stderr)
+                self.assertIn("Continuing without", stopped.stderr)
+
+    def test_at_most_three_short_failures(self):
+        exhausted = self.invoke([7, 7, 7])
+        self.assertEqual(exhausted.returncode, 0)
+        self.assertEqual(exhausted.stdout.count("attempt "), 3)
+        self.assertEqual(exhausted.stdout.count("retry wait"), 2)
+        self.assertIn("Continuing without", exhausted.stderr)
 
 
 if __name__ == "__main__":
