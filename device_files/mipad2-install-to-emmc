@@ -169,6 +169,24 @@ resolve_install_mount_source() {
 }
 # END RESOLVE_INSTALL_MOUNT_SOURCE
 
+# BEGIN REFRESH_TARGET_PARTITIONS
+refresh_target_partitions() {
+	local attempt
+	for attempt in 1 2 3 4 5; do
+		# sgdisk can already have queued partition events; udev may
+		# transiently hold the new devices open while probing them.
+		if udevadm settle --timeout=5 &&
+		   blockdev --rereadpt "$target" &&
+		   udevadm settle --timeout=5 &&
+		   [[ -b $target_boot && -b $target_root ]]; then
+			return 0
+		fi
+		[[ "$attempt" == 5 ]] || sleep 1
+	done
+	die "无法重新读取 eMMC 分区表或分区设备未就绪"
+}
+# END REFRESH_TARGET_PARTITIONS
+
 [[ $EUID -eq 0 ]] || die "必须以 root 运行"
 [[ -b $target ]] || die "没有找到内部 eMMC：$target"
 [[ $(cat /sys/block/mmcblk0/removable 2>/dev/null) == 0 ]] || \
@@ -235,9 +253,7 @@ sgdisk \
 	--new=2:0:0 --typecode=2:8300 --change-name=2:system \
 	--partition-guid=2:$system_guid "$target"
 sgdisk --verify "$target"
-blockdev --rereadpt "$target"
-udevadm settle
-[[ -b $target_boot && -b $target_root ]] || die "eMMC 分区创建失败"
+refresh_target_partitions
 
 echo '[3/7] 写入已签名 EFI 启动分区'
 dd if="$source_boot" of="$target_boot" bs=16M conv=fsync status=progress
