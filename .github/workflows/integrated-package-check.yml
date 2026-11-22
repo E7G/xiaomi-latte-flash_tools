@@ -36,6 +36,7 @@ on:
       - tests/test_usb_install_btrfs_stream.py
       - tests/test_usb_install_esp_identity.py
       - tests/test_usb_install_mount_source.py
+      - tests/test_usb_install_target_identity.py
       - tests/test_usb_image_snapshot_layout.py
       - device_files/mipad2-grub-esp-local.cfg
       - tests/test_modern_kernel_handoff.py
@@ -75,6 +76,7 @@ jobs:
           python3 tests/test_usb_install_btrfs_stream.py
           python3 tests/test_usb_install_esp_identity.py
           python3 tests/test_usb_install_mount_source.py
+          python3 tests/test_usb_install_target_identity.py
           python3 tests/test_usb_image_snapshot_layout.py
       # These unsigned fixtures validate format/error handling only. Real module
       # CMS, makepkg, pacman query and byte-preserving package qualification are
