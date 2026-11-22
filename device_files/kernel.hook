@@ -9,6 +9,8 @@ Target = linux-latte-integrated-7-2-daily3
 Target = linux-latte-integrated-7-2-adc1
 Target = linux-latte-integrated-7-2-adc2
 Target = linux-latte-integrated-7-2-lpat9
+Target = linux-latte-integrated-7-2-lpat30
+Target = linux-latte-integrated-7-2-lpat31
 
 [Action]
 Description = Install and sign linux_latte kernel

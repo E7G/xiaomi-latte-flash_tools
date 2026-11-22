@@ -21,7 +21,7 @@ import tempfile
 
 PKGBASE='linux-latte-integrated'
 PKGBASE_72='linux-latte-integrated-7-2'
-MODERN_FLAVORS=('daily3','adc1','adc2','lpat9')
+MODERN_FLAVORS=('daily3','adc1','adc2','lpat9','lpat30','lpat31')
 MODERN_FLAVOR_PATTERN='|'.join(MODERN_FLAVORS)
 MODERN_VERSION_PATTERN=r'7\.2\.(?:0|[1-9][0-9]*)'
 LEGACY_PATTERN=r'(?:6\.14\.0|7\.2\.0)-mipad2-integrated-r[0-9]+'

@@ -16,6 +16,12 @@ GNOME Wayland（构建脚本仍保留 Plasma 可选配置），内核来自 [`E7
 `KERNEL_SUPPORT_REPO` 指向含该提交的 `linux_latte` Git 仓库，然后在 Arch 构建环境中
 运行 `bash scripts/build_dnx_package.sh`。构建器使用同一提交里的板载固件和配置。
 
+LPAT30 和 LPAT31 分别使用独立的可选 Arch 包
+`linux-latte-integrated-7-2-lpat30` 和 `linux-latte-integrated-7-2-lpat31`，不替换
+默认内核或 LPAT9。LPAT30 含已在真机验证的双摄方向接口；LPAT31 额外修复了后摄
+马达从运行时低功耗恢复、断电归零时未走到目标位置的问题。压包、校验通过不代表
+已完成 DNX 刷机或 S0i3 验收。
+
 此前候选版本的测试记录见 [7.2 部署证据](kernel/KERNEL_DELIVERY_7_2.md)。
 
 ## 6.14 整合候选分支（历史）
