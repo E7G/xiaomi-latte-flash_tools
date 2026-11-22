@@ -35,6 +35,30 @@ die() {
 	exit 1
 }
 
+# BEGIN LEGACY_INSTALL_SECURE_BOOT_GATE
+require_legacy_boot_mode() {
+	local flag="$1/efivars/SecureBoot-8be4df61-93ca-11d2-aa0d-00e098032b8c" raw
+	local -a bytes
+	# This image installs for a UEFI tablet. Missing EFI runtime data,
+	# including when disabled via the kernel command line, is not "off".
+	[[ -f "$flag" && ! -L "$flag" ]] || die "无法确认 Secure Boot 已关闭；未写入 eMMC"
+	raw=$(LC_ALL=C od -An -v -tu1 -N6 -- "$flag") || \
+		die "无法读取 Secure Boot 状态；未写入 eMMC"
+	read -r -a bytes <<< "$raw"
+	# efivarfs prepends four attribute bytes; the value must be exactly one byte.
+	[[ ${#bytes[@]} -eq 5 ]] || die "Secure Boot 状态长度异常；未写入 eMMC"
+	case "${bytes[4]}" in
+		0) ;;
+		1) die "此 USB 安装方式不支持开启 Secure Boot 的目标启动；未写入 eMMC" ;;
+		*) die "Secure Boot 状态异常；未写入 eMMC" ;;
+	esac
+	local stub="$1/efivars/StubInfo-4a67b082-0a4c-41cf-b6c7-440b29bb8c4f"
+	if [[ -e "$stub" || -L "$stub" ]]; then
+		die "此 USB 安装方式不支持直接 UKI 启动；未写入 eMMC"
+	fi
+}
+# END LEGACY_INSTALL_SECURE_BOOT_GATE
+
 [[ $EUID -eq 0 ]] || die "必须以 root 运行"
 [[ -b $target ]] || die "没有找到内部 eMMC：$target"
 [[ $(cat /sys/block/mmcblk0/removable 2>/dev/null) == 0 ]] || \
@@ -56,6 +80,10 @@ if [[ $source_disk == "$target" ]]; then
 fi
 [[ $(findmnt -n -o FSTYPE /) == btrfs ]] || die "U 盘系统分区不是 Btrfs"
 [[ $(findmnt -n -o FSTYPE /boot) == vfat ]] || die "U 盘启动分区不是 FAT32"
+
+# Rebuilding GRUB cannot update an authenticated UKI root pointer once the
+# target Btrfs UUID changes. Do not let this path wipe a Secure Boot tablet.
+require_legacy_boot_mode /sys/firmware/efi
 
 source_bytes=$(blockdev --getsize64 "$source_root")
 target_bytes=$(blockdev --getsize64 "$target")

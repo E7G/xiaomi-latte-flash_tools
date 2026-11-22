@@ -26,6 +26,8 @@ on:
       - tests/test_image_user_profile.py
       - tests/test_camera_focus_guard.py
       - device_files/mipad2-camera-init-focus.service
+      - device_files/mipad2-install-to-emmc
+      - tests/test_usb_install_secure_boot.py
       - tests/test_modern_kernel_handoff.py
       - .github/workflows/build-dnx.yml
       - .github/workflows/integrated-package-check.yml
@@ -54,6 +56,7 @@ jobs:
           python3 tests/test_image_signing.py
           python3 tests/test_image_user_profile.py
           python3 tests/test_camera_focus_guard.py
+          python3 tests/test_usb_install_secure_boot.py
       # These unsigned fixtures validate format/error handling only. Real module
       # CMS, makepkg, pacman query and byte-preserving package qualification are
       # separate gates against an externally pinned completed kernel artifact.
