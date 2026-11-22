@@ -751,12 +751,44 @@ update_pkgfile() {
 	return 0
 }
 
+# BEGIN USB_SNAPSHOT_LAYOUT
+prepare_usb_snapshot_layout() {
+	case "$KERNEL_PKGBASE" in
+	  linux-latte-integrated-7-2|linux-latte-integrated-7-2-*) ;;
+	  *) return 0 ;;
+	esac
+
+	# On Btrfs, systemd-tmpfiles' Q lines otherwise create nested subvolumes
+	# for these directories. Precreate regular directories in the fresh
+	# image before the base package hooks run: @ can snapshot their data.
+	install -d -m 0700 -- "$1/var/lib/machines" "$1/var/lib/portables"
+}
+
+require_flat_usb_snapshot_layout() {
+	case "$KERNEL_PKGBASE" in
+	  linux-latte-integrated-7-2|linux-latte-integrated-7-2-*) ;;
+	  *) return 0 ;;
+	esac
+
+	local subvolume nested
+	for subvolume in "$1" "$1/home"; do
+		nested=$(LC_ALL=C btrfs subvolume list -o "$subvolume") || return 1
+		if [[ -n "$nested" ]]; then
+			printf 'USB image has nested Btrfs subvolumes in %s:\n%s\n' \
+				"$subvolume" "$nested" >&2
+			return 1
+		fi
+	done
+}
+# END USB_SNAPSHOT_LAYOUT
+
 all() {
 	gpt
 	rm_img
 	create_img
 	format
 	mount_img
+	prepare_usb_snapshot_layout "$mount_dir"
 
 	install_packages
 	if [[ "$KERNEL_ARTIFACT_REQUIRE_FORMAT" == verified-binary-repack ]]; then
@@ -772,6 +804,7 @@ all() {
 	config_grub
 	update_pkgfile
 	cleanup_rootfs
+	require_flat_usb_snapshot_layout "$mount_dir"
 	# The GNOME profile lives in @home, not the default @ subvolume.  Fail
 	# before image conversion if that mount or its user configuration is lost.
 	if [[ $desktop_type == gnome ]]; then

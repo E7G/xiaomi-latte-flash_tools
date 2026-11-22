@@ -262,6 +262,12 @@ jobs:
           sudo mount -o loop,ro,subvol=@ work/dnx-package/images/xiaomi-latte-rootfs.img "$rootfs"
           sudo mount -o loop,ro,subvol=@home work/dnx-package/images/xiaomi-latte-rootfs.img "$rootfs/home"
           findmnt --mountpoint "$rootfs/home"
+          for dir in machines portables; do
+            sudo test -d "$rootfs/var/lib/$dir"
+            sudo test ! -L "$rootfs/var/lib/$dir"
+            test "$(sudo stat -c '%a %u %g' "$rootfs/var/lib/$dir")" = '700 0 0'
+            test "$(sudo stat -c '%i' "$rootfs/var/lib/$dir")" != 256
+          done
           sudo test ! -e "$rootfs/root/.mipad2-build/MOK.key"
           test ! -e "$esp/EFI/MOK.key"
           test -x "$rootfs/usr/local/sbin/mipad2-install-to-emmc"
