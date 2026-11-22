@@ -11,7 +11,7 @@ from stage_kernel_support import PAYLOAD
 
 BASES={'linux-latte-cachyos':r'6\.14\.0-mipad2-cachyos',
        'linux-latte-integrated':r'6\.14\.0-mipad2-integrated-r[0-9]+',
-       'linux-latte-integrated-7-2':r'7\.2\.0-mipad2-integrated-r[0-9]+'}
+       'linux-latte-integrated-7-2':MODERN_VERSION_PATTERN+r'-mipad2-integrated-r[0-9]+'}
 FIELDS={'schema','filename','sha256','pkgbase','pkgver','kernelrelease','source_commit','package_format'}
 MODERN_BASES={}
 for flavor in MODERN_FLAVORS:
@@ -98,7 +98,8 @@ def inspect(package,pin,source_commit):
             row=plan['files'][name]
             require(name in files and isinstance(row,dict) and hashlib.sha256(files[name]).hexdigest()==row.get('sha256'),'Source support payload mismatch')
             require(modes[name]==mode and row.get('mode')==oct(mode),'Source support payload mode mismatch')
-        require(version.endswith('.g'+source_commit[:12]+'-1'),'Source package version/commit mismatch')
+        version_pattern=re.escape(release.replace('-', '_'))+r'\.r[0-9]{14}\.g'+source_commit[:12]+r'-1'
+        require(re.fullmatch(version_pattern,version),'Source package version/commit mismatch')
         kind='source-ci'
     return dict(schema=1,filename=package.name,sha256=pin,pkgbase=base,pkgver=version,kernelrelease=release,source_commit=source_commit,package_format=kind)
 
@@ -116,7 +117,7 @@ def verify(manifest,package,expected_source_commit,expected_sha256):
 if __name__=='__main__':
     p=argparse.ArgumentParser(description=__doc__);commands=p.add_subparsers(dest='command',required=True)
     c=commands.add_parser('create');c.add_argument('--package',type=Path,required=True);c.add_argument('--source-commit',required=True);c.add_argument('--output',type=Path,required=True)
-    c=commands.add_parser('verify');c.add_argument('--manifest',type=Path,required=True);c.add_argument('--package',type=Path);c.add_argument('--expected-source-commit',required=True);c.add_argument('--expected-sha256',required=True);c.add_argument('--require-format',choices=['source-ci','verified-binary-repack']);c.add_argument('--github-output',type=Path)
+    c=commands.add_parser('verify');c.add_argument('--manifest',type=Path,required=True);c.add_argument('--package',type=Path);c.add_argument('--expected-source-commit',required=True);c.add_argument('--expected-sha256',required=True);c.add_argument('--require-format',choices=['source-ci','verified-binary-repack']);c.add_argument('--require-family',choices=['6.14','7.2']);c.add_argument('--github-output',type=Path)
     a=p.parse_args()
     if a.command=='create':
         require(not a.output.exists() and not a.output.is_symlink(),'New artifact manifest output required')
@@ -124,6 +125,8 @@ if __name__=='__main__':
     else:
         result=verify(a.manifest,a.package,a.expected_source_commit,a.expected_sha256)
         require(not a.require_format or result['package_format']==a.require_format,'Artifact format not suitable for this consumer')
+        require(not a.require_family or result['kernelrelease'].startswith(a.require_family+'.'),
+                'Artifact kernel family does not match the requested release')
         if a.github_output:
             with a.github_output.open('a') as output:
                 output.write('sha256='+result['sha256']+'\nsource_commit='+result['source_commit']+'\n')

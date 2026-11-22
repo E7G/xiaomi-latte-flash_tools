@@ -54,6 +54,16 @@ class ArtifactTests(unittest.TestCase):
         self.package = self.root / (self.base+'-'+self.version+'-x86_64.pkg.tar.zst')
         self.manifest = self.root/'kernel-artifact.json'
 
+    def select_identity(self, release, base=None):
+        base = base or self.base
+        version = release.replace('-', '_') + '.r20261023000000.g' + self.commit[:12] + '-1'
+        changes = [(self.release, release), (self.version, version), (self.base, base)]
+        for old, new in changes:
+            self.files = {k.replace(old, new): v.replace(old.encode(), new.encode())
+                          for k, v in self.files.items()}
+        self.release, self.version, self.base = release, version, base
+        self.package = self.root / f'{base}-{version}-x86_64.pkg.tar.zst'
+
     def pack(self, extra=()):
         archive = io.BytesIO()
         modes = {dest: mode for _, dest, mode in PAYLOAD}
@@ -76,6 +86,46 @@ class ArtifactTests(unittest.TestCase):
         self.assertEqual(result['package_format'], 'source-ci')
         self.assertEqual(result['kernelrelease'], self.release)
         self.assertFalse(result['image_or_device_touched'])
+
+    def test_stable_7215_source_to_rootfs_boundary(self):
+        self.select_identity('7.2.15-mipad2-integrated-r3')
+        env=self.prepare_shell()
+        env['EXPECTED_KERNEL_FAMILY']='7.2'
+        result=self.dnx(env)
+        self.assertEqual(result.returncode,91,result.stderr)
+        info=json.loads(self.manifest.read_text())
+        self.assertEqual(info['kernelrelease'],self.release)
+        self.assertTrue((self.root/'rootfs-validated').exists())
+
+    def test_external_family_pin_rejects_other_source_before_image_copy(self):
+        self.select_identity('6.14.0-mipad2-cachyos','linux-latte-cachyos')
+        env=self.prepare_shell()
+        self.assertEqual(resolver.verify(self.manifest,None,self.commit,self.pin)['kernelrelease'],self.release)
+        env['EXPECTED_KERNEL_FAMILY']='7.2'
+        result=self.dnx(env)
+        self.assertNotEqual(result.returncode,91)
+        self.assertIn('Artifact kernel family',result.stderr)
+        self.assertFalse((self.root/'device_files').exists())
+        self.assertFalse((self.root/'rootfs-validated').exists())
+
+    def test_direct_rootfs_rejects_family_pin_before_nbd(self):
+        self.select_identity('6.14.0-mipad2-cachyos','linux-latte-cachyos')
+        env=self.prepare_shell()
+        env.update(KERNEL_PACKAGE=str(self.package),KERNEL_ARTIFACT_MANIFEST=str(self.manifest),
+                   EXPECTED_KERNEL_FAMILY='7.2')
+        result=subprocess.run(['bash','build_rootfs.sh'],cwd=self.root,env=env,
+                              capture_output=True,text=True)
+        self.assertNotEqual(result.returncode,91)
+        self.assertIn('Artifact kernel family',result.stderr)
+        self.assertFalse((self.root/'rootfs-validated').exists())
+
+    def test_source_release_banner_and_pkgver_patchlevel_cannot_disagree(self):
+        self.select_identity('7.2.15-mipad2-integrated-r3')
+        self.files['.PKGINFO']=self.files['.PKGINFO'].replace(b'7.2.15_mipad2',b'7.2.0_mipad2')
+        self.package=self.package.with_name(self.package.name.replace('7.2.15_mipad2','7.2.0_mipad2'))
+        self.pack()
+        with self.assertRaisesRegex(ValueError, 'version/commit'):
+            resolver.inspect(self.package,self.pin,self.commit)
 
     def test_wrong_digest(self):
         self.pack()
@@ -207,6 +257,11 @@ class ArtifactTests(unittest.TestCase):
         nbd=next(i for i,x in enumerate(steps) if x.get('name')=='Prepare NBD devices')
         build=next(x for x in steps if x.get('name')=='Build rootfs and one-click package')
         self.assertLess(guard,nbd)
+        self.assertEqual(workflow['env']['EXPECTED_KERNEL_FAMILY'],'7.2')
+        self.assertIn('--require-family "$EXPECTED_KERNEL_FAMILY"',steps[guard]['run'])
+        self.assertIn('-e EXPECTED_KERNEL_FAMILY',build['run'])
+        source=next(x for x in jobs['kernel']['steps'] if x.get('id')=='kernel-source')
+        self.assertIn('.merge_base_commit.sha == $commit',source['run'])
         for step in [steps[guard],build]:
             self.assertEqual(step['env']['EXPECTED_KERNEL_SHA256'],'${{ needs.kernel.outputs.sha256 }}')
             self.assertEqual(step['env']['EXPECTED_KERNEL_SOURCE_COMMIT'],'${{ needs.kernel.outputs.source_commit }}')
