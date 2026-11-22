@@ -104,6 +104,17 @@ read_esp_uuid() {
 	printf '%s\n' "${id^^}"
 }
 
+check_cloned_esp() {
+	local esp="$1" status=0
+
+	# Cloning the mounted source can carry over the FAT dirty bit. A status
+	# of 1 is ambiguous (recovered errors or an internal inconsistency),
+	# so require a fresh read-only pass to confirm that the repair worked.
+	fsck.fat -a "$esp" || status=$?
+	[[ "$status" == 0 || "$status" == 1 ]] || die "无法修复目标 FAT 启动分区"
+	fsck.fat -n "$esp" || die "目标 FAT 启动分区仍有错误"
+}
+
 reidentify_cloned_esp() {
 	local target_esp="$1" source_uuid="$2" try id
 	for try in 1 2 3; do
@@ -230,7 +241,7 @@ udevadm settle
 
 echo '[3/7] 写入已签名 EFI 启动分区'
 dd if="$source_boot" of="$target_boot" bs=16M conv=fsync status=progress
-fsck.fat -a "$target_boot"
+check_cloned_esp "$target_boot"
 boot_uuid=$(reidentify_cloned_esp "$target_boot" "$source_boot_uuid")
 blockdev --flushbufs "$target_boot"
 

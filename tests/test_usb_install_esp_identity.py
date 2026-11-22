@@ -116,16 +116,51 @@ class EspIdentity(unittest.TestCase):
         scripts = (ROOT / "build_rootfs.sh").read_text()
         self.assertIn("btrfs-progs dosfstools ", scripts)
 
+    def check_clone(self, repair, verify):
+        self.log.write_text("")
+        stub = r"""
+fsck.fat() {
+    [[ "$#" == 2 && "$2" == "$TARGET" ]] || return 9
+    printf '%s\n' "$1" >> "$LOG"
+    case "$1" in
+        -a) return REPAIR_RC ;;
+        -n) return VERIFY_RC ;;
+        *) return 9 ;;
+    esac
+}
+""".replace("REPAIR_RC", str(repair)).replace("VERIFY_RC", str(verify))
+        p = self.entry('check_cloned_esp "$TARGET"', stub)
+        return p, self.log.read_text().splitlines()
+
+    def test_fat_clean_or_repaired_must_pass_fresh_readonly_check(self):
+        for first in (0, 1):
+            result, calls = self.check_clone(first, 0)
+            self.assertEqual(result.returncode, 0, result)
+            self.assertEqual(calls, ["-a", "-n"])
+
+    def test_fat_does_not_treat_status_one_as_always_success(self):
+        for first, second in ((1, 1), (1, 2), (0, 1)):
+            result, calls = self.check_clone(first, second)
+            self.assertNotEqual(result.returncode, 0, result)
+            self.assertEqual(calls, ["-a", "-n"])
+
+    def test_fat_hard_failure_prevents_further_checks(self):
+        for first in (2, 127):
+            result, calls = self.check_clone(first, 0)
+            self.assertNotEqual(result.returncode, 0, result)
+            self.assertEqual(calls, ["-a"])
+
     def test_source_gate_precedes_erase_and_target_recheck_precedes_fstab(self):
         guard = TEXT.index("\nrequire_local_esp_loader /boot\n")
         legacy = TEXT.index("\nrequire_legacy_boot_mode /sys/firmware/efi\n")
         erase = TEXT.index("\nsgdisk --zap-all")
         clone = TEXT.index('\ndd if="$source_boot"')
+        fsck = TEXT.index('\ncheck_cloned_esp "$target_boot"')
         reidentify = TEXT.index('\nboot_uuid=$(reidentify_cloned_esp ')
         check = TEXT.index('\nrequire_local_esp_loader "$target_mnt/boot"')
         fstab = TEXT.index('\ncat > "$target_mnt/etc/fstab"')
         deps = TEXT.index("\nrequire_install_tools\n")
-        self.assertTrue(legacy < deps < guard < erase < clone < reidentify < check < fstab)
+        self.assertTrue(legacy < deps < guard < erase < clone < fsck < reidentify < check < fstab)
         self.assertIn("UUID=$boot_uuid /boot vfat", TEXT)
 
 
