@@ -374,6 +374,18 @@ EOF
 	run pacman -S yay timeshift pamac-aur plymouth brave-bin --noconfirm
 }
 
+install_mipad2_mpv_defaults() {
+	local mpv_dir="$mount_dir/etc/mpv"
+	local conf="$mpv_dir/mpv.conf"
+	[[ -d "$mount_dir/etc" && ! -L "$mount_dir/etc" ]] || return 1
+	# Leave a packaged or otherwise pre-existing configuration untouched,
+	# including a symlink that does not resolve inside the image yet.
+	if [[ -L "$mpv_dir" || -e "$conf" || -L "$conf" ]]; then
+		return 0
+	fi
+	install -Dm0644 "$device_file/mipad2-mpv.conf" "$conf"
+}
+
 config_packages() {
 	echo 安装 pacman 内核签名 hook
 	install -Dm0755 "${device_file}"/mipad2-kernel-install $mount_dir/usr/local/sbin/mipad2-kernel-install
@@ -436,6 +448,7 @@ EOF
 		"$mount_dir/etc/sysctl.d/99-mipad2-lowlatency.conf"
 	install -Dm0644 "$device_file/20-mipad2-wifi-powersave.conf" \
 		"$mount_dir/etc/NetworkManager/conf.d/20-mipad2-wifi-powersave.conf"
+	install_mipad2_mpv_defaults
 
 	echo 配置 service
 	enable="systemctl enable"
