@@ -73,6 +73,30 @@ if [[ "$KERNEL_ARTIFACT_REQUIRE_FORMAT" == verified-binary-repack ]]; then
 		--source-commit "$EXPECTED_KERNEL_SOURCE_COMMIT" --dry-run >/dev/null
 fi
 
+# An isolated candidate can be signed with its own trust root, rather than
+# requiring the repository's historical tablet certificate. Validate the pair
+# before loading NBD or creating any image, and never copy the private key.
+efi_key="${MIPAD2_EFI_SIGNING_KEY:-}"
+efi_cert="${MIPAD2_EFI_SIGNING_CERT:-}"
+if [[ -n "$efi_key" || -n "$efi_cert" ]]; then
+	[[ -n "$efi_key" && -n "$efi_cert" && -f "$efi_key" && -f "$efi_cert" ]] || {
+		echo 'Supply both EFI signing key and certificate files' >&2; exit 1;
+	}
+	efi_key="$(realpath -e -- "$efi_key")"
+	efi_cert="$(realpath -e -- "$efi_cert")"
+	if ! key_pub="$(openssl pkey -in "$efi_key" -passin pass: -pubout)" ||
+	   ! cert_pub="$(openssl x509 -in "$efi_cert" -pubkey -noout)" ||
+	   [[ -z "$key_pub" || "$key_pub" != "$cert_pub" ]] ||
+	   ! openssl x509 -in "$efi_cert" -noout -checkend 0 >/dev/null; then
+		echo 'EFI signing certificate does not match the readable key, or is expired' >&2
+		exit 1
+	fi
+fi
+
+if [[ $EUID -ne 0 ]]; then
+	echo 'This script must be run as root' >&2
+	exit 1
+fi
 if [[ ! -d /sys/module/nbd ]]; then
 	modprobe nbd max_part=8
 fi
@@ -81,12 +105,6 @@ rootfs_dev=/dev/nbd1
 mount_dir="$(realpath -m ./rootfs)"
 device_file="$(realpath -m ./device_files)"
 mkdir -p ./images /run/lock
-
-# 判断是否是root用户，如果不是则退出
-if [[ $EUID -ne 0 ]]; then
-   echo "This script must be run as root" 
-   exit 1
-fi
 
 # 判断文件夹是否存在，不存在则创建
 if [ ! -d $mount_dir ]; then
@@ -234,7 +252,7 @@ noto-fonts-{cjk,emoji} ttf-cascadia-code
 # 音频
 alsa-utils pipewire-{alsa,audio,pulse} gst-plugins-base gst-plugin-pipewire
 # 文件系统
-btrfs-progs exfatprogs gptfdisk
+btrfs-progs dosfstools exfatprogs gptfdisk
 # 网络
 networkmanager
 # 蓝牙
@@ -562,17 +580,27 @@ LIBVA_DRIVER_NAME=i965
 EOF
 }
 
+config_zsh_profile() {
+	local user_rc="/home/$UserName/.zshrc"
+	local plugins='plugins=(git sudo safe-paste extract command-not-found zsh-autosuggestions zsh-syntax-highlighting)'
+
+	# Do not modify the package template or run an interactive omz command
+	# in the chroot. Give the new user a readable file even under umask 077.
+	run install -m 0600 -o "$UserName" -g "$UserName" /usr/share/oh-my-zsh/zshrc "$user_rc"
+	run sed -i -e 's|^[#[:space:]]*ZSH_CUSTOM=.*|ZSH_CUSTOM=/usr/share/zsh|' \
+		-e 's/^ZSH_THEME=.*/ZSH_THEME="ys"/' -e "s/^plugins=.*/$plugins/" "$user_rc"
+	run grep -qxF 'ZSH_CUSTOM=/usr/share/zsh' "$user_rc"
+	run grep -qxF 'ZSH_THEME="ys"' "$user_rc"
+	run grep -qxF "$plugins" "$user_rc"
+	run zsh -n "$user_rc"
+	run install -m 0600 -o root -g root "$user_rc" /root/.zshrc
+}
+
 config_user() {
 	echo 添加 $UserName 用户
 	run useradd -m -G wheel,lp,video -s '/usr/bin/zsh' $UserName
 	run pacman -S oh-my-zsh-git --noconfirm
-
-	run sed -i 's|#[[:space:]]*ZSH_CUSTOM=.*|ZSH_CUSTOM=/usr/share/zsh|' /usr/share/oh-my-zsh/zshrc
-	run chmod -R 666 /usr/share/oh-my-zsh/zshrc
-	run cp /usr/share/oh-my-zsh/zshrc /home/$UserName/.zshrc
-	run su $UserName -c 'source ~/.zshrc;omz theme set ys;omz plugin enable sudo safe-paste extract command-not-found zsh-autosuggestions zsh-syntax-highlighting'
-	run cp /home/$UserName/.zshrc /root/.zshrc
-	run chown root:root /root/.zshrc
+	config_zsh_profile
 	mkdir -p "$mount_dir/home/$UserName/.config/autostart"
 	if [[ $desktop_type =~ 'plasma' ]]; then
 		cat > "$mount_dir/home/$UserName/.config/kwinrc" <<'EOF'
@@ -651,57 +679,43 @@ config_grub(){
 		cp -a ./EFI/. "$mount_dir/boot/EFI/"
 	fi
 	chown -R root:root $mount_dir/boot/EFI
-	boot_uuid=$(blkid -s UUID -o value "$boot_dev")
-	cat > "$mount_dir/boot/EFI/BOOT/grub.cfg" <<EOF
-insmod part_gpt
-insmod fat
-insmod btrfs
-search --no-floppy --fs-uuid --set=esp $boot_uuid
-if [ -z "\$esp" ]; then
-  search --no-floppy --label --set=esp boot
-fi
-set prefix=(\$esp)/grub
-configfile \$prefix/grub.cfg
-EOF
+	install -Dm0644 "$device_file/mipad2-grub-esp-local.cfg" \
+		"$mount_dir/boot/EFI/BOOT/grub.cfg"
 	install -Dm0644 "$mount_dir/boot/EFI/BOOT/grub.cfg" \
 		"$mount_dir/boot/EFI/arch/grub.cfg"
-	install -Dm0644 $device_file/MOK.cer $mount_dir/boot/
-	install -Dm0644 $device_file/MOK.crt $mount_dir/boot/EFI/
-	# Never ship the private signing key in the finished image. Keep it only
-	# in a root-only build staging directory and remove it immediately after
-	# signing. Do not use /run here: arch-chroot mounts its runtime /run over
-	# the target tree, which would hide a key staged at $mount_dir/run.
-	install -Dm0600 $device_file/MOK.key $mount_dir/root/.mipad2-build/MOK.key
-	rm -f $mount_dir/boot/EFI/MOK.key
+	if [[ -n "$efi_key" ]]; then
+		install -Dm0644 "$efi_cert" "$mount_dir/boot/EFI/MOK.crt"
+		openssl x509 -in "$efi_cert" -outform DER -out "$mount_dir/boot/MOK.cer"
+	else
+		efi_key="$device_file/MOK.key"
+		install -Dm0644 "$device_file/MOK.cer" "$mount_dir/boot/"
+		install -Dm0644 "$device_file/MOK.crt" "$mount_dir/boot/EFI/"
+	fi
 
-	# Mi Pad 2's USB fallback path is verified directly by its firmware.  Its
-	# factory db does not accept the third-party Microsoft UEFI CA used by shim,
-	# while this project's original MOK is already enrolled on the target tablet.
-	# Therefore BOOTX64.EFI itself must carry the original project signature.
+	# arch-chroot keeps stdin for the signing process. No private key is
+	# installed in the target filesystem, even if either signer fails.
 	run grub-mkstandalone --format=x86_64-efi \
 		--output=/boot/EFI/BOOT/grubx64.efi \
-		--modules="part_gpt fat btrfs search search_fs_uuid search_label test configfile normal linux" \
+		--modules="part_gpt fat btrfs search search_fs_uuid search_label regexp test configfile normal linux" \
 		boot/grub/grub.cfg=/boot/EFI/BOOT/grub.cfg
-	echo 使用原项目 MOK 直接签名 U 盘入口、GRUB 和内核
-	run sbsign --key /root/.mipad2-build/MOK.key --cert /boot/EFI/MOK.crt \
-		--output /boot/EFI/BOOT/grubx64.efi.signed /boot/EFI/BOOT/grubx64.efi
+	run sbsign --key /dev/stdin --cert /boot/EFI/MOK.crt \
+		--output /boot/EFI/BOOT/grubx64.efi.signed /boot/EFI/BOOT/grubx64.efi < "$efi_key"
 	run mv /boot/EFI/BOOT/grubx64.efi.signed /boot/EFI/BOOT/grubx64.efi
 	run cp /boot/EFI/BOOT/grubx64.efi /boot/EFI/BOOT/BOOTX64.EFI
-	run sbsign --key /root/.mipad2-build/MOK.key --cert /boot/EFI/MOK.crt \
-		--output /boot/vmlinuz-$KERNEL_PKGBASE /boot/vmlinuz-$KERNEL_PKGBASE
-	run sbverify --list /boot/vmlinuz-$KERNEL_PKGBASE
-	run sbverify --list /boot/EFI/BOOT/BOOTX64.EFI
-	run sbverify --list /boot/EFI/BOOT/grubx64.efi
-	run sh -ec 'sbverify --list /boot/EFI/BOOT/BOOTX64.EFI 2>&1 | grep -F "my Machine Owner Key"'
-	run sh -ec 'sbverify --list /boot/EFI/BOOT/grubx64.efi 2>&1 | grep -F "my Machine Owner Key"'
-	run sh -ec 'sbverify --list /boot/vmlinuz-'$KERNEL_PKGBASE' 2>&1 | grep -F "my Machine Owner Key"'
-	run rm -f /root/.mipad2-build/MOK.key
-	rmdir "$mount_dir/root/.mipad2-build" 2>/dev/null || true
+	run sbsign --key /dev/stdin --cert /boot/EFI/MOK.crt \
+		--output "/boot/vmlinuz-$KERNEL_PKGBASE" "/boot/vmlinuz-$KERNEL_PKGBASE" < "$efi_key"
+	for efi_image in "/boot/vmlinuz-$KERNEL_PKGBASE" /boot/EFI/BOOT/BOOTX64.EFI /boot/EFI/BOOT/grubx64.efi; do
+		run sbverify --cert /boot/EFI/MOK.crt "$efi_image" || return 1
+	done
 	if [[ -e "$mount_dir/boot/EFI/MOK.key" || -e "$mount_dir/root/.mipad2-build/MOK.key" ]]; then
-		echo 'Refusing to ship private MOK key in image' >&2
+		echo 'Refusing to ship private signing material in image' >&2
 		return 1
 	fi
-	cmp $mount_dir/boot/EFI/BOOT/grubx64.efi $mount_dir/boot/EFI/BOOT/BOOTX64.EFI
+	boot_signature_hash="$(sha256sum < "$mount_dir/boot/EFI/BOOT/grubx64.efi")" || return 1
+	fallback_signature_hash="$(sha256sum < "$mount_dir/boot/EFI/BOOT/BOOTX64.EFI")" || return 1
+	[[ "$boot_signature_hash" == "$fallback_signature_hash" ]] || return 1
+	# The USB installer only re-IDs a loader built with the local-ESP contract.
+	printf '%s\n' "${boot_signature_hash%% *}" > "$mount_dir/boot/EFI/BOOT/mipad2-esp-local-v1.sha256"
 	run grub-script-check /boot/EFI/BOOT/grub.cfg
 	run grub-script-check /boot/grub/grub.cfg
 }
@@ -718,16 +732,55 @@ update_pkgfile() {
 	# pkgfile's command lookup cache is optional at boot.  ArchlinuxCN mirrors
 	# intermittently close TLS connections, so an outage must not discard an
 	# otherwise valid rootfs after package installation and EFI signing.
+	local attempt status
 	for attempt in 1 2 3; do
-		if run pkgfile --update; then
+		if run timeout --kill-after=5s 60s pkgfile --update; then
 			return 0
+		else
+			status=$?
 		fi
-		echo "pkgfile cache update failed (attempt $attempt/3)" >&2
+		echo "pkgfile cache update failed (attempt $attempt/3, status $status)" >&2
+		# Don't start another full transfer after the deadline, kill,
+		# or a missing executable. Retry short transient failures only.
+		case "$status" in
+			124|125|126|127|137) break ;;
+		esac
 		[[ $attempt == 3 ]] || sleep 5
 	done
 	echo 'Continuing without the optional pkgfile cache' >&2
 	return 0
 }
+
+# BEGIN USB_SNAPSHOT_LAYOUT
+prepare_usb_snapshot_layout() {
+	case "$KERNEL_PKGBASE" in
+	  linux-latte-integrated-7-2|linux-latte-integrated-7-2-*) ;;
+	  *) return 0 ;;
+	esac
+
+	# On Btrfs, systemd-tmpfiles' Q lines otherwise create nested subvolumes
+	# for these directories. Precreate regular directories in the fresh
+	# image before the base package hooks run: @ can snapshot their data.
+	install -d -m 0700 -- "$1/var/lib/machines" "$1/var/lib/portables"
+}
+
+require_flat_usb_snapshot_layout() {
+	case "$KERNEL_PKGBASE" in
+	  linux-latte-integrated-7-2|linux-latte-integrated-7-2-*) ;;
+	  *) return 0 ;;
+	esac
+
+	local subvolume nested
+	for subvolume in "$1" "$1/home"; do
+		nested=$(LC_ALL=C btrfs subvolume list -o "$subvolume") || return 1
+		if [[ -n "$nested" ]]; then
+			printf 'USB image has nested Btrfs subvolumes in %s:\n%s\n' \
+				"$subvolume" "$nested" >&2
+			return 1
+		fi
+	done
+}
+# END USB_SNAPSHOT_LAYOUT
 
 all() {
 	gpt
@@ -735,6 +788,7 @@ all() {
 	create_img
 	format
 	mount_img
+	prepare_usb_snapshot_layout "$mount_dir"
 
 	install_packages
 	if [[ "$KERNEL_ARTIFACT_REQUIRE_FORMAT" == verified-binary-repack ]]; then
@@ -750,6 +804,7 @@ all() {
 	config_grub
 	update_pkgfile
 	cleanup_rootfs
+	require_flat_usb_snapshot_layout "$mount_dir"
 	# The GNOME profile lives in @home, not the default @ subvolume.  Fail
 	# before image conversion if that mount or its user configuration is lost.
 	if [[ $desktop_type == gnome ]]; then

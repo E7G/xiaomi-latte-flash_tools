@@ -5,6 +5,7 @@ Before=plasmalogin.service graphical.target
 
 [Service]
 Type=oneshot
+ExecCondition=/usr/bin/test -b /dev/mmcblk0
 ExecStart=/usr/local/sbin/mipad2-install-to-emmc
 StandardOutput=journal+console
 StandardError=journal+console

@@ -35,20 +35,171 @@ die() {
 	exit 1
 }
 
+# BEGIN LEGACY_INSTALL_SECURE_BOOT_GATE
+require_legacy_boot_mode() {
+	local flag="$1/efivars/SecureBoot-8be4df61-93ca-11d2-aa0d-00e098032b8c" raw
+	local -a bytes
+	# This image installs for a UEFI tablet. Missing EFI runtime data,
+	# including when disabled via the kernel command line, is not "off".
+	[[ -f "$flag" && ! -L "$flag" ]] || die "无法确认 Secure Boot 已关闭；未写入 eMMC"
+	raw=$(LC_ALL=C od -An -v -tu1 -N6 -- "$flag") || \
+		die "无法读取 Secure Boot 状态；未写入 eMMC"
+	read -r -a bytes <<< "$raw"
+	# efivarfs prepends four attribute bytes; the value must be exactly one byte.
+	[[ ${#bytes[@]} -eq 5 ]] || die "Secure Boot 状态长度异常；未写入 eMMC"
+	case "${bytes[4]}" in
+		0) ;;
+		1) die "此 USB 安装方式不支持开启 Secure Boot 的目标启动；未写入 eMMC" ;;
+		*) die "Secure Boot 状态异常；未写入 eMMC" ;;
+	esac
+	local stub="$1/efivars/StubInfo-4a67b082-0a4c-41cf-b6c7-440b29bb8c4f"
+	if [[ -e "$stub" || -L "$stub" ]]; then
+		die "此 USB 安装方式不支持直接 UKI 启动；未写入 eMMC"
+	fi
+}
+# END LEGACY_INSTALL_SECURE_BOOT_GATE
+
+# BEGIN CHECK_INSTALL_SNAPSHOT
+require_complete_install_snapshot() {
+	local snapshot="$1" subvol="$2" nested
+
+	# Snapshots do not include nested subvolumes. Btrfs leaves an empty
+	# directory with inode 2, and send does not transfer even that stub.
+	# Inspect the immutable snapshot so later source edits cannot race the
+	# check or hide an omission in precisely what we are about to send.
+	nested=$(LC_ALL=C find "$snapshot" -xdev -type d -inum 2 -printf '1' -quit) ||
+		die "无法检查 Btrfs 子卷 $subvol 的快照；未写入 eMMC"
+	[[ -z "$nested" ]] ||
+		die "Btrfs 子卷 $subvol 含嵌套子卷，无法完整迁移；未写入 eMMC"
+}
+# END CHECK_INSTALL_SNAPSHOT
+
+# BEGIN LOCAL_ESP_IDENTITY
+require_install_tools() {
+	local tool
+	for tool in blkid blockdev btrfs chroot dd fatlabel fsck.fat grub-mkconfig \
+		grub-script-check mkfs.btrfs mount sgdisk sha256sum sync udevadm umount; do
+		command -v "$tool" >/dev/null || die "缺少 $tool；未写入 eMMC"
+	done
+}
+
+require_local_esp_loader() {
+	local dir="$1/EFI/BOOT" file expected got
+	for file in BOOTX64.EFI grubx64.efi mipad2-esp-local-v1.sha256; do
+		[[ -s "$dir/$file" && -f "$dir/$file" && ! -L "$dir/$file" ]] ||
+			die "缺少支持独立 ESP 标识的 GRUB 启动文件；请重新生成 7.2 U 盘"
+	done
+	expected=$(cat "$dir/mipad2-esp-local-v1.sha256") || die "无法读取 GRUB 启动校验值"
+	[[ "$expected" =~ ^[a-f0-9]{64}$ ]] || die "GRUB 启动校验值格式错误"
+	for file in BOOTX64.EFI grubx64.efi; do
+		got=$(sha256sum < "$dir/$file") || die "无法校验 $file"
+		[[ "${got%% *}" == "$expected" ]] || die "GRUB 启动文件 $file 已变化"
+	done
+}
+
+read_esp_uuid() {
+	local id
+	id=$(blkid -p -s UUID -o value -- "$1") || die "无法获取 FAT 卷标识"
+	[[ "$id" =~ ^[A-Fa-f0-9]{4}-[A-Fa-f0-9]{4}$ ]] || die "FAT 卷标识格式错误"
+	printf '%s\n' "${id^^}"
+}
+
+check_cloned_esp() {
+	local esp="$1" status=0
+
+	# Cloning the mounted source can carry over the FAT dirty bit. A status
+	# of 1 is ambiguous (recovered errors or an internal inconsistency),
+	# so require a fresh read-only pass to confirm that the repair worked.
+	fsck.fat -a "$esp" || status=$?
+	[[ "$status" == 0 || "$status" == 1 ]] || die "无法修复目标 FAT 启动分区"
+	fsck.fat -n "$esp" || die "目标 FAT 启动分区仍有错误"
+}
+
+reidentify_cloned_esp() {
+	local target_esp="$1" source_uuid="$2" try id
+	for try in 1 2 3; do
+		fatlabel --volume-id --reset "$target_esp" || die "无法生成目标 FAT 卷标识"
+		id=$(read_esp_uuid "$target_esp") || exit 1
+		if [[ "$id" != "$source_uuid" && "$id" != 0000-0000 ]]; then
+			printf '%s\n' "$id"
+			return
+		fi
+	done
+	die "目标 FAT 卷标识仍与 U 盘冲突"
+}
+# END LOCAL_ESP_IDENTITY
+
+# BEGIN ACTIVATE_RECEIVED_SUBVOLUMES
+activate_received_subvolumes() {
+	local top="$1" incoming_root="$2" incoming_home="$3" root_id
+	[[ $(btrfs property get -ts "$top/$incoming_root" ro) == ro=true &&
+	   $(btrfs property get -ts "$top/$incoming_home" ro) == ro=true ]] ||
+		die "Btrfs 接收子卷不完整或不是只读"
+	[[ ! -e "$top/@" && ! -L "$top/@" &&
+	   ! -e "$top/@home" && ! -L "$top/@home" ]] ||
+		die "目标 Btrfs 子卷已存在"
+
+	# A received snapshot has a received_uuid and cannot be made writable
+	# without forcing that identity away. Instead use normal writable COW
+	# snapshots and keep both received subvolumes until activation succeeds.
+	btrfs subvolume snapshot "$top/$incoming_root" "$top/@"
+	btrfs subvolume snapshot "$top/$incoming_home" "$top/@home"
+	[[ $(btrfs property get -ts "$top/@" ro) == ro=false &&
+	   $(btrfs property get -ts "$top/@home" ro) == ro=false ]] ||
+		die "目标 Btrfs 子卷未能以可写方式创建"
+	root_id=$(LC_ALL=C btrfs subvolume show "$top/@" | awk '$1 == "Subvolume" && $2 == "ID:" {print $3; exit}')
+	[[ "$root_id" =~ ^[1-9][0-9]*$ ]] || die "无法获取目标 Btrfs 根子卷 ID"
+	btrfs subvolume set-default "$root_id" "$top"
+	btrfs filesystem sync "$top"
+	btrfs subvolume delete "$top/$incoming_root" "$top/$incoming_home"
+}
+# END ACTIVATE_RECEIVED_SUBVOLUMES
+
+# BEGIN RESOLVE_INSTALL_MOUNT_SOURCE
+resolve_install_mount_source() {
+	local mountpoint="$1" source
+
+	# Btrfs subvolume mountinfo can report an anonymous major:minor (0:N).
+	# Use the exact mount's kernel source without the [/subvolume] suffix
+	# instead of treating that number as a /dev/block symlink.
+	source=$(findmnt --kernel --noheadings --raw --nofsroot \
+		--mountpoint "$mountpoint" --output SOURCE) || return 1
+	[[ "$source" == /dev/* && "$source" != *$'\n'* ]] || return 1
+	readlink -e -- "$source"
+}
+# END RESOLVE_INSTALL_MOUNT_SOURCE
+
+# BEGIN REFRESH_TARGET_PARTITIONS
+refresh_target_partitions() {
+	local attempt
+	for attempt in 1 2 3 4 5; do
+		# sgdisk can already have queued partition events; udev may
+		# transiently hold the new devices open while probing them.
+		if udevadm settle --timeout=5 &&
+		   blockdev --rereadpt "$target" &&
+		   udevadm settle --timeout=5 &&
+		   [[ -b $target_boot && -b $target_root ]]; then
+			return 0
+		fi
+		[[ "$attempt" == 5 ]] || sleep 1
+	done
+	die "无法重新读取 eMMC 分区表或分区设备未就绪"
+}
+# END REFRESH_TARGET_PARTITIONS
+
 [[ $EUID -eq 0 ]] || die "必须以 root 运行"
 [[ -b $target ]] || die "没有找到内部 eMMC：$target"
 [[ $(cat /sys/block/mmcblk0/removable 2>/dev/null) == 0 ]] || \
 	die "目标不是不可移动的内部 eMMC"
 
-root_majmin=$(findmnt -n -o MAJ:MIN /)
-boot_majmin=$(findmnt -n -o MAJ:MIN /boot)
-source_root=$(readlink -f "/dev/block/$root_majmin")
-source_boot=$(readlink -f "/dev/block/$boot_majmin")
-source_disk=/dev/$(lsblk -ndo PKNAME "$source_root")
-boot_disk=/dev/$(lsblk -ndo PKNAME "$source_boot")
-
-[[ -b $source_root && -b $source_boot && -b $source_disk ]] || \
-	die "无法识别 U 盘启动分区"
+source_root=$(resolve_install_mount_source /) || die "无法识别 U 盘系统分区"
+source_boot=$(resolve_install_mount_source /boot) || die "无法识别 U 盘启动分区"
+[[ -b $source_root && -b $source_boot ]] || die "U 盘系统和启动来源必须是块设备"
+root_parent=$(lsblk -ndo PKNAME -- "$source_root") || die "无法识别 U 盘系统分区的父设备"
+boot_parent=$(lsblk -ndo PKNAME -- "$source_boot") || die "无法识别 U 盘启动分区的父设备"
+source_disk=/dev/$root_parent
+boot_disk=/dev/$boot_parent
+[[ -b $source_disk && -b $boot_disk ]] || die "无法识别 U 盘启动磁盘"
 [[ $source_disk == "$boot_disk" ]] || die "启动分区和系统分区不在同一个 U 盘"
 if [[ $source_disk == "$target" ]]; then
 	echo "当前系统从内部 eMMC 启动，安装器自动跳过。"
@@ -56,6 +207,13 @@ if [[ $source_disk == "$target" ]]; then
 fi
 [[ $(findmnt -n -o FSTYPE /) == btrfs ]] || die "U 盘系统分区不是 Btrfs"
 [[ $(findmnt -n -o FSTYPE /boot) == vfat ]] || die "U 盘启动分区不是 FAT32"
+
+# Rebuilding GRUB cannot update an authenticated UKI root pointer once the
+# target Btrfs UUID changes. Do not let this path wipe a Secure Boot tablet.
+require_legacy_boot_mode /sys/firmware/efi
+require_install_tools
+require_local_esp_loader /boot
+source_boot_uuid=$(read_esp_uuid "$source_boot")
 
 source_bytes=$(blockdev --getsize64 "$source_root")
 target_bytes=$(blockdev --getsize64 "$target")
@@ -81,6 +239,8 @@ mount -o subvolid=5 "$source_root" "$source_top"
 btrfs filesystem sync "$source_top"
 btrfs subvolume snapshot -r "$source_top/@" "$source_top/$root_snap"
 btrfs subvolume snapshot -r "$source_top/@home" "$source_top/$home_snap"
+require_complete_install_snapshot "$source_top/$root_snap" @
+require_complete_install_snapshot "$source_top/$home_snap" @home
 
 echo '[2/7] 清理内部 eMMC'
 swapoff "$target_boot" "$target_root" 2>/dev/null || true
@@ -93,13 +253,13 @@ sgdisk \
 	--new=2:0:0 --typecode=2:8300 --change-name=2:system \
 	--partition-guid=2:$system_guid "$target"
 sgdisk --verify "$target"
-blockdev --rereadpt "$target"
-udevadm settle
-[[ -b $target_boot && -b $target_root ]] || die "eMMC 分区创建失败"
+refresh_target_partitions
 
 echo '[3/7] 写入已签名 EFI 启动分区'
 dd if="$source_boot" of="$target_boot" bs=16M conv=fsync status=progress
-fsck.fat -a "$target_boot"
+check_cloned_esp "$target_boot"
+boot_uuid=$(reidentify_cloned_esp "$target_boot" "$source_boot_uuid")
+blockdev --flushbufs "$target_boot"
 
 echo '[4/7] 创建内部 Btrfs 系统分区'
 mkfs.btrfs -f -L rootfs "$target_root"
@@ -108,12 +268,7 @@ mount -o subvolid=5 "$target_root" "$target_top"
 echo '[5/7] 复制系统和用户数据'
 btrfs send "$source_top/$root_snap" | btrfs receive "$target_top"
 btrfs send "$source_top/$home_snap" | btrfs receive "$target_top"
-btrfs property set -ts "$target_top/$root_snap" ro false
-btrfs property set -ts "$target_top/$home_snap" ro false
-mv "$target_top/$root_snap" "$target_top/@"
-mv "$target_top/$home_snap" "$target_top/@home"
-root_id=$(btrfs subvolume show "$target_top/@" | awk '/Subvolume ID:/ {print $3; exit}')
-btrfs subvolume set-default "$root_id" "$target_top"
+activate_received_subvolumes "$target_top" "$root_snap" "$home_snap"
 umount "$target_top"
 
 echo '[6/7] 更新 UUID 和 GRUB'
@@ -122,7 +277,8 @@ mkdir -p "$target_mnt/boot" "$target_mnt/home"
 mount "$target_boot" "$target_mnt/boot"
 mount -o compress=zstd:3,ssd,discard=async,subvol=@home "$target_root" "$target_mnt/home"
 root_uuid=$(blkid -s UUID -o value "$target_root")
-boot_uuid=$(blkid -s UUID -o value "$target_boot")
+[[ $(read_esp_uuid "$target_boot") == "$boot_uuid" ]] || die "目标 FAT 卷标识未持久化"
+require_local_esp_loader "$target_mnt/boot"
 cat > "$target_mnt/etc/fstab" <<EOF
 UUID=$root_uuid / btrfs rw,relatime,compress=zstd:3,ssd,discard=async,space_cache=v2,subvol=/@ 0 0
 UUID=$boot_uuid /boot vfat rw,relatime,fmask=0022,dmask=0022,codepage=437,iocharset=ascii,shortname=mixed,utf8,errors=remount-ro 0 2
