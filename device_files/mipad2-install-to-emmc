@@ -129,6 +129,27 @@ reidentify_cloned_esp() {
 }
 # END LOCAL_ESP_IDENTITY
 
+# BEGIN BTRFS_SNAPSHOT_TRANSPORT
+configure_btrfs_snapshot_transport() {
+	local release="$1" help
+	snapshot_send_args=()
+	snapshot_receive_opts=subvolid=5
+
+	case "$release" in
+	  7.2.*-mipad2-integrated-*) ;;
+	  *) return 0 ;;
+	esac
+
+	# Preserve existing compressed extents over the local trusted stream.
+	# Also compress normally written extents (including a receive fallback
+	# if encoded I/O is not available). Do not retry after a partial send.
+	snapshot_receive_opts=subvolid=5,compress=zstd:3
+	if help=$(LC_ALL=C btrfs send --help 2>&1) && [[ "$help" == *--compressed-data* ]]; then
+		snapshot_send_args=(--compressed-data)
+	fi
+}
+# END BTRFS_SNAPSHOT_TRANSPORT
+
 # BEGIN ACTIVATE_RECEIVED_SUBVOLUMES
 activate_received_subvolumes() {
 	local top="$1" incoming_root="$2" incoming_home="$3" root_id
@@ -214,6 +235,7 @@ require_legacy_boot_mode /sys/firmware/efi
 require_install_tools
 require_local_esp_loader /boot
 source_boot_uuid=$(read_esp_uuid "$source_boot")
+configure_btrfs_snapshot_transport "$(uname -r)"
 
 source_bytes=$(blockdev --getsize64 "$source_root")
 target_bytes=$(blockdev --getsize64 "$target")
@@ -263,11 +285,11 @@ blockdev --flushbufs "$target_boot"
 
 echo '[4/7] 创建内部 Btrfs 系统分区'
 mkfs.btrfs -f -L rootfs "$target_root"
-mount -o subvolid=5 "$target_root" "$target_top"
+mount -o "$snapshot_receive_opts" "$target_root" "$target_top"
 
 echo '[5/7] 复制系统和用户数据'
-btrfs send "$source_top/$root_snap" | btrfs receive "$target_top"
-btrfs send "$source_top/$home_snap" | btrfs receive "$target_top"
+btrfs send "${snapshot_send_args[@]}" "$source_top/$root_snap" | btrfs receive "$target_top"
+btrfs send "${snapshot_send_args[@]}" "$source_top/$home_snap" | btrfs receive "$target_top"
 activate_received_subvolumes "$target_top" "$root_snap" "$home_snap"
 umount "$target_top"
 
