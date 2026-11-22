@@ -144,20 +144,33 @@ activate_received_subvolumes() {
 }
 # END ACTIVATE_RECEIVED_SUBVOLUMES
 
+# BEGIN RESOLVE_INSTALL_MOUNT_SOURCE
+resolve_install_mount_source() {
+	local mountpoint="$1" source
+
+	# Btrfs subvolume mountinfo can report an anonymous major:minor (0:N).
+	# Use the exact mount's kernel source without the [/subvolume] suffix
+	# instead of treating that number as a /dev/block symlink.
+	source=$(findmnt --kernel --noheadings --raw --nofsroot \
+		--mountpoint "$mountpoint" --output SOURCE) || return 1
+	[[ "$source" == /dev/* && "$source" != *$'\n'* ]] || return 1
+	readlink -e -- "$source"
+}
+# END RESOLVE_INSTALL_MOUNT_SOURCE
+
 [[ $EUID -eq 0 ]] || die "必须以 root 运行"
 [[ -b $target ]] || die "没有找到内部 eMMC：$target"
 [[ $(cat /sys/block/mmcblk0/removable 2>/dev/null) == 0 ]] || \
 	die "目标不是不可移动的内部 eMMC"
 
-root_majmin=$(findmnt -n -o MAJ:MIN /)
-boot_majmin=$(findmnt -n -o MAJ:MIN /boot)
-source_root=$(readlink -f "/dev/block/$root_majmin")
-source_boot=$(readlink -f "/dev/block/$boot_majmin")
-source_disk=/dev/$(lsblk -ndo PKNAME "$source_root")
-boot_disk=/dev/$(lsblk -ndo PKNAME "$source_boot")
-
-[[ -b $source_root && -b $source_boot && -b $source_disk ]] || \
-	die "无法识别 U 盘启动分区"
+source_root=$(resolve_install_mount_source /) || die "无法识别 U 盘系统分区"
+source_boot=$(resolve_install_mount_source /boot) || die "无法识别 U 盘启动分区"
+[[ -b $source_root && -b $source_boot ]] || die "U 盘系统和启动来源必须是块设备"
+root_parent=$(lsblk -ndo PKNAME -- "$source_root") || die "无法识别 U 盘系统分区的父设备"
+boot_parent=$(lsblk -ndo PKNAME -- "$source_boot") || die "无法识别 U 盘启动分区的父设备"
+source_disk=/dev/$root_parent
+boot_disk=/dev/$boot_parent
+[[ -b $source_disk && -b $boot_disk ]] || die "无法识别 U 盘启动磁盘"
 [[ $source_disk == "$boot_disk" ]] || die "启动分区和系统分区不在同一个 U 盘"
 if [[ $source_disk == "$target" ]]; then
 	echo "当前系统从内部 eMMC 启动，安装器自动跳过。"

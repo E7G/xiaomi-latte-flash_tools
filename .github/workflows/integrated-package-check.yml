@@ -31,6 +31,7 @@ on:
       - tests/test_usb_install_btrfs_receive.py
       - tests/test_usb_install_btrfs_nested.py
       - tests/test_usb_install_esp_identity.py
+      - tests/test_usb_install_mount_source.py
       - device_files/mipad2-grub-esp-local.cfg
       - tests/test_modern_kernel_handoff.py
       - .github/workflows/build-dnx.yml
@@ -64,6 +65,7 @@ jobs:
           python3 tests/test_usb_install_btrfs_receive.py
           python3 tests/test_usb_install_btrfs_nested.py
           python3 tests/test_usb_install_esp_identity.py
+          python3 tests/test_usb_install_mount_source.py
       # These unsigned fixtures validate format/error handling only. Real module
       # CMS, makepkg, pacman query and byte-preserving package qualification are
       # separate gates against an externally pinned completed kernel artifact.
