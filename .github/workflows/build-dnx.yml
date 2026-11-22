@@ -273,6 +273,16 @@ jobs:
           test ! -L "$rootfs/etc/systemd/system/multi-user.target.wants/mipad2-navkeys.service"
           kernel_release="$(find "$rootfs/usr/lib/modules" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | head -n1)"
           test -n "$kernel_release"
+          if [[ "$kernel_release" =~ ^7\.2\.[0-9]+-mipad2- ]]; then
+            rule=/usr/lib/udev/rules.d/61-mipad2-navkeys-72.rules
+            test -s "$rootfs$rule"
+            sudo udevadm verify "$rootfs$rule"
+            lookup='evdev:name:FTSC1000:00 2808:509C Keyboard:dmi:x:svnXiaomiInc:pnMipad2:x:'
+            keys="$(sudo chroot "$rootfs" /usr/bin/systemd-hwdb query "$lookup" | grep '^KEYBOARD_KEY_' | sort)"
+            expected="$(printf '%s\n' KEYBOARD_KEY_70016=menu KEYBOARD_KEY_70029=leftmeta \
+              KEYBOARD_KEY_7002a=back KEYBOARD_KEY_700e0=reserved KEYBOARD_KEY_700e3=reserved)"
+            test "$keys" = "$expected"
+          fi
           test -s "$rootfs/usr/lib/modules/$kernel_release/modules.dep"
           test -s "$rootfs/usr/lib/modules/$kernel_release/config"
           test -x "$rootfs/usr/local/sbin/mipad2-kernel-install"
