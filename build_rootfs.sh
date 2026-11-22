@@ -363,7 +363,7 @@ config_packages() {
 	install -Dm0755 "${device_file}"/mipad2-kernel-preflight $mount_dir/usr/local/sbin/mipad2-kernel-preflight
 	install -Dm0644 "${device_file}"/kernel-preflight.hook $mount_dir/etc/pacman.d/hooks/
 	echo 更新 udev hwdb
-	run udevadm hwdb --update
+	install_mipad2_navkeys_hwdb
 
 	echo 生成 fstab
 	boot_uuid=$(blkid -s UUID -o value "$boot_dev")
@@ -490,9 +490,8 @@ EOF
 	fi
 
 	run $enable bluetooth
-	# Navigation keys are handled in-kernel on current linux_latte builds.
-	# Do not install/enable the legacy Python evdev daemon: it wastes memory
-	# on this 2 GiB tablet and may duplicate or override the kernel mapping.
+	# Keep the navigation mapping in the kernel/udev keymap, without an
+	# exclusive evdev grab or a background remapping daemon.
 	run sh -c 'systemctl disable mipad2-navkeys.service >/dev/null 2>&1 || true'
 	run sh -c 'rm -f /etc/systemd/system/mipad2-navkeys.service /usr/local/libexec/mipad2-navkeys.py'
 	install -Dm0755 "$device_file/mipad2-thermal-guard" \
@@ -712,6 +711,16 @@ cleanup_rootfs() {
 	run rm -f /root/.mipad2-build/MOK.key || true
 	rmdir "$mount_dir/root/.mipad2-build" 2>/dev/null || true
 	run sh -c 'rm -rf /var/cache/pacman/pkg/* /home/*/.cache/yay /tmp/*' || true
+}
+
+install_mipad2_navkeys_hwdb() {
+	if [[ "$kernel_release" =~ ^7\.2\.[0-9]+-mipad2- ]]; then
+		install -Dm0644 "$device_file/61-mipad2-navkeys.hwdb" \
+			"$mount_dir/usr/lib/udev/hwdb.d/61-mipad2-navkeys.hwdb"
+		run systemd-hwdb --strict update
+	else
+		run udevadm hwdb --update
+	fi
 }
 
 update_pkgfile() {
