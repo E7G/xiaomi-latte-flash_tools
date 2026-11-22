@@ -71,8 +71,8 @@ printf 'target reached\n' >> "$LOG"
         self.assertGreater(TEXT.index(home_check), TEXT.index(root_check))
         self.assertLess(TEXT.index(home_check), TEXT.index('\nswapoff '))
         self.assertLess(TEXT.index(home_check), TEXT.index('\nsgdisk --zap-all '))
-        self.assertIn('btrfs send "$source_top/$root_snap"', TEXT)
-        self.assertIn('btrfs send "$source_top/$home_snap"', TEXT)
+        self.assertIn('btrfs send "${snapshot_send_args[@]}" "$source_top/$root_snap"', TEXT)
+        self.assertIn('btrfs send "${snapshot_send_args[@]}" "$source_top/$home_snap"', TEXT)
 
 
 if __name__ == "__main__":
