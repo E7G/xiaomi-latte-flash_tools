@@ -6,6 +6,10 @@ GNOME Wayland（构建脚本仍保留 Plasma 可选配置），内核来自 [`E7
 
 ## 7.2 整合部署候选分支
 
+手动 Actions 源码构建只接受已进入内核 7.2 整合分支的完整提交 SHA。
+源码版包可识别正式 7.2 稳定补丁版本（例如 7.2.15），与上面的 LPAT 签名包
+使用不同的交付格式；提交、校验和和 7.2 系列必须通过核验后才会进入镜像构建。
+
 `codex/mipad2-7.2-integrated` 支持 `7.2.15-mipad2-integrated-lpat9` 的独立 Arch
 包。该内核已在平板上通过启动、双摄采集、亮度及 S0i3 唤醒测试，Arch 包保留了原始
 内核及 37 个签名模块。源码改动见 [linux_latte #52](https://github.com/E7G/linux_latte/pull/52)。

@@ -37,18 +37,30 @@ cd "${work_dir}/src"
 version="$(sed -n 's/^VERSION[[:space:]]*=[[:space:]]*//p' Makefile)"
 patchlevel="$(sed -n 's/^PATCHLEVEL[[:space:]]*=[[:space:]]*//p' Makefile)"
 kernel_family="${version}.${patchlevel}"
+if [[ -n "${EXPECTED_KERNEL_FAMILY:-}" && "$kernel_family" != "$EXPECTED_KERNEL_FAMILY" ]]; then
+  echo "Requested source kernel family $EXPECTED_KERNEL_FAMILY, found $kernel_family" >&2
+  exit 1
+fi
+expected_release=
 case "$kernel_family" in
   6.14)
     expected_localversion='CONFIG_LOCALVERSION="-mipad2-cachyos"'
     localversion_suffix=''
     ;;
   7.2)
-    grep -Eq '^SUBLEVEL[[:space:]]*=[[:space:]]*0$' Makefile
+    sublevel="$(sed -nE 's/^SUBLEVEL[[:blank:]]*=[[:blank:]]*([0-9]+)[[:blank:]]*$/\1/p' Makefile)"
+    [[ "$sublevel" =~ ^(0|[1-9][0-9]*)$ ]] || {
+      echo 'Expected a canonical 7.2 stable patchlevel' >&2; exit 1;
+    }
+    grep -Eq '^EXTRAVERSION[[:blank:]]*=[[:blank:]]*$' Makefile || {
+      echo 'Pre-release 7.2 sources are not accepted' >&2; exit 1;
+    }
     pkgbase='linux-latte-integrated-7-2'
     expected_localversion='CONFIG_LOCALVERSION="-mipad2-integrated"'
     revision="${KERNEL_INTEGRATED_REVISION:-3}"
     [[ "$revision" =~ ^[1-9][0-9]*$ ]] || { echo 'Positive integrated revision required' >&2; exit 1; }
     localversion_suffix="-r${revision}"
+    expected_release="7.2.${sublevel}-mipad2-integrated-r${revision}"
     ;;
   *) echo 'Only integrated 6.14 and 7.2 kernel families are supported' >&2; exit 1 ;;
 esac
@@ -66,7 +78,39 @@ make "${build_flags[@]}" xiaomipad2_defconfig
 
 make "${build_flags[@]}" olddefconfig
 
+# BEGIN MIPAD2_72_RELEASE_MODULES
+require_72_release_config() {
+  local config="$1" option
+  [[ "$kernel_family" == 7.2 ]] || return 0
+
+  for option in CONFIG_IIO_CHT_WC_ADC=m CONFIG_INTEL_CHTWC_THERMAL=m \
+    CONFIG_NFT_NAT=m CONFIG_NFT_MASQ=m CONFIG_EROFS_FS=m; do
+    grep -Fqx "$option" "$config" || {
+      printf 'Required 7.2 release config missing: %s (use a newer integration commit)\n' "$option" >&2
+      return 1
+    }
+  done
+}
+
+require_72_release_modules() {
+  local modules="$1" path
+  [[ "$kernel_family" == 7.2 ]] || return 0
+
+  # Check the compiled output, not only Kconfig intent. Module compression
+  # is part of this distribution profile.
+  for path in drivers/iio/adc/intel-chtwc-adc drivers/acpi/pmic/intel_pmic_chtwc_thermal \
+    fs/erofs/erofs net/netfilter/nft_nat net/netfilter/nft_masq net/netfilter/nft_chain_nat; do
+    local file="$modules/kernel/$path.ko.zst"
+    if [[ ! -f "$file" || -L "$file" || ! -s "$file" ]]; then
+      printf 'Required 7.2 release module missing: %s.ko.zst\n' "$path" >&2
+      return 1
+    fi
+  done
+}
+# END MIPAD2_72_RELEASE_MODULES
+
 sh fix_file/tests/mipad2-kernel-config-audit.sh .config
+require_72_release_config .config
 
 required=(
   "$expected_localversion"
@@ -96,13 +140,23 @@ for option in "${required[@]}"; do
   }
 done
 
+# Reconcile the exact Kbuild release with the package ABI before compilation.
+if [[ -n "$expected_release" && "$(make -s "${build_flags[@]}" kernelrelease)" != "$expected_release" ]]; then
+  echo "Kbuild release differs from the pinned source identity: $expected_release" >&2
+  exit 1
+fi
+
 jobs="${KERNEL_JOBS:-$(nproc)}"
 make -j"${jobs}" "${build_flags[@]}"
 
 kernel_release="$(make -s "${build_flags[@]}" kernelrelease)"
+[[ -z "$expected_release" || "$kernel_release" == "$expected_release" ]] || {
+  echo 'Kbuild release changed during compilation' >&2; exit 1;
+}
 mod_dir="${work_dir}/pkg/usr/lib/modules/${kernel_release}"
 make "${build_flags[@]}" INSTALL_MOD_PATH="${work_dir}/pkg/usr" \
   INSTALL_MOD_STRIP=1 DEPMOD=true modules_install
+require_72_release_modules "$mod_dir"
 install -Dm0644 "$(make -s "${build_flags[@]}" image_name)" "${mod_dir}/vmlinuz"
 install -Dm0644 .config "${mod_dir}/config"
 printf '%s\n' "${pkgbase}" > "${mod_dir}/pkgbase"

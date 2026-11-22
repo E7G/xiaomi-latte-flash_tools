@@ -20,6 +20,7 @@ env:
   KERNEL_REF: codex/mipad2-7.2-integrated
   KERNEL_JOBS: '4'
   KERNEL_INTEGRATED_REVISION: '3'
+  EXPECTED_KERNEL_FAMILY: '7.2'
   ROOTFS_SIZE: 8G
 
 jobs:
@@ -37,14 +38,21 @@ jobs:
         shell: bash
         env:
           REQUESTED_KERNEL_COMMIT: ${{ inputs.kernel_commit }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           commit="${REQUESTED_KERNEL_COMMIT}"
           [[ "$commit" =~ ^[0-9a-f]{40}$ ]] || { echo "A full kernel SHA is required" >&2; exit 1; }
-          commit_date="$(curl --fail --silent --show-error --location \
-            -H "Accept: application/vnd.github+json" \
-            -H "Authorization: Bearer ${{ github.token }}" \
-            "https://api.github.com/repos/${KERNEL_REPO}/commits/${commit}" \
-            | jq -r '.commit.committer.date // empty')"
+          ghapi() {
+            curl --fail --silent --show-error --location \
+              -H 'Accept: application/vnd.github+json' \
+              -H "Authorization: Bearer $GH_TOKEN" "https://api.github.com/repos/$KERNEL_REPO/$1"
+          }
+          tip="$(ghapi "git/ref/heads/$KERNEL_REF" | jq -er '.object.sha | select(test("^[0-9a-f]{40}$"))')"
+          comparison="$(ghapi "compare/$commit...$tip?per_page=1")"
+          jq -e --arg commit "$commit" \
+            '(.status == "ahead" or .status == "identical") and .merge_base_commit.sha == $commit' \
+            <<< "$comparison" >/dev/null || { echo 'Source is not published on the integration branch' >&2; exit 1; }
+          commit_date="$(ghapi "commits/$commit" | jq -er --arg commit "$commit" 'select(.sha == $commit) | .commit.committer.date')"
           test -n "$commit_date"
           source_date_epoch="$(date -u -d "$commit_date" +%s)"
           echo "commit=$commit" >> "$GITHUB_OUTPUT"
@@ -77,7 +85,7 @@ jobs:
           SOURCE_DATE_EPOCH: ${{ steps.kernel-source.outputs.source_date_epoch }}
         run: |
           docker run --rm \
-            -e KERNEL_REPO -e KERNEL_REF -e KERNEL_COMMIT -e KERNEL_JOBS -e KERNEL_INTEGRATED_REVISION -e SOURCE_DATE_EPOCH \
+            -e KERNEL_REPO -e KERNEL_REF -e KERNEL_COMMIT -e KERNEL_JOBS -e KERNEL_INTEGRATED_REVISION -e SOURCE_DATE_EPOCH -e EXPECTED_KERNEL_FAMILY \
             -v "$PWD:/workspace" -w /workspace \
             archlinux:base-devel \
             bash ./scripts/build_kernel_package.sh
@@ -99,7 +107,7 @@ jobs:
           python3 scripts/resolve_kernel_artifact.py verify \
             --manifest kernel-output/kernel-artifact.json \
             --expected-source-commit "$EXPECTED_KERNEL_SOURCE_COMMIT" \
-            --expected-sha256 "$artifact_sha" --require-format source-ci \
+            --expected-sha256 "$artifact_sha" --require-format source-ci --require-family "$EXPECTED_KERNEL_FAMILY" \
             --github-output "$GITHUB_OUTPUT"
           cd kernel-output
           sha256sum -c *.pkg.tar.zst.sha256
@@ -107,7 +115,7 @@ jobs:
           package="$(python3 -c 'import json; print(json.load(open("kernel-artifact.json"))["filename"])')"
           test -n "$package"
           pkgbase="$(cat pkgbase)"
-          [[ "$pkgbase" == linux-latte-integrated-7-2 || "$pkgbase" == linux-latte-cachyos ]]
+          [[ "$pkgbase" == linux-latte-integrated-7-2 ]]
           [[ "$(basename "$package")" =~ ^${pkgbase}-.+\.r[0-9]{14}\.g[0-9a-f]{12}-1-x86_64\.pkg\.tar\.zst$ ]]
           tar -tf "$package" > "$contents"
           grep -q "usr/share/doc/${pkgbase}/source-commit" "$contents"
@@ -170,7 +178,7 @@ jobs:
           python3 scripts/resolve_kernel_artifact.py verify \
             --manifest kernel-output/kernel-artifact.json \
             --expected-source-commit "$EXPECTED_KERNEL_SOURCE_COMMIT" \
-            --expected-sha256 "$EXPECTED_KERNEL_SHA256" --require-format source-ci
+            --expected-sha256 "$EXPECTED_KERNEL_SHA256" --require-format source-ci --require-family "$EXPECTED_KERNEL_FAMILY"
 
       - name: Prepare NBD devices
         run: |
@@ -184,7 +192,7 @@ jobs:
         run: |
           docker run --rm --privileged \
             -e ROOTFS_SIZE -e GITHUB_RUN_NUMBER \
-            -e EXPECTED_KERNEL_SOURCE_COMMIT -e EXPECTED_KERNEL_SHA256 \
+            -e EXPECTED_KERNEL_SOURCE_COMMIT -e EXPECTED_KERNEL_SHA256 -e EXPECTED_KERNEL_FAMILY \
             -v "$PWD:/workspace" -w /workspace \
             archlinux:base-devel \
             bash -lc 'pacman -Sy --noconfirm arch-install-scripts btrfs-progs dosfstools gptfdisk qemu-img python xz zstd && bash ./scripts/build_dnx_package.sh'
