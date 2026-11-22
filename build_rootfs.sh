@@ -252,7 +252,7 @@ noto-fonts-{cjk,emoji} ttf-cascadia-code
 # 音频
 alsa-utils pipewire-{alsa,audio,pulse} gst-plugins-base gst-plugin-pipewire
 # 文件系统
-btrfs-progs exfatprogs gptfdisk
+btrfs-progs dosfstools exfatprogs gptfdisk
 # 网络
 networkmanager
 # 蓝牙
@@ -679,18 +679,8 @@ config_grub(){
 		cp -a ./EFI/. "$mount_dir/boot/EFI/"
 	fi
 	chown -R root:root $mount_dir/boot/EFI
-	boot_uuid=$(blkid -s UUID -o value "$boot_dev")
-	cat > "$mount_dir/boot/EFI/BOOT/grub.cfg" <<EOF
-insmod part_gpt
-insmod fat
-insmod btrfs
-search --no-floppy --fs-uuid --set=esp $boot_uuid
-if [ -z "\$esp" ]; then
-  search --no-floppy --label --set=esp boot
-fi
-set prefix=(\$esp)/grub
-configfile \$prefix/grub.cfg
-EOF
+	install -Dm0644 "$device_file/mipad2-grub-esp-local.cfg" \
+		"$mount_dir/boot/EFI/BOOT/grub.cfg"
 	install -Dm0644 "$mount_dir/boot/EFI/BOOT/grub.cfg" \
 		"$mount_dir/boot/EFI/arch/grub.cfg"
 	if [[ -n "$efi_key" ]]; then
@@ -706,7 +696,7 @@ EOF
 	# installed in the target filesystem, even if either signer fails.
 	run grub-mkstandalone --format=x86_64-efi \
 		--output=/boot/EFI/BOOT/grubx64.efi \
-		--modules="part_gpt fat btrfs search search_fs_uuid search_label test configfile normal linux" \
+		--modules="part_gpt fat btrfs search search_fs_uuid search_label regexp test configfile normal linux" \
 		boot/grub/grub.cfg=/boot/EFI/BOOT/grub.cfg
 	run sbsign --key /dev/stdin --cert /boot/EFI/MOK.crt \
 		--output /boot/EFI/BOOT/grubx64.efi.signed /boot/EFI/BOOT/grubx64.efi < "$efi_key"
@@ -724,6 +714,8 @@ EOF
 	boot_signature_hash="$(sha256sum < "$mount_dir/boot/EFI/BOOT/grubx64.efi")" || return 1
 	fallback_signature_hash="$(sha256sum < "$mount_dir/boot/EFI/BOOT/BOOTX64.EFI")" || return 1
 	[[ "$boot_signature_hash" == "$fallback_signature_hash" ]] || return 1
+	# The USB installer only re-IDs a loader built with the local-ESP contract.
+	printf '%s\n' "${boot_signature_hash%% *}" > "$mount_dir/boot/EFI/BOOT/mipad2-esp-local-v1.sha256"
 	run grub-script-check /boot/EFI/BOOT/grub.cfg
 	run grub-script-check /boot/grub/grub.cfg
 }

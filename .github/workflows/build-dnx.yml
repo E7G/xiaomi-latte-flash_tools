@@ -254,6 +254,8 @@ jobs:
           test -s "$esp/EFI/BOOT/BOOTX64.EFI"
           test -s "$esp/EFI/BOOT/grubx64.efi"
           test -s "$esp/EFI/BOOT/grub.cfg"
+          test "$(cat "$esp/EFI/BOOT/mipad2-esp-local-v1.sha256")" = \
+            "$(sha256sum "$esp/EFI/BOOT/BOOTX64.EFI" | cut -d' ' -f1)"
           test -s "$esp/grub/grub.cfg"
           grep -q 'configfile.*grub.cfg' "$esp/EFI/BOOT/grub.cfg"
           cmp "$esp/EFI/BOOT/grubx64.efi" "$esp/EFI/BOOT/BOOTX64.EFI"
@@ -263,6 +265,8 @@ jobs:
           sudo test ! -e "$rootfs/root/.mipad2-build/MOK.key"
           test ! -e "$esp/EFI/MOK.key"
           test -x "$rootfs/usr/local/sbin/mipad2-install-to-emmc"
+          test -x "$rootfs/usr/bin/fatlabel"
+          test -x "$rootfs/usr/bin/fsck.fat"
           test -s "$rootfs/etc/systemd/system/mipad2-usb-installer.service"
           test -L "$rootfs/etc/systemd/system/multi-user.target.wants/mipad2-usb-installer.service"
           test -L "$rootfs/etc/systemd/system/multi-user.target.wants/mipad2-hardware-audit.service"

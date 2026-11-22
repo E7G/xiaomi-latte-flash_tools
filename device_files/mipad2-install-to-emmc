@@ -74,6 +74,50 @@ require_complete_install_snapshot() {
 }
 # END CHECK_INSTALL_SNAPSHOT
 
+# BEGIN LOCAL_ESP_IDENTITY
+require_install_tools() {
+	local tool
+	for tool in blkid blockdev btrfs chroot dd fatlabel fsck.fat grub-mkconfig \
+		grub-script-check mkfs.btrfs mount sgdisk sha256sum sync udevadm umount; do
+		command -v "$tool" >/dev/null || die "缺少 $tool；未写入 eMMC"
+	done
+}
+
+require_local_esp_loader() {
+	local dir="$1/EFI/BOOT" file expected got
+	for file in BOOTX64.EFI grubx64.efi mipad2-esp-local-v1.sha256; do
+		[[ -s "$dir/$file" && -f "$dir/$file" && ! -L "$dir/$file" ]] ||
+			die "缺少支持独立 ESP 标识的 GRUB 启动文件；请重新生成 7.2 U 盘"
+	done
+	expected=$(cat "$dir/mipad2-esp-local-v1.sha256") || die "无法读取 GRUB 启动校验值"
+	[[ "$expected" =~ ^[a-f0-9]{64}$ ]] || die "GRUB 启动校验值格式错误"
+	for file in BOOTX64.EFI grubx64.efi; do
+		got=$(sha256sum < "$dir/$file") || die "无法校验 $file"
+		[[ "${got%% *}" == "$expected" ]] || die "GRUB 启动文件 $file 已变化"
+	done
+}
+
+read_esp_uuid() {
+	local id
+	id=$(blkid -p -s UUID -o value -- "$1") || die "无法获取 FAT 卷标识"
+	[[ "$id" =~ ^[A-Fa-f0-9]{4}-[A-Fa-f0-9]{4}$ ]] || die "FAT 卷标识格式错误"
+	printf '%s\n' "${id^^}"
+}
+
+reidentify_cloned_esp() {
+	local target_esp="$1" source_uuid="$2" try id
+	for try in 1 2 3; do
+		fatlabel --volume-id --reset "$target_esp" || die "无法生成目标 FAT 卷标识"
+		id=$(read_esp_uuid "$target_esp") || exit 1
+		if [[ "$id" != "$source_uuid" && "$id" != 0000-0000 ]]; then
+			printf '%s\n' "$id"
+			return
+		fi
+	done
+	die "目标 FAT 卷标识仍与 U 盘冲突"
+}
+# END LOCAL_ESP_IDENTITY
+
 # BEGIN ACTIVATE_RECEIVED_SUBVOLUMES
 activate_received_subvolumes() {
 	local top="$1" incoming_root="$2" incoming_home="$3" root_id
@@ -125,6 +169,9 @@ fi
 # Rebuilding GRUB cannot update an authenticated UKI root pointer once the
 # target Btrfs UUID changes. Do not let this path wipe a Secure Boot tablet.
 require_legacy_boot_mode /sys/firmware/efi
+require_install_tools
+require_local_esp_loader /boot
+source_boot_uuid=$(read_esp_uuid "$source_boot")
 
 source_bytes=$(blockdev --getsize64 "$source_root")
 target_bytes=$(blockdev --getsize64 "$target")
@@ -171,6 +218,8 @@ udevadm settle
 echo '[3/7] 写入已签名 EFI 启动分区'
 dd if="$source_boot" of="$target_boot" bs=16M conv=fsync status=progress
 fsck.fat -a "$target_boot"
+boot_uuid=$(reidentify_cloned_esp "$target_boot" "$source_boot_uuid")
+blockdev --flushbufs "$target_boot"
 
 echo '[4/7] 创建内部 Btrfs 系统分区'
 mkfs.btrfs -f -L rootfs "$target_root"
@@ -188,7 +237,8 @@ mkdir -p "$target_mnt/boot" "$target_mnt/home"
 mount "$target_boot" "$target_mnt/boot"
 mount -o compress=zstd:3,ssd,discard=async,subvol=@home "$target_root" "$target_mnt/home"
 root_uuid=$(blkid -s UUID -o value "$target_root")
-boot_uuid=$(blkid -s UUID -o value "$target_boot")
+[[ $(read_esp_uuid "$target_boot") == "$boot_uuid" ]] || die "目标 FAT 卷标识未持久化"
+require_local_esp_loader "$target_mnt/boot"
 cat > "$target_mnt/etc/fstab" <<EOF
 UUID=$root_uuid / btrfs rw,relatime,compress=zstd:3,ssd,discard=async,space_cache=v2,subvol=/@ 0 0
 UUID=$boot_uuid /boot vfat rw,relatime,fmask=0022,dmask=0022,codepage=437,iocharset=ascii,shortname=mixed,utf8,errors=remount-ro 0 2
