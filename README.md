@@ -64,6 +64,13 @@ Kernel upgrades now run a pre-transaction Secure Boot check. If Secure Boot is e
 DNX_flash-boot.bat
 ```
 
+## 7.2 镜像的本地播放
+
+新建 7.2 镜像的 mpv 默认使用 OpenGL 输出，仅尝试对 H.264 和 VP8 使用
+VA-API 硬解并回拷；不支持时仍可软解。这一组合在 Mi Pad 2 实机的隔离
+Wayland 会话中验证；它不会改 Brave，也不会覆盖已有的系统 mpv 配置。
+用户可以在 ~/.config/mpv/mpv.conf 或命令行覆盖这些默认值。
+
 ## 生成物
 
 ### Windows 一键刷机
