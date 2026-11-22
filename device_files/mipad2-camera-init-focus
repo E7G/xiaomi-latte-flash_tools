@@ -4,10 +4,23 @@ set -eu
 NVMEM=/sys/bus/nvmem/devices/mipad2-t4ka3-otp/nvmem
 STATE=/run/mipad2-camera-af.env
 
+# The boot oneshot retains the original readiness window. The desktop
+# wrapper only attempts the already-enumerated path.
+tries=120
+focus_tries=40
+case "$#:${1-}" in
+    0:) ;;
+    1:--no-wait)
+        tries=0
+        focus_tries=1
+        ;;
+    *) exit 64 ;;
+esac
+
 # T4KA3/AtomISP probe finishes a few seconds after multi-user.target on the
 # tablet. Wait only inside this oneshot helper; nothing remains resident.
 i=0
-while [ ! -r "$NVMEM" ] && [ "$i" -lt 120 ]; do
+while [ ! -r "$NVMEM" ] && [ "$i" -lt "$tries" ]; do
     sleep 0.25
     i=$((i + 1))
 done
@@ -37,7 +50,7 @@ macro=$(( $6 * 256 + $7 ))
 
 focusdev=
 i=0
-while [ -z "$focusdev" ] && [ "$i" -lt 40 ]; do
+while [ -z "$focusdev" ] && [ "$i" -lt "$focus_tries" ]; do
     for dev in /dev/v4l-subdev*; do
         [ -e "$dev" ] || continue
         if v4l2-ctl -d "$dev" --list-ctrls 2>/dev/null | grep -q 'focus_absolute'; then
@@ -45,18 +58,27 @@ while [ -z "$focusdev" ] && [ "$i" -lt 40 ]; do
             break
         fi
     done
-    [ -n "$focusdev" ] || sleep 0.25
     i=$((i + 1))
+    if [ -z "$focusdev" ] && [ "$i" -lt "$focus_tries" ]; then
+        sleep 0.25
+    fi
 done
 [ -n "$focusdev" ] || exit 6
 
 v4l2-ctl -d "$focusdev" --set-ctrl="focus_absolute=$inf" >/dev/null
 
-umask 022
-cat > "$STATE" <<EOF
+# Preserve the previous complete calibration if this optional run times
+# out or another launcher reads the state while it is being refreshed.
+staged=$(mktemp "${STATE}.XXXXXX")
+trap 'rm -f -- "$staged"' 0
+trap 'exit 1' HUP INT TERM
+cat > "$staged" <<EOF
 MIPAD2_AF_INFINITY=$inf
 MIPAD2_AF_MACRO=$macro
 MIPAD2_AF_DEVICE=$focusdev
 EOF
+chmod 0644 "$staged"
+mv -fT -- "$staged" "$STATE"
+trap - 0 HUP INT TERM
 
 printf 'Mi Pad 2 camera focus preset: infinity=%s macro=%s device=%s\n' "$inf" "$macro" "$focusdev"

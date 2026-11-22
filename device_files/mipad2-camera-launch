@@ -17,11 +17,12 @@ case "${1:-}" in
         ;;
 esac
 
-# Always restore this tablet's factory infinity preset before opening the
-# camera. The helper validates the rear-camera OTP AF group and writes a
-# non-persistent state file for the C autofocus helper.
+# At boot the oneshot can wait for the rear camera. An interactive launch
+# must not wait for a missing rear device (the front one can still work).
+# Preserve the infinity preset when already available, within a short bound.
 if command -v sudo >/dev/null 2>&1; then
-    sudo -n /usr/local/sbin/mipad2-camera-init-focus >/dev/null 2>&1 || true
+    timeout --kill-after=1s 2s sudo -n /usr/local/sbin/mipad2-camera-init-focus --no-wait \
+        >/dev/null 2>&1 || true
 fi
 
 # Normal launch stays immediate because GNOME Snapshot/PipeWire sees AtomISP as one camera node and may reopen the front V4L2 input regardless of a pre-launch rear-camera AF pass. Factory-range autofocus remains available through the explicit desktop actions; it runs before Snapshot opens AtomISP and leaves no daemon resident.
