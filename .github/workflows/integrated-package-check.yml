@@ -30,6 +30,7 @@ on:
       - tests/test_usb_install_secure_boot.py
       - tests/test_usb_install_btrfs_receive.py
       - tests/test_usb_install_btrfs_nested.py
+      - tests/test_usb_install_btrfs_stream.py
       - tests/test_usb_install_esp_identity.py
       - tests/test_usb_install_mount_source.py
       - tests/test_usb_image_snapshot_layout.py
@@ -65,6 +66,7 @@ jobs:
           python3 tests/test_usb_install_secure_boot.py
           python3 tests/test_usb_install_btrfs_receive.py
           python3 tests/test_usb_install_btrfs_nested.py
+          python3 tests/test_usb_install_btrfs_stream.py
           python3 tests/test_usb_install_esp_identity.py
           python3 tests/test_usb_install_mount_source.py
           python3 tests/test_usb_image_snapshot_layout.py
