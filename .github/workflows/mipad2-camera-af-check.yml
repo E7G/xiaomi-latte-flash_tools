@@ -2,12 +2,13 @@ name: Mi Pad 2 camera autofocus check
 
 on:
   pull_request:
-    branches: [arch_linux]
+    branches: [arch_linux, codex/mipad2-7.2-integrated]
     paths:
       - "device_files/mipad2-camera-af.c"
       - "device_files/mipad2-camera-launch"
       - "device_files/mipad2-camera-init-focus"
       - "device_files/mipad2-camera.desktop"
+      - "tests/test_camera_launcher.py"
       - ".github/workflows/mipad2-camera-af-check.yml"
   workflow_dispatch:
 
@@ -30,3 +31,4 @@ jobs:
         run: |
           sh -n device_files/mipad2-camera-launch
           sh -n device_files/mipad2-camera-init-focus
+          python3 tests/test_camera_launcher.py
