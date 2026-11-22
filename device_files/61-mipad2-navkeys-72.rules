@@ -1,0 +1,8 @@
+# Mi Pad 2 7.2: apply systemd's existing FTSC1000 board keymap to the
+# software-enumerated keyboard; leave any other kernel's keymap alone.
+ACTION!="remove", SUBSYSTEM=="input", KERNEL=="event[0-9]*", \
+  ATTRS{name}=="hid-over-i2c 2808:509C Keyboard", ATTRS{phys}=="i2c-FTSC1000", \
+  ATTR{[dmi/id]sys_vendor}=="Xiaomi Inc", ATTR{[dmi/id]product_name}=="Mipad2", \
+  PROGRAM=="/usr/bin/uname -r", RESULT=="7.2.[0-9]*-mipad2-*", \
+  IMPORT{builtin}="hwdb 'evdev:name:FTSC1000:00 2808:509C Keyboard:$attr{[dmi/id]modalias}'", \
+  IMPORT{builtin}="keyboard", ENV{MIPAD2_NAVKEYS_72}="1"
