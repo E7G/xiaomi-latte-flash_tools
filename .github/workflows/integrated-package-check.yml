@@ -22,6 +22,7 @@ on:
       - tests/test_kernel_artifact_handoff.py
       - tests/test_kernel_preflight.py
       - tests/test_kernel_support_staging.py
+      - tests/test_image_signing.py
       - tests/test_modern_kernel_handoff.py
       - .github/workflows/build-dnx.yml
       - .github/workflows/integrated-package-check.yml
@@ -47,6 +48,7 @@ jobs:
           sudo env PYTHONPATH="$PWD/scripts:$PWD/tests" python3 -m unittest \
             test_kernel_artifact_handoff test_modern_kernel_handoff test_kernel_support_staging
           python3 tests/test_kernel_preflight.py
+          python3 tests/test_image_signing.py
       # These unsigned fixtures validate format/error handling only. Real module
       # CMS, makepkg, pacman query and byte-preserving package qualification are
       # separate gates against an externally pinned completed kernel artifact.

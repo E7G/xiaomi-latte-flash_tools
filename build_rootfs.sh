@@ -73,6 +73,30 @@ if [[ "$KERNEL_ARTIFACT_REQUIRE_FORMAT" == verified-binary-repack ]]; then
 		--source-commit "$EXPECTED_KERNEL_SOURCE_COMMIT" --dry-run >/dev/null
 fi
 
+# An isolated candidate can be signed with its own trust root, rather than
+# requiring the repository's historical tablet certificate. Validate the pair
+# before loading NBD or creating any image, and never copy the private key.
+efi_key="${MIPAD2_EFI_SIGNING_KEY:-}"
+efi_cert="${MIPAD2_EFI_SIGNING_CERT:-}"
+if [[ -n "$efi_key" || -n "$efi_cert" ]]; then
+	[[ -n "$efi_key" && -n "$efi_cert" && -f "$efi_key" && -f "$efi_cert" ]] || {
+		echo 'Supply both EFI signing key and certificate files' >&2; exit 1;
+	}
+	efi_key="$(realpath -e -- "$efi_key")"
+	efi_cert="$(realpath -e -- "$efi_cert")"
+	if ! key_pub="$(openssl pkey -in "$efi_key" -passin pass: -pubout)" ||
+	   ! cert_pub="$(openssl x509 -in "$efi_cert" -pubkey -noout)" ||
+	   [[ -z "$key_pub" || "$key_pub" != "$cert_pub" ]] ||
+	   ! openssl x509 -in "$efi_cert" -noout -checkend 0 >/dev/null; then
+		echo 'EFI signing certificate does not match the readable key, or is expired' >&2
+		exit 1
+	fi
+fi
+
+if [[ $EUID -ne 0 ]]; then
+	echo 'This script must be run as root' >&2
+	exit 1
+fi
 if [[ ! -d /sys/module/nbd ]]; then
 	modprobe nbd max_part=8
 fi
@@ -81,12 +105,6 @@ rootfs_dev=/dev/nbd1
 mount_dir="$(realpath -m ./rootfs)"
 device_file="$(realpath -m ./device_files)"
 mkdir -p ./images /run/lock
-
-# 判断是否是root用户，如果不是则退出
-if [[ $EUID -ne 0 ]]; then
-   echo "This script must be run as root" 
-   exit 1
-fi
 
 # 判断文件夹是否存在，不存在则创建
 if [ ! -d $mount_dir ]; then
@@ -665,43 +683,37 @@ configfile \$prefix/grub.cfg
 EOF
 	install -Dm0644 "$mount_dir/boot/EFI/BOOT/grub.cfg" \
 		"$mount_dir/boot/EFI/arch/grub.cfg"
-	install -Dm0644 $device_file/MOK.cer $mount_dir/boot/
-	install -Dm0644 $device_file/MOK.crt $mount_dir/boot/EFI/
-	# Never ship the private signing key in the finished image. Keep it only
-	# in a root-only build staging directory and remove it immediately after
-	# signing. Do not use /run here: arch-chroot mounts its runtime /run over
-	# the target tree, which would hide a key staged at $mount_dir/run.
-	install -Dm0600 $device_file/MOK.key $mount_dir/root/.mipad2-build/MOK.key
-	rm -f $mount_dir/boot/EFI/MOK.key
+	if [[ -n "$efi_key" ]]; then
+		install -Dm0644 "$efi_cert" "$mount_dir/boot/EFI/MOK.crt"
+		openssl x509 -in "$efi_cert" -outform DER -out "$mount_dir/boot/MOK.cer"
+	else
+		efi_key="$device_file/MOK.key"
+		install -Dm0644 "$device_file/MOK.cer" "$mount_dir/boot/"
+		install -Dm0644 "$device_file/MOK.crt" "$mount_dir/boot/EFI/"
+	fi
 
-	# Mi Pad 2's USB fallback path is verified directly by its firmware.  Its
-	# factory db does not accept the third-party Microsoft UEFI CA used by shim,
-	# while this project's original MOK is already enrolled on the target tablet.
-	# Therefore BOOTX64.EFI itself must carry the original project signature.
+	# arch-chroot keeps stdin for the signing process. No private key is
+	# installed in the target filesystem, even if either signer fails.
 	run grub-mkstandalone --format=x86_64-efi \
 		--output=/boot/EFI/BOOT/grubx64.efi \
 		--modules="part_gpt fat btrfs search search_fs_uuid search_label test configfile normal linux" \
 		boot/grub/grub.cfg=/boot/EFI/BOOT/grub.cfg
-	echo 使用原项目 MOK 直接签名 U 盘入口、GRUB 和内核
-	run sbsign --key /root/.mipad2-build/MOK.key --cert /boot/EFI/MOK.crt \
-		--output /boot/EFI/BOOT/grubx64.efi.signed /boot/EFI/BOOT/grubx64.efi
+	run sbsign --key /dev/stdin --cert /boot/EFI/MOK.crt \
+		--output /boot/EFI/BOOT/grubx64.efi.signed /boot/EFI/BOOT/grubx64.efi < "$efi_key"
 	run mv /boot/EFI/BOOT/grubx64.efi.signed /boot/EFI/BOOT/grubx64.efi
 	run cp /boot/EFI/BOOT/grubx64.efi /boot/EFI/BOOT/BOOTX64.EFI
-	run sbsign --key /root/.mipad2-build/MOK.key --cert /boot/EFI/MOK.crt \
-		--output /boot/vmlinuz-$KERNEL_PKGBASE /boot/vmlinuz-$KERNEL_PKGBASE
-	run sbverify --list /boot/vmlinuz-$KERNEL_PKGBASE
-	run sbverify --list /boot/EFI/BOOT/BOOTX64.EFI
-	run sbverify --list /boot/EFI/BOOT/grubx64.efi
-	run sh -ec 'sbverify --list /boot/EFI/BOOT/BOOTX64.EFI 2>&1 | grep -F "my Machine Owner Key"'
-	run sh -ec 'sbverify --list /boot/EFI/BOOT/grubx64.efi 2>&1 | grep -F "my Machine Owner Key"'
-	run sh -ec 'sbverify --list /boot/vmlinuz-'$KERNEL_PKGBASE' 2>&1 | grep -F "my Machine Owner Key"'
-	run rm -f /root/.mipad2-build/MOK.key
-	rmdir "$mount_dir/root/.mipad2-build" 2>/dev/null || true
+	run sbsign --key /dev/stdin --cert /boot/EFI/MOK.crt \
+		--output "/boot/vmlinuz-$KERNEL_PKGBASE" "/boot/vmlinuz-$KERNEL_PKGBASE" < "$efi_key"
+	for efi_image in "/boot/vmlinuz-$KERNEL_PKGBASE" /boot/EFI/BOOT/BOOTX64.EFI /boot/EFI/BOOT/grubx64.efi; do
+		run sbverify --cert /boot/EFI/MOK.crt "$efi_image" || return 1
+	done
 	if [[ -e "$mount_dir/boot/EFI/MOK.key" || -e "$mount_dir/root/.mipad2-build/MOK.key" ]]; then
-		echo 'Refusing to ship private MOK key in image' >&2
+		echo 'Refusing to ship private signing material in image' >&2
 		return 1
 	fi
-	cmp $mount_dir/boot/EFI/BOOT/grubx64.efi $mount_dir/boot/EFI/BOOT/BOOTX64.EFI
+	boot_signature_hash="$(sha256sum < "$mount_dir/boot/EFI/BOOT/grubx64.efi")" || return 1
+	fallback_signature_hash="$(sha256sum < "$mount_dir/boot/EFI/BOOT/BOOTX64.EFI")" || return 1
+	[[ "$boot_signature_hash" == "$fallback_signature_hash" ]] || return 1
 	run grub-script-check /boot/EFI/BOOT/grub.cfg
 	run grub-script-check /boot/grub/grub.cfg
 }
