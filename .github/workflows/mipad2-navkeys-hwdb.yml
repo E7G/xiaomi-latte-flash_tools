@@ -1,17 +1,17 @@
-name: Mi Pad 2 navigation keys hwdb
+name: Mi Pad 2 navigation keys
 on:
   pull_request:
     branches: [codex/mipad2-7.2-integrated]
     paths:
       - build_rootfs.sh
-      - device_files/61-mipad2-navkeys.hwdb
+      - device_files/61-mipad2-navkeys-72.rules
       - tests/test_image_navkeys_hwdb.py
       - .github/workflows/mipad2-navkeys-hwdb.yml
   push:
     branches: [codex/mipad2-7.2-integrated]
     paths:
       - build_rootfs.sh
-      - device_files/61-mipad2-navkeys.hwdb
+      - device_files/61-mipad2-navkeys-72.rules
       - tests/test_image_navkeys_hwdb.py
       - .github/workflows/mipad2-navkeys-hwdb.yml
 permissions:
@@ -24,7 +24,7 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
-      - name: Test image staging with real systemd-hwdb
+      - name: Test image staging with real udevadm and systemd-hwdb
         run: |
           bash -n build_rootfs.sh
           python3 -B tests/test_image_navkeys_hwdb.py

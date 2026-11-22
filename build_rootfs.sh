@@ -363,7 +363,7 @@ config_packages() {
 	install -Dm0755 "${device_file}"/mipad2-kernel-preflight $mount_dir/usr/local/sbin/mipad2-kernel-preflight
 	install -Dm0644 "${device_file}"/kernel-preflight.hook $mount_dir/etc/pacman.d/hooks/
 	echo 更新 udev hwdb
-	install_mipad2_navkeys_hwdb
+	install_mipad2_navkeys_rule
 
 	echo 生成 fstab
 	boot_uuid=$(blkid -s UUID -o value "$boot_dev")
@@ -713,10 +713,10 @@ cleanup_rootfs() {
 	run sh -c 'rm -rf /var/cache/pacman/pkg/* /home/*/.cache/yay /tmp/*' || true
 }
 
-install_mipad2_navkeys_hwdb() {
+install_mipad2_navkeys_rule() {
 	if [[ "$kernel_release" =~ ^7\.2\.[0-9]+-mipad2- ]]; then
-		install -Dm0644 "$device_file/61-mipad2-navkeys.hwdb" \
-			"$mount_dir/usr/lib/udev/hwdb.d/61-mipad2-navkeys.hwdb"
+		install -Dm0644 "$device_file/61-mipad2-navkeys-72.rules" \
+			"$mount_dir/usr/lib/udev/rules.d/61-mipad2-navkeys-72.rules"
 		run systemd-hwdb --strict update
 	else
 		run udevadm hwdb --update
