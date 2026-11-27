@@ -387,14 +387,14 @@ class SourceBuild72GateTests(unittest.TestCase):
             self.assertEqual(q.returncode,0,q.stderr);self.assertEqual(q.stdout,'-r3')
         import yaml
         workflow=yaml.safe_load((REPO/'.github/workflows/build-dnx.yml').read_text())
-        self.assertEqual(workflow['env']['KERNEL_INTEGRATED_REVISION'],'3')
+        self.assertEqual(workflow['env']['KERNEL_INTEGRATED_REVISION'],'4')
         self.assertEqual(workflow['env']['EXPECTED_KERNEL_FAMILY'],'7.2')
 
     def test_manual_workflow_and_variable_expansion(self):
         text=(REPO/'.github/workflows/build-dnx.yml').read_text()
         self.assertIn('workflow_dispatch:',text)
         self.assertNotIn('  push:',text)
-        self.assertIn('KERNEL_REF: codex/mipad2-7.2-integrated',text)
+        self.assertIn('KERNEL_REF: codex/mipad2-72-r4-source',text)
         self.assertIn('grep -q "usr/share/doc/${pkgbase}/source-commit"',text)
         self.assertNotIn("grep -q 'usr/share/doc/${pkgbase}/source-commit'",text)
 

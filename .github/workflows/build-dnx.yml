@@ -1,12 +1,14 @@
 name: Build integrated 7.2 candidate DNX package
+run-name: Mi Pad 2 7.2 R4 USB and DNX replay
 
 on:
   workflow_dispatch:
     inputs:
       kernel_commit:
-        description: 'Published 7.2 integration commit (full 40-character SHA; candidate image)'
+        description: 'Qualified R4 kernel source SHA (the preview does not accept another kernel)'
         required: true
         type: string
+        default: dc91bb020245527cab80bae5cfc64c2b8079c9b2
 
 permissions:
   contents: read
@@ -17,9 +19,10 @@ concurrency:
 
 env:
   KERNEL_REPO: E7G/linux_latte
-  KERNEL_REF: codex/mipad2-7.2-integrated
+  KERNEL_REF: codex/mipad2-72-r4-source
+  KERNEL_SOURCE_SHA: dc91bb020245527cab80bae5cfc64c2b8079c9b2
   KERNEL_JOBS: '4'
-  KERNEL_INTEGRATED_REVISION: '3'
+  KERNEL_INTEGRATED_REVISION: '4'
   EXPECTED_KERNEL_FAMILY: '7.2'
   ROOTFS_SIZE: 8G
 
@@ -41,17 +44,14 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           commit="${REQUESTED_KERNEL_COMMIT}"
-          [[ "$commit" =~ ^[0-9a-f]{40}$ ]] || { echo "A full kernel SHA is required" >&2; exit 1; }
+          [[ "$commit" == "$KERNEL_SOURCE_SHA" ]] || { echo 'Expected the qualified R4 kernel SHA' >&2; exit 1; }
           ghapi() {
             curl --fail --silent --show-error --location \
               -H 'Accept: application/vnd.github+json' \
               -H "Authorization: Bearer $GH_TOKEN" "https://api.github.com/repos/$KERNEL_REPO/$1"
           }
           tip="$(ghapi "git/ref/heads/$KERNEL_REF" | jq -er '.object.sha | select(test("^[0-9a-f]{40}$"))')"
-          comparison="$(ghapi "compare/$commit...$tip?per_page=1")"
-          jq -e --arg commit "$commit" \
-            '(.status == "ahead" or .status == "identical") and .merge_base_commit.sha == $commit' \
-            <<< "$comparison" >/dev/null || { echo 'Source is not published on the integration branch' >&2; exit 1; }
+          [[ "$tip" == "$commit" ]] || { echo 'Published R4 source ref does not match the pin' >&2; exit 1; }
           commit_date="$(ghapi "commits/$commit" | jq -er --arg commit "$commit" 'select(.sha == $commit) | .commit.committer.date')"
           test -n "$commit_date"
           source_date_epoch="$(date -u -d "$commit_date" +%s)"
@@ -68,18 +68,11 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y python3-yaml zstd
-          PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover \
-            -s tests -p test_kernel_artifact_handoff.py -v
-
-      - name: Restore kernel package cache
-        id: kernel-cache
-        uses: actions/cache/restore@v4
-        with:
-          path: kernel-output
-          key: latte-kernel-${{ runner.os }}-${{ steps.kernel-source.outputs.commit }}-${{ hashFiles('scripts/build_kernel_package.sh', 'scripts/stage_kernel_support.py', 'scripts/resolve_kernel_artifact.py', 'scripts/preflight_integrated_kernel_package.py') }}
+          env -u KERNEL_REPO -u KERNEL_REF -u KERNEL_INTEGRATED_REVISION -u EXPECTED_KERNEL_FAMILY \
+            PYTHONPATH="$PWD/scripts:$PWD/tests" PYTHONDONTWRITEBYTECODE=1 \
+            python3 -m unittest discover -s tests -v
 
       - name: Build optimized linux_latte package
-        if: steps.kernel-cache.outputs.cache-hit != 'true'
         env:
           KERNEL_COMMIT: ${{ steps.kernel-source.outputs.commit }}
           SOURCE_DATE_EPOCH: ${{ steps.kernel-source.outputs.source_date_epoch }}
@@ -89,13 +82,6 @@ jobs:
             -v "$PWD:/workspace" -w /workspace \
             archlinux:base-devel \
             bash ./scripts/build_kernel_package.sh
-
-      - name: Save kernel package cache
-        if: steps.kernel-cache.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v4
-        with:
-          path: kernel-output
-          key: ${{ steps.kernel-cache.outputs.cache-primary-key }}
 
       - name: Verify kernel package
         id: kernel-artifact
@@ -149,7 +135,7 @@ jobs:
             kernel-output/kernel-artifact.json
           if-no-files-found: error
           compression-level: 0
-          retention-days: 1
+          retention-days: 30
 
   dnx:
     needs: kernel
@@ -185,17 +171,39 @@ jobs:
           sudo modprobe nbd max_part=8
           ls -l /dev/nbd0 /dev/nbd1
 
+      - name: Generate an isolated preview Secure Boot test identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          mkdir "$RUNNER_TEMP/preview-signing"
+          openssl req -x509 -newkey rsa:2048 -nodes -sha256 -days 365 \
+            -subj "/CN=Mi Pad 2 Actions preview ${GITHUB_RUN_ID}/" \
+            -keyout "$RUNNER_TEMP/preview-signing/preview.key" \
+            -out "$RUNNER_TEMP/preview-signing/preview.crt"
+
       - name: Build rootfs and one-click package
         env:
           EXPECTED_KERNEL_SOURCE_COMMIT: ${{ needs.kernel.outputs.source_commit }}
           EXPECTED_KERNEL_SHA256: ${{ needs.kernel.outputs.sha256 }}
         run: |
+          set -euo pipefail
+          docker pull archlinux:base-devel
+          image="$(docker image inspect --format '{{index .RepoDigests 0}}' archlinux:base-devel)"
+          printf '%s\n' "$image" > "$RUNNER_TEMP/arch-builder-image.txt"
           docker run --rm --privileged \
             -e ROOTFS_SIZE -e GITHUB_RUN_NUMBER \
             -e EXPECTED_KERNEL_SOURCE_COMMIT -e EXPECTED_KERNEL_SHA256 -e EXPECTED_KERNEL_FAMILY \
+            -e MIPAD2_EFI_SIGNING_KEY=/run/preview-signing/preview.key \
+            -e MIPAD2_EFI_SIGNING_CERT=/run/preview-signing/preview.crt \
+            --mount "type=bind,source=$RUNNER_TEMP/preview-signing,target=/run/preview-signing,readonly" \
             -v "$PWD:/workspace" -w /workspace \
-            archlinux:base-devel \
-            bash -lc 'pacman -Sy --noconfirm arch-install-scripts btrfs-progs dosfstools gptfdisk qemu-img python xz zstd && bash ./scripts/build_dnx_package.sh'
+            "$image" \
+            bash -lc 'pacman -Syu --noconfirm --needed arch-install-scripts btrfs-progs dosfstools gptfdisk qemu-img python xz zstd && bash ./scripts/build_dnx_package.sh'
+
+      - name: Remove the runner-only signing key
+        if: always()
+        run: rm -f -- "$RUNNER_TEMP/preview-signing/preview.key"
 
       - name: Verify generated packages
         run: |
@@ -226,8 +234,7 @@ jobs:
           cd dist
           sha256sum -c *.sha256
           xz -t *.img.xz
-          test "$(openssl x509 -in ../device_files/MOK.crt -noout -fingerprint -sha256 | tr -d ':' | cut -d= -f2)" = '9C8AF8E2C75D0B5D7887A2F70EEA56F8CEA9F4FE8B3AF1070CCC74408B811DF1'
-          echo '9c8af8e2c75d0b5d7887a2f70eea56f8cea9f4fe8b3af1070ccc74408b811df1  ../device_files/MOK.cer' | sha256sum -c -
+          test -s "$RUNNER_TEMP/preview-signing/preview.crt"
           echo 'af677ea5fb0ff1e70b34d18118a55b7dad70325c8d3920000b58427ae22a7c3d  ../device_files/fastboot.efi' | sha256sum -c -
           ls -lh *
           cd ../work/dnx-package
@@ -248,6 +255,8 @@ jobs:
       - name: Verify boot image layout
         run: |
           set -Eeuxo pipefail
+          sudo apt-get update
+          sudo apt-get install -y sbsigntool
           esp="$(mktemp -d)"
           rootfs="$(mktemp -d)"
           cleanup() {
@@ -260,6 +269,10 @@ jobs:
           trap cleanup EXIT
           sudo mount -o loop,ro work/dnx-package/images/xiaomi-latte-boot.img "$esp"
           test -s "$esp/EFI/BOOT/BOOTX64.EFI"
+          cert="$RUNNER_TEMP/preview-signing/preview.crt"
+          cmp "$cert" "$esp/EFI/MOK.crt"
+          sbverify --cert "$cert" "$esp/EFI/BOOT/BOOTX64.EFI"
+          sbverify --cert "$cert" "$esp/vmlinuz-linux-latte-integrated-7-2"
           test -s "$esp/EFI/BOOT/grubx64.efi"
           test -s "$esp/EFI/BOOT/grub.cfg"
           test "$(cat "$esp/EFI/BOOT/mipad2-esp-local-v1.sha256")" = \
@@ -290,7 +303,19 @@ jobs:
           test ! -e "$rootfs/etc/systemd/system/mipad2-navkeys.service"
           test ! -L "$rootfs/etc/systemd/system/multi-user.target.wants/mipad2-navkeys.service"
           kernel_release="$(find "$rootfs/usr/lib/modules" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | head -n1)"
-          test -n "$kernel_release"
+          test "$kernel_release" = '7.2.15-mipad2-integrated-r4'
+          sudo grep -Fxq 'hwdec=auto-copy' "$rootfs/etc/mpv/mpv.conf"
+          sudo grep -Fxq 'hwdec-codecs=h264,vp8' "$rootfs/etc/mpv/mpv.conf"
+          cmp device_files/mipad2-install-to-emmc "$rootfs/usr/local/sbin/mipad2-install-to-emmc"
+          cmp device_files/mipad2-camera-launch "$rootfs/usr/local/bin/mipad2-camera-launch"
+          mkdir -p "$RUNNER_TEMP/replay-receipt"
+          cp "$RUNNER_TEMP/arch-builder-image.txt" "$RUNNER_TEMP/replay-receipt/"
+          cp kernel-output/kernel-artifact.json "$RUNNER_TEMP/replay-receipt/"
+          cp "$cert" "$RUNNER_TEMP/replay-receipt/preview-signing-public.crt"
+          printf '%s\n' "$GITHUB_SHA" > "$RUNNER_TEMP/replay-receipt/flash-source-commit.txt"
+          sudo chroot "$rootfs" pacman -Q | LC_ALL=C sort > "$RUNNER_TEMP/replay-receipt/rootfs-packages.txt"
+          sha256sum work/platform-tools-windows.zip > "$RUNNER_TEMP/replay-receipt/platform-tools.sha256"
+          cp dist/*.img.xz.sha256 "$RUNNER_TEMP/replay-receipt/"
           if [[ "$kernel_release" =~ ^7\.2\.[0-9]+-mipad2- ]]; then
             rule=/usr/lib/udev/rules.d/61-mipad2-navkeys-72.rules
             test -s "$rootfs$rule"
@@ -358,6 +383,14 @@ jobs:
             $errors | ForEach-Object { Write-Error $_ }
             exit 1
           }
+
+      - name: Upload nonsecret replay inputs and receipt
+        uses: actions/upload-artifact@v4
+        with:
+          name: mipad2-72-r4-replay-receipt
+          path: ${{ runner.temp }}/replay-receipt/
+          if-no-files-found: error
+          retention-days: 90
 
       - name: Upload one-click USB installer image
         uses: actions/upload-artifact@v4

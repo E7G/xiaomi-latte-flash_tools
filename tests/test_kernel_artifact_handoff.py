@@ -261,7 +261,14 @@ class ArtifactTests(unittest.TestCase):
         self.assertIn('--require-family "$EXPECTED_KERNEL_FAMILY"',steps[guard]['run'])
         self.assertIn('-e EXPECTED_KERNEL_FAMILY',build['run'])
         source=next(x for x in jobs['kernel']['steps'] if x.get('id')=='kernel-source')
-        self.assertIn('.merge_base_commit.sha == $commit',source['run'])
+        pin = workflow['env']['KERNEL_SOURCE_SHA']
+        self.assertEqual(pin, 'dc91bb020245527cab80bae5cfc64c2b8079c9b2')
+        self.assertEqual(workflow.get('on', workflow.get(True))['workflow_dispatch']['inputs']['kernel_commit']['default'], pin)
+        self.assertIn('[[ "$commit" == "$KERNEL_SOURCE_SHA" ]]', source['run'])
+        self.assertIn('[[ "$tip" == "$commit" ]]', source['run'])
+        self.assertFalse(any('actions/cache' in step.get('uses', '') for step in jobs['kernel']['steps']))
+        self.assertIn('MIPAD2_EFI_SIGNING_KEY=/run/preview-signing/preview.key', build['run'])
+        self.assertIn('target=/run/preview-signing,readonly', build['run'])
         for step in [steps[guard],build]:
             self.assertEqual(step['env']['EXPECTED_KERNEL_SHA256'],'${{ needs.kernel.outputs.sha256 }}')
             self.assertEqual(step['env']['EXPECTED_KERNEL_SOURCE_COMMIT'],'${{ needs.kernel.outputs.source_commit }}')
