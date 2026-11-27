@@ -44,7 +44,7 @@ and exact branch are separate from the kernel and flash image:
 
 ```bash
 gh workflow run mipad2-quicktile-desktop-build.yml -R E7G/linux_latte \
-  --ref codex/ci-quicktile-screenshot-ff56879
+  --ref codex/mipad2-72-denial-replay
 ```
 
 The tablet's Snapshot 15 fps display preview uses the
