@@ -34,3 +34,24 @@ new EFI test identity and the rolling Arch repositories and Android Platform-Too
 distribution. The preview certificate is not the key enrolled on a physical
 tablet and no signing private keys or physical-device files are needed or uploaded.
 This workflow does not flash hardware or reproduce a user's installed desktop data.
+
+## Physical desktop and camera
+
+The GNOME preview is not the tablet's Denial session. The deployed Denial
+QuickTile source is pinned to `ff56879745b9c8c4e1c07e1934ef627c00ffdacd`.
+Its [verified cloud build](https://github.com/E7G/linux_latte/actions/runs/44244515448)
+and exact branch are separate from the kernel and flash image:
+
+```bash
+gh workflow run mipad2-quicktile-desktop-build.yml -R E7G/linux_latte \
+  --ref codex/ci-quicktile-screenshot-ff56879
+```
+
+The tablet's Snapshot 15 fps display preview uses the
+[separate Snapshot replay workflow](https://github.com/E7G/snapshot/blob/codex/mipad2-72-snapshot-replay/docs/MIPAD2-72-REPLAY.md).
+It pins the local installation recipe; scaling, extra buffers and direct NV12
+are separate experiments, not active image defaults.
+
+Do not erase signing/trust backups, local hardware-test evidence, rollback
+media, or the tablet's per-user configuration on the assumption that these
+builds recreate them. This procedure only replaces the listed build inputs.
