@@ -1,0 +1,76 @@
+name: Boot exact 7.2.15 R32 USB preview to userspace
+
+on:
+  push:
+    branches: [codex/mipad2-72-qualified-image-preview]
+    paths:
+      - '.github/workflows/mipad2-72-r32-usb-rootfs-vm.yml'
+      - 'scripts/boot_r32_usb_preview_vm.sh'
+      - 'scripts/instrument_r32_usb_menu.py'
+      - 'tests/test_r32_usb_vm_menu.py'
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: read
+
+env:
+  INPUT_RUN: '46117291288'
+  INPUT_COMMIT: 12917a10afa37dbb9e041f7d8316cf008a4f15e5
+  USB_XZ_SHA256: '13fb799feb7e7ea1827511a71c8b088a6514b592463c339543145433169d9c3a'
+
+jobs:
+  usb-rootfs:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Verify the exact successful USB publish step
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          [[ "$USB_XZ_SHA256" =~ ^[a-f0-9]{64}$ ]]
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$INPUT_RUN" |
+            jq -e --arg sha "$INPUT_COMMIT" '
+              .head_sha == $sha and .path == ".github/workflows/build-dnx.yml"'
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$INPUT_RUN/jobs" |
+            jq -e '[.jobs[] | select(.name == "dnx") |
+              .steps[] | select(.name == "Upload one-click USB installer image" and
+              .status == "completed" and .conclusion == "success")] | length == 1'
+      - name: Install isolated EFI boot-test tools
+        run: |
+          apt_sources=(-o Dir::Etc::sourcelist=/etc/apt/sources.list.d/ubuntu.sources -o Dir::Etc::sourceparts=-)
+          sudo apt-get "${apt_sources[@]}" update
+          sudo apt-get "${apt_sources[@]}" install -y --no-install-recommends \
+            qemu-system-x86 ovmf gdisk mtools grub-common xz-utils
+          df -h "$RUNNER_TEMP"
+          python3 -B tests/test_r32_usb_vm_menu.py
+      - uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ github.token }}
+          run-id: ${{ env.INPUT_RUN }}
+          name: mipad2-7215-usb-preview-not-for-production
+          path: ${{ runner.temp }}/usb-input
+      - name: Boot one disposable copy with no real eMMC or network
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          images=("$RUNNER_TEMP/usb-input/"*.img.xz)
+          test "${#images[@]}" -eq 1
+          image=${images[0]}
+          grep -Fxq "$USB_XZ_SHA256  $(basename "$image")" "$image.sha256"
+          mkdir "$RUNNER_TEMP/usb-proof"
+          bash scripts/boot_r32_usb_preview_vm.sh "$image" "$USB_XZ_SHA256" "$RUNNER_TEMP/usb-proof"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: mipad2-7215-usb-rootfs-vm-receipt
+          path: |
+            ${{ runner.temp }}/usb-proof/*.txt
+            ${{ runner.temp }}/usb-proof/*.log
+            ${{ runner.temp }}/usb-proof/exit-status
+          if-no-files-found: warn
+          retention-days: 30
