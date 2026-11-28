@@ -152,3 +152,12 @@ versions and rollback after simulated failure of the second write.
 passed the immutable R32 package handoff with compilation skipped. Its
 rootfs/USB/DNX rebuild is a separate in-progress qualification. No
 physical device configuration was changed.
+
+The rebuilt image run's read-only chroot verification passed after mounting
+its actual rootfs: `Mi Pad 2 compact GNOME OSK verified`. The receipt confirms
+GNOME Shell 51.1, the unchanged R32 package bytes and pinned Windows
+Platform-Tools 37.0.3. The new USB XZ SHA-256 is
+`c6f06a54c2d3482de4b671f37e64eb5a41648addb5b299586410f0332ddc5c88`.
+Its independent EFI-to-console boot uses that digest; the previous
+USB artifact has separate historical boot evidence. Installed resources
+are verified, but graphical touch interaction is not yet qualified.
