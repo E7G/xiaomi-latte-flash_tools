@@ -376,7 +376,7 @@ class SourceBuild72GateTests(unittest.TestCase):
                         f'CONFIG_LOCALVERSION="-mipad2-integrated"|7.2.{sub}-mipad2-integrated-r{revision}')
                 if ok and major==6:self.assertIn('linux-latte-cachyos||',q.stdout)
 
-    def test_default_revision_matches_r3_candidate_workflow(self):
+    def test_local_default_and_separate_qualified_image_revision(self):
         text=(REPO/'scripts/build_kernel_package.sh').read_text()
         a=text.index('# Accept only the two explicitly integrated kernel families')
         b=text.index('python "${repo_root}/scripts/stage_kernel_support.py"',a)
@@ -387,14 +387,15 @@ class SourceBuild72GateTests(unittest.TestCase):
             self.assertEqual(q.returncode,0,q.stderr);self.assertEqual(q.stdout,'-r3')
         import yaml
         workflow=yaml.safe_load((REPO/'.github/workflows/build-dnx.yml').read_text())
-        self.assertEqual(workflow['env']['KERNEL_INTEGRATED_REVISION'],'4')
+        self.assertEqual(workflow['env']['KERNEL_INTEGRATED_REVISION'],'32')
         self.assertEqual(workflow['env']['EXPECTED_KERNEL_FAMILY'],'7.2')
+        self.assertEqual(workflow['env']['KERNEL_RELEASE_PIN'],'7.2.15-mipad2-integrated-r32')
 
     def test_manual_workflow_and_variable_expansion(self):
         text=(REPO/'.github/workflows/build-dnx.yml').read_text()
         self.assertIn('workflow_dispatch:',text)
         self.assertNotIn('  push:',text)
-        self.assertIn('KERNEL_REF: codex/mipad2-72-r4-source',text)
+        self.assertIn('KERNEL_REF: codex/mipad2-72-hardware-qualification',text)
         self.assertIn('grep -q "usr/share/doc/${pkgbase}/source-commit"',text)
         self.assertNotIn("grep -q 'usr/share/doc/${pkgbase}/source-commit'",text)
 

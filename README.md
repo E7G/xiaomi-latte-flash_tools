@@ -1,3 +1,5 @@
+> **7.2.15 独立预览**：[GitHub 构建与验收范围](kernel/QUALIFIED_SOURCE_PREVIEW_7_2.md)。以下旧版刷机说明不等同于此预览的实机验收。
+
 # 小米平板 2 CachyOS 一键刷机包
 
 面向 Xiaomi Mi Pad 2（`latte`）的 CachyOS/Arch Linux 镜像。当前默认桌面为针对平板优化的

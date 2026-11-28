@@ -1,14 +1,14 @@
-name: Build integrated 7.2 candidate DNX package
-run-name: Mi Pad 2 7.2 R4 USB and DNX replay
+name: Build Mi Pad 2 7.2.15 qualification image preview
+run-name: Mi Pad 2 7.2.15 qualified-source USB and DNX preview
 
 on:
   workflow_dispatch:
     inputs:
       kernel_commit:
-        description: 'Qualified R4 kernel source SHA (the preview does not accept another kernel)'
+        description: 'Exact 7.2.15 source verified on the tablet (the preview rejects other SHAs)'
         required: true
         type: string
-        default: dc91bb020245527cab80bae5cfc64c2b8079c9b2
+        default: 603f99209cba3fc41e697890f980f68873f94c52
 
 permissions:
   contents: read
@@ -19,10 +19,13 @@ concurrency:
 
 env:
   KERNEL_REPO: E7G/linux_latte
-  KERNEL_REF: codex/mipad2-72-r4-source
-  KERNEL_SOURCE_SHA: dc91bb020245527cab80bae5cfc64c2b8079c9b2
+  KERNEL_REF: codex/mipad2-72-hardware-qualification
+  KERNEL_SOURCE_SHA: 603f99209cba3fc41e697890f980f68873f94c52
   KERNEL_JOBS: '4'
-  KERNEL_INTEGRATED_REVISION: '4'
+  KERNEL_INTEGRATED_REVISION: '32'
+  KERNEL_RELEASE_PIN: 7.2.15-mipad2-integrated-r32
+  ARCH_BUILD_IMAGE: docker.io/library/archlinux:base-devel-20261122.0.629543@sha256:949ecb1661609ab7e8f6854ba03efd62792e7a796313738e94b040c095c20d91
+  ARCH_KERNEL_ARCHIVE: '2026/11/25'
   EXPECTED_KERNEL_FAMILY: '7.2'
   ROOTFS_SIZE: 8G
 
@@ -35,6 +38,8 @@ jobs:
       source_commit: ${{ steps.kernel-artifact.outputs.source_commit }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - name: Resolve pinned integration kernel commit
         id: kernel-source
@@ -44,14 +49,13 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           commit="${REQUESTED_KERNEL_COMMIT}"
-          [[ "$commit" == "$KERNEL_SOURCE_SHA" ]] || { echo 'Expected the qualified R4 kernel SHA' >&2; exit 1; }
+          [[ "$commit" == "$KERNEL_SOURCE_SHA" ]] || { echo 'Expected the physically verified 7.2.15 source SHA' >&2; exit 1; }
           ghapi() {
             curl --fail --silent --show-error --location \
               -H 'Accept: application/vnd.github+json' \
               -H "Authorization: Bearer $GH_TOKEN" "https://api.github.com/repos/$KERNEL_REPO/$1"
           }
-          tip="$(ghapi "git/ref/heads/$KERNEL_REF" | jq -er '.object.sha | select(test("^[0-9a-f]{40}$"))')"
-          [[ "$tip" == "$commit" ]] || { echo 'Published R4 source ref does not match the pin' >&2; exit 1; }
+          # The immutable SHA, not today's branch tip, is the build input.
           commit_date="$(ghapi "commits/$commit" | jq -er --arg commit "$commit" 'select(.sha == $commit) | .commit.committer.date')"
           test -n "$commit_date"
           source_date_epoch="$(date -u -d "$commit_date" +%s)"
@@ -72,16 +76,24 @@ jobs:
             PYTHONPATH="$PWD/scripts:$PWD/tests" PYTHONDONTWRITEBYTECODE=1 \
             python3 -m unittest discover -s tests -v
 
-      - name: Build optimized linux_latte package
+      - name: Build optimized linux_latte package with the pinned Arch SDK
         env:
           KERNEL_COMMIT: ${{ steps.kernel-source.outputs.commit }}
           SOURCE_DATE_EPOCH: ${{ steps.kernel-source.outputs.source_date_epoch }}
         run: |
-          docker run --rm \
-            -e KERNEL_REPO -e KERNEL_REF -e KERNEL_COMMIT -e KERNEL_JOBS -e KERNEL_INTEGRATED_REVISION -e SOURCE_DATE_EPOCH -e EXPECTED_KERNEL_FAMILY \
+          set -euo pipefail
+          docker run --rm --platform linux/amd64 \
+            -e KERNEL_REPO -e KERNEL_REF -e KERNEL_COMMIT -e KERNEL_JOBS -e KERNEL_INTEGRATED_REVISION \
+            -e SOURCE_DATE_EPOCH -e EXPECTED_KERNEL_FAMILY -e ARCH_KERNEL_ARCHIVE -e ARCH_BUILD_IMAGE \
             -v "$PWD:/workspace" -w /workspace \
-            archlinux:base-devel \
-            bash ./scripts/build_kernel_package.sh
+            "$ARCH_BUILD_IMAGE" bash -euo pipefail -c '
+              printf "Server = https://archive.archlinux.org/repos/%s/\$repo/os/\$arch\n" "$ARCH_KERNEL_ARCHIVE" > /etc/pacman.d/mirrorlist
+              pacman-key --init
+              pacman-key --populate archlinux
+              bash ./scripts/build_kernel_package.sh
+              pacman -Q | LC_ALL=C sort > kernel-output/kernel-sdk-packages.txt
+              printf "image=%s\narchive=%s\n" "$ARCH_BUILD_IMAGE" "$ARCH_KERNEL_ARCHIVE" > kernel-output/kernel-sdk-pins.txt
+            '
 
       - name: Verify kernel package
         id: kernel-artifact
@@ -97,6 +109,10 @@ jobs:
             --github-output "$GITHUB_OUTPUT"
           cd kernel-output
           sha256sum -c *.pkg.tar.zst.sha256
+          test "$(jq -r .kernelrelease kernel-artifact.json)" = "$KERNEL_RELEASE_PIN"
+          test -s kernel-sdk-packages.txt
+          grep -Fxq "image=$ARCH_BUILD_IMAGE" kernel-sdk-pins.txt
+          grep -Fxq "archive=$ARCH_KERNEL_ARCHIVE" kernel-sdk-pins.txt
           contents="${RUNNER_TEMP}/latte-kernel-package-contents.txt"
           package="$(python3 -c 'import json; print(json.load(open("kernel-artifact.json"))["filename"])')"
           test -n "$package"
@@ -133,6 +149,8 @@ jobs:
             kernel-output/*.pkg.tar.zst
             kernel-output/*.pkg.tar.zst.sha256
             kernel-output/kernel-artifact.json
+            kernel-output/kernel-sdk-packages.txt
+            kernel-output/kernel-sdk-pins.txt
           if-no-files-found: error
           compression-level: 0
           retention-days: 30
@@ -143,6 +161,8 @@ jobs:
     timeout-minutes: 240
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - name: Free runner disk space
         run: |
@@ -188,17 +208,16 @@ jobs:
           EXPECTED_KERNEL_SHA256: ${{ needs.kernel.outputs.sha256 }}
         run: |
           set -euo pipefail
-          docker pull archlinux:base-devel
-          image="$(docker image inspect --format '{{index .RepoDigests 0}}' archlinux:base-devel)"
-          printf '%s\n' "$image" > "$RUNNER_TEMP/arch-builder-image.txt"
-          docker run --rm --privileged \
+          docker pull --platform linux/amd64 "$ARCH_BUILD_IMAGE"
+          printf '%s\n' "$ARCH_BUILD_IMAGE" > "$RUNNER_TEMP/arch-builder-image.txt"
+          docker run --rm --platform linux/amd64 --privileged \
             -e ROOTFS_SIZE -e GITHUB_RUN_NUMBER \
             -e EXPECTED_KERNEL_SOURCE_COMMIT -e EXPECTED_KERNEL_SHA256 -e EXPECTED_KERNEL_FAMILY \
             -e MIPAD2_EFI_SIGNING_KEY=/run/preview-signing/preview.key \
             -e MIPAD2_EFI_SIGNING_CERT=/run/preview-signing/preview.crt \
             --mount "type=bind,source=$RUNNER_TEMP/preview-signing,target=/run/preview-signing,readonly" \
             -v "$PWD:/workspace" -w /workspace \
-            "$image" \
+            "$ARCH_BUILD_IMAGE" \
             bash -lc 'pacman -Syu --noconfirm --needed arch-install-scripts btrfs-progs dosfstools gptfdisk qemu-img python xz zstd && bash ./scripts/build_dnx_package.sh'
 
       - name: Remove the runner-only signing key
@@ -302,8 +321,13 @@ jobs:
           test ! -e "$rootfs/usr/local/libexec/mipad2-navkeys.py"
           test ! -e "$rootfs/etc/systemd/system/mipad2-navkeys.service"
           test ! -L "$rootfs/etc/systemd/system/multi-user.target.wants/mipad2-navkeys.service"
-          kernel_release="$(find "$rootfs/usr/lib/modules" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | head -n1)"
-          test "$kernel_release" = '7.2.15-mipad2-integrated-r4'
+          mapfile -t installed_releases < <(find "$rootfs/usr/lib/modules" -mindepth 1 -maxdepth 1 -type d -printf '%f\n')
+          test "${#installed_releases[@]}" = 1
+          kernel_release="${installed_releases[0]}"
+          test "$kernel_release" = "$KERNEL_RELEASE_PIN"
+          doc="$rootfs/usr/share/doc/linux-latte-integrated-7-2"
+          test "$(cat "$doc/source-commit")" = "$KERNEL_SOURCE_SHA"
+          test "$(cat "$doc/kernel-release")" = "$KERNEL_RELEASE_PIN"
           sudo grep -Fxq 'hwdec=auto-copy' "$rootfs/etc/mpv/mpv.conf"
           sudo grep -Fxq 'hwdec-codecs=h264,vp8' "$rootfs/etc/mpv/mpv.conf"
           cmp device_files/mipad2-install-to-emmc "$rootfs/usr/local/sbin/mipad2-install-to-emmc"
@@ -311,6 +335,7 @@ jobs:
           mkdir -p "$RUNNER_TEMP/replay-receipt"
           cp "$RUNNER_TEMP/arch-builder-image.txt" "$RUNNER_TEMP/replay-receipt/"
           cp kernel-output/kernel-artifact.json "$RUNNER_TEMP/replay-receipt/"
+          cp kernel-output/kernel-sdk-{packages,pins}.txt "$RUNNER_TEMP/replay-receipt/"
           cp "$cert" "$RUNNER_TEMP/replay-receipt/preview-signing-public.crt"
           printf '%s\n' "$GITHUB_SHA" > "$RUNNER_TEMP/replay-receipt/flash-source-commit.txt"
           sudo chroot "$rootfs" pacman -Q | LC_ALL=C sort > "$RUNNER_TEMP/replay-receipt/rootfs-packages.txt"
@@ -387,7 +412,7 @@ jobs:
       - name: Upload nonsecret replay inputs and receipt
         uses: actions/upload-artifact@v4
         with:
-          name: mipad2-72-r4-replay-receipt
+          name: mipad2-7215-qualified-source-preview-receipt
           path: ${{ runner.temp }}/replay-receipt/
           if-no-files-found: error
           retention-days: 90
@@ -395,7 +420,7 @@ jobs:
       - name: Upload one-click USB installer image
         uses: actions/upload-artifact@v4
         with:
-          name: xiaomi-latte-cachyos-usb-imgxz
+          name: mipad2-7215-usb-preview-not-for-production
           path: |
             dist/*.img.xz
             dist/*.img.xz.sha256
@@ -406,7 +431,7 @@ jobs:
       - name: Upload ready-to-run one-click flash package
         uses: actions/upload-artifact@v4
         with:
-          name: xiaomi-latte-cachyos-one-click
+          name: mipad2-7215-dnx-preview-not-for-production
           path: work/dnx-package/
           if-no-files-found: error
           compression-level: 6

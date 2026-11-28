@@ -262,10 +262,18 @@ class ArtifactTests(unittest.TestCase):
         self.assertIn('-e EXPECTED_KERNEL_FAMILY',build['run'])
         source=next(x for x in jobs['kernel']['steps'] if x.get('id')=='kernel-source')
         pin = workflow['env']['KERNEL_SOURCE_SHA']
-        self.assertEqual(pin, 'dc91bb020245527cab80bae5cfc64c2b8079c9b2')
+        self.assertEqual(pin, '603f99209cba3fc41e697890f980f68873f94c52')
         self.assertEqual(workflow.get('on', workflow.get(True))['workflow_dispatch']['inputs']['kernel_commit']['default'], pin)
         self.assertIn('[[ "$commit" == "$KERNEL_SOURCE_SHA" ]]', source['run'])
-        self.assertIn('[[ "$tip" == "$commit" ]]', source['run'])
+        self.assertIn('ghapi "commits/$commit"', source['run'])
+        self.assertNotIn('git/ref/heads/', source['run'])
+        sdk=next(x for x in jobs['kernel']['steps'] if 'pinned Arch SDK' in x.get('name',''))
+        self.assertRegex(workflow['env']['ARCH_BUILD_IMAGE'], r'@sha256:[0-9a-f]{64}$')
+        self.assertEqual(workflow['env']['ARCH_KERNEL_ARCHIVE'], '2026/11/25')
+        self.assertIn('-e ARCH_KERNEL_ARCHIVE', sdk['run'])
+        self.assertIn('archive.archlinux.org/repos/%s/', sdk['run'])
+        self.assertIn('"$ARCH_BUILD_IMAGE"', sdk['run'])
+        self.assertIn('kernel-output/kernel-sdk-packages.txt', sdk['run'])
         self.assertFalse(any('actions/cache' in step.get('uses', '') for step in jobs['kernel']['steps']))
         self.assertIn('MIPAD2_EFI_SIGNING_KEY=/run/preview-signing/preview.key', build['run'])
         self.assertIn('target=/run/preview-signing,readonly', build['run'])
@@ -276,6 +284,10 @@ class ArtifactTests(unittest.TestCase):
         self.assertNotIn('if',verify)  # cached archives are revalidated too
         upload=next(x for x in jobs['kernel']['steps'] if x.get('name')=='Upload kernel package for DNX job')
         self.assertIn('kernel-output/kernel-artifact.json',upload['with']['path'])
+        self.assertIn('kernel-output/kernel-sdk-pins.txt',upload['with']['path'])
+        final_gate=next(x for x in steps if x.get('name')=='Verify boot image layout')
+        self.assertIn('test "$(cat "$doc/source-commit")" = "$KERNEL_SOURCE_SHA"', final_gate['run'])
+        self.assertIn('test "$(cat "$doc/kernel-release")" = "$KERNEL_RELEASE_PIN"', final_gate['run'])
 
     def prepare_shell(self):
         self.record();scripts=self.root/'scripts';scripts.mkdir();out=self.root/'kernel-output';out.mkdir()
