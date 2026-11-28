@@ -53,3 +53,23 @@ candidate and later sleep changes are intentionally not in this source pin.
 - A successful build and read-only image inspection do not prove that this
   image has booted on real hardware. Keep the existing verified LPAT31
   default and recovery entries during separate device qualification.
+
+## Verified input and kernel outputs
+
+- [R32 build 46117291288](https://github.com/E7G/xiaomi-latte-flash_tools/actions/runs/46117291288)
+  produced the native ALPM kernel package with SHA-256
+  `d7e2791f5e1d5c449213ecbe4ebd5629da4181c45e0cfddcc908b3024da40b47`.
+  An independent Arch package query and payload/manifest check passed.
+  It contains 37 compressed modules; all 19 explicitly checked board
+  configuration options match the previously booted qualification build.
+  The Arch build uses Clang/LLD 23.1.5, not the Ubuntu 18.1.3 toolchain
+  of the earlier physical qualification. The R32 binary itself has
+  not been booted on the tablet.
+- [Windows input run 46119224717](https://github.com/E7G/xiaomi-latte-flash_tools/actions/runs/46119224717)
+  passed four fetch/cache and 35 kernel-handoff fixture tests. It fetched
+  Google's versioned 37.0.3 archive, verified the SHA-256 against the
+  historical successful R4 receipt, and checked the ZIP and revision
+  without executing Fastboot.
+- The R32 kernel was built before the new Fastboot gate was committed.
+  The full image run and the Fastboot-input qualification are separate
+  receipts, not a claim that the original image run used the new gate.
