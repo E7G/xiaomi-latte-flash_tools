@@ -94,3 +94,30 @@ root UUID, subvolume and initramfs are retained. The virtual board is
 not identified as Mi Pad 2, the installer is masked, the VM has no
 eMMC and no host disk is attached. This distinguishes actual image
 firmware-to-userspace boot from the narrower package smoke test.
+
+## Completed USB/DNX publication and virtual userspace boot
+
+[Full build 46117291288](https://github.com/E7G/xiaomi-latte-flash_tools/actions/runs/46117291288)
+published the R32 kernel package, USB image, DNX preview and provenance
+receipt. The original image used the same Platform-Tools archive bytes
+now pinned by the separate input gate. Its USB XZ SHA-256 is
+`13fb799feb7e7ea1827511a71c8b088a6514b592463c339543145433169d9c3a`.
+
+[USB VM run 46121085850](https://github.com/E7G/xiaomi-latte-flash_tools/actions/runs/46121085850)
+verified that exact compressed artifact, preserved the EFI binary and
+the original kernel/initramfs and Btrfs root selection, and booted its
+diagnostic copy through OVMF/GRUB into the R32 kernel and `mipad2 login:`.
+The preview installer was masked and there was no guest eMMC, live disk
+or network. This is a rootfs boot result, not a flash/install, GNOME
+session, user-data restore or physical Mi Pad 2 boot result. These
+products remain labeled not for production.
+
+The actual rootfs uses GNOME Shell 51.1 and stock Snapshot 51.0. The
+producer log directly reports skipping the compact on-screen keyboard
+patch because the old helper supports only GNOME Shell 50.x. Merely
+finding the helper and Pacman hook in the image does not qualify the
+compact keyboard on 51.1. The official signed Arch 51.1 resources still
+contain the four-row default/shift layout and the three keyboard theme
+files, so a version-specific resource test is available for the next
+compatibility change. Neither this gap nor the separate native-AE
+application was resolved by reaching the console login prompt.
