@@ -140,3 +140,15 @@ current package handoff, but avoids rebuilding the VM-qualified R32
 kernel. It requires that the old artifact is still retained. Leave the
 option off to rebuild from the pinned source and SDK after it expires.
 Neither choice modifies the physically installed LPAT31.
+
+[Stock-resource test 46121998421](https://github.com/E7G/xiaomi-latte-flash_tools/actions/runs/46121998421)
+passed on the official Arch 51.1 assets, both normally and under optimized
+Python. The exact two layouts and three theme CSS assets changed; all
+other resource paths and bytes matched stock. Widths and offsets scale
+without changing key labels or actions. The test also covers read-only
+verification, idempotent reapplication, wrong stock digest, unknown
+versions and rollback after simulated failure of the second write.
+[Image run 46122185819](https://github.com/E7G/xiaomi-latte-flash_tools/actions/runs/46122185819)
+passed the immutable R32 package handoff with compilation skipped. Its
+rootfs/USB/DNX rebuild is a separate in-progress qualification. No
+physical device configuration was changed.
