@@ -1,14 +1,28 @@
 # Rebuild the Mi Pad 2 7.2 snapshots from GitHub
 
-There are two separate build targets. Do not substitute the image kernel for the
+Use the build target for each component. Do not substitute an image kernel for the
 kernel installed during the physical LPAT31 validation.
 
 | Target | Source and behavior |
 | --- | --- |
 | LPAT31 kernel bundle | linux_latte source `3f4956789e34da213332510246d565920a23578c`, the original resolved configuration, LLVM 18 and the original list of 37 modules. The workflow checks the source, exact release, configuration, module inventory and signatures. |
 | R4 USB and DNX preview | linux_latte source `dc91bb020245527cab80bae5cfc64c2b8079c9b2` built from source as `7.2.15-mipad2-integrated-r4`. This Flash branch preserves the seven reviewed changes beginning with combined commit `36783252f2837ea183e70caf61e142c58d08e6e9`. It uses the fresh-image GNOME profile, not a dump of any physical tablet. |
+| 7.2.15 qualified-source USB and DNX preview | [R32 rebuild and limitations](../kernel/QUALIFIED_SOURCE_PREVIEW_7_2.md). It rebuilds the source physically booted as the combined qualification kernel, not the exact installed LPAT31 image or per-user tablet state. |
 
-Run from any directory with an authenticated GitHub CLI:
+For the newer qualified-source image preview rather than the historical R4
+run, use:
+
+```bash
+gh workflow run build-dnx.yml -R E7G/xiaomi-latte-flash_tools \
+  --ref codex/mipad2-72-qualified-image-preview \
+  -f kernel_commit=603f99209cba3fc41e697890f980f68873f94c52
+```
+
+Artifacts from this independent preview are not a physical device dump,
+flash approval, or a replacement for LPAT31. The branch also retains the
+separate verified Denial and native-AE Snapshot rebuild paths below.
+
+For LPAT31 and the historical R4 preview, run from any directory with an authenticated GitHub CLI:
 
 ```bash
 gh workflow run mipad2-72-daily.yml -R E7G/linux_latte \
