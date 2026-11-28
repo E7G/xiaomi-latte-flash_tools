@@ -149,15 +149,18 @@ without changing key labels or actions. The test also covers read-only
 verification, idempotent reapplication, wrong stock digest, unknown
 versions and rollback after simulated failure of the second write.
 [Image run 46122185819](https://github.com/E7G/xiaomi-latte-flash_tools/actions/runs/46122185819)
-passed the immutable R32 package handoff with compilation skipped. Its
-rootfs/USB/DNX rebuild is a separate in-progress qualification. No
-physical device configuration was changed.
+passed the immutable R32 package handoff with compilation skipped and
+completed its USB and DNX preview outputs. Its read-only check of the
+actual rootfs reported `Mi Pad 2 compact GNOME OSK verified`. The receipt
+confirms GNOME Shell 51.1, unchanged R32 package bytes and pinned Windows
+Platform-Tools 37.0.3.
 
-The rebuilt image run's read-only chroot verification passed after mounting
-its actual rootfs: `Mi Pad 2 compact GNOME OSK verified`. The receipt confirms
-GNOME Shell 51.1, the unchanged R32 package bytes and pinned Windows
-Platform-Tools 37.0.3. The new USB XZ SHA-256 is
+[Independent USB boot 46123505620](https://github.com/E7G/xiaomi-latte-flash_tools/actions/runs/46123505620)
+verified the USB XZ SHA-256
 `c6f06a54c2d3482de4b671f37e64eb5a41648addb5b299586410f0332ddc5c88`.
-Its independent EFI-to-console boot uses that digest; the previous
-USB artifact has separate historical boot evidence. Installed resources
-are verified, but graphical touch interaction is not yet qualified.
+The receipt contains the EFI loader hash, GRUB marker, R32 kernel version
+and `mipad2 login:` with exit status 0. Only the disposable VM copy used
+serial and multi-user boot arguments; the USB installer was masked and
+QEMU had no network or real eMMC. The previous USB artifact retains its
+separate historical evidence. The live tablet was not modified; graphical
+touch interaction remains unqualified.
