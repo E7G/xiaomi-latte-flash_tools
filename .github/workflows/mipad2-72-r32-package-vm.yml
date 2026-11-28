@@ -1,0 +1,66 @@
+name: Boot exact Mi Pad 2 R32 package in isolated UEFI
+
+on:
+  push:
+    branches: [codex/mipad2-72-qualified-image-preview]
+    paths:
+      - '.github/workflows/mipad2-72-r32-package-vm.yml'
+      - 'scripts/boot_r32_package_vm.sh'
+      - 'scripts/prepare_r32_package_vm.py'
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: read
+
+env:
+  PACKAGE_RUN: '46117291288'
+  PACKAGE_WORKFLOW_COMMIT: 12917a10afa37dbb9e041f7d8316cf008a4f15e5
+  PACKAGE_SOURCE: 603f99209cba3fc41e697890f980f68873f94c52
+  PACKAGE_SHA256: d7e2791f5e1d5c449213ecbe4ebd5629da4181c45e0cfddcc908b3024da40b47
+
+jobs:
+  uefi:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Verify the exact completed package producer
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$PACKAGE_RUN" |
+            jq -e --arg sha "$PACKAGE_WORKFLOW_COMMIT" '
+              .head_sha == $sha and .path == ".github/workflows/build-dnx.yml"'
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$PACKAGE_RUN/jobs" |
+            jq -e '[.jobs[] | select(.name == "kernel" and .status == "completed" and .conclusion == "success")] | length == 1'
+      - uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ github.token }}
+          run-id: ${{ env.PACKAGE_RUN }}
+          name: xiaomi-latte-cachyos-kernel
+          path: ${{ runner.temp }}/r32-input
+      - name: Install isolated VM tools
+        run: |
+          apt_sources=(-o Dir::Etc::sourcelist=/etc/apt/sources.list.d/ubuntu.sources -o Dir::Etc::sourceparts=-)
+          sudo apt-get "${apt_sources[@]}" update
+          sudo apt-get "${apt_sources[@]}" install -y --no-install-recommends \
+            qemu-system-x86 ovmf grub-efi-amd64-bin grub-common mtools dosfstools gdisk cpio busybox-static kmod zstd
+      - name: Boot the package kernel and check module enforcement
+        run: |
+          mkdir "$RUNNER_TEMP/r32-proof"
+          bash scripts/boot_r32_package_vm.sh "$RUNNER_TEMP/r32-input/kernel-artifact.json" \
+            "$PACKAGE_SOURCE" "$PACKAGE_SHA256" "$RUNNER_TEMP/r32-proof"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: mipad2-7215-r32-package-vm-receipt
+          path: |
+            ${{ runner.temp }}/r32-proof/*.txt
+            ${{ runner.temp }}/r32-proof/*.log
+            ${{ runner.temp }}/r32-proof/exit-status
+          if-no-files-found: warn
+          retention-days: 30
