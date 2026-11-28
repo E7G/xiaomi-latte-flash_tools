@@ -288,9 +288,17 @@ class ArtifactTests(unittest.TestCase):
         upload=next(x for x in jobs['kernel']['steps'] if x.get('name')=='Upload kernel package for DNX job')
         self.assertIn('kernel-output/kernel-artifact.json',upload['with']['path'])
         self.assertIn('kernel-output/kernel-sdk-pins.txt',upload['with']['path'])
+        old=next(x for x in jobs['kernel']['steps'] if x.get('name')=='Validate the exact retained R32 producer')
+        self.assertEqual(old['if'],'inputs.reuse_verified_r32_kernel')
+        self.assertIn('.head_sha == $sha',old['run'])
+        self.assertEqual(workflow['env']['R32_REUSE_RUN'],'46117291288')
+        self.assertEqual(workflow['env']['R32_REUSE_PACKAGE_SHA256'],
+                         'd7e2791f5e1d5c449213ecbe4ebd5629da4181c45e0cfddcc908b3024da40b47')
+        self.assertIn('artifact_sha="$R32_REUSE_PACKAGE_SHA256"',verify['run'])
         final_gate=next(x for x in steps if x.get('name')=='Verify boot image layout')
         self.assertIn('test "$(cat "$doc/source-commit")" = "$KERNEL_SOURCE_SHA"', final_gate['run'])
         self.assertIn('test "$(cat "$doc/kernel-release")" = "$KERNEL_RELEASE_PIN"', final_gate['run'])
+        self.assertIn('mipad2-gnome-osk-patch --verify', final_gate['run'])
 
     def prepare_shell(self):
         self.record();scripts=self.root/'scripts';scripts.mkdir();out=self.root/'kernel-output';out.mkdir()

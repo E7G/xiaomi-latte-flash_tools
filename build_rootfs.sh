@@ -465,8 +465,8 @@ EOF
 	run $enable irqbalance
 	run $enable NetworkManager
 	if [[ $desktop_type == 'gnome' ]];then
-		# Native GNOME 50 OSK tuned for the tablet: compact 4-row extended
-		# layout, full-width keys and tighter candidate spacing.
+		# Native OSK on the qualified GNOME versions: compact 4-row
+		# extended layout, full-width keys and tighter candidate spacing.
 		install -Dm0755 "$device_file/mipad2-gnome-osk-patch" \
 			"$mount_dir/usr/local/sbin/mipad2-gnome-osk-patch"
 		install -Dm0644 "$device_file/95-mipad2-gnome-osk.hook" \

@@ -9,8 +9,13 @@ on:
         required: true
         type: string
         default: 603f99209cba3fc41e697890f980f68873f94c52
+      reuse_verified_r32_kernel:
+        description: 'Reuse the exact VM-qualified R32 package for userspace-only changes'
+        type: boolean
+        default: false
 
 permissions:
+  actions: read
   contents: read
 
 concurrency:
@@ -28,6 +33,9 @@ env:
   ARCH_KERNEL_ARCHIVE: '2026/11/25'
   EXPECTED_KERNEL_FAMILY: '7.2'
   ROOTFS_SIZE: 8G
+  R32_REUSE_RUN: '46117291288'
+  R32_REUSE_WORKFLOW_SHA: 12917a10afa37dbb9e041f7d8316cf008a4f15e5
+  R32_REUSE_PACKAGE_SHA256: d7e2791f5e1d5c449213ecbe4ebd5629da4181c45e0cfddcc908b3024da40b47
 
 jobs:
   kernel:
@@ -77,6 +85,7 @@ jobs:
             python3 -m unittest discover -s tests -v
 
       - name: Build optimized linux_latte package with the pinned Arch SDK
+        if: ${{ !inputs.reuse_verified_r32_kernel }}
         env:
           KERNEL_COMMIT: ${{ steps.kernel-source.outputs.commit }}
           SOURCE_DATE_EPOCH: ${{ steps.kernel-source.outputs.source_date_epoch }}
@@ -95,13 +104,37 @@ jobs:
               printf "image=%s\narchive=%s\n" "$ARCH_BUILD_IMAGE" "$ARCH_KERNEL_ARCHIVE" > kernel-output/kernel-sdk-pins.txt
             '
 
+      - name: Validate the exact retained R32 producer
+        if: inputs.reuse_verified_r32_kernel
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$R32_REUSE_RUN" |
+            jq -e --arg sha "$R32_REUSE_WORKFLOW_SHA" '
+              .head_sha == $sha and .path == ".github/workflows/build-dnx.yml" and
+              .status == "completed" and .conclusion == "success"'
+
+      - uses: actions/download-artifact@v4
+        if: inputs.reuse_verified_r32_kernel
+        with:
+          github-token: ${{ github.token }}
+          run-id: ${{ env.R32_REUSE_RUN }}
+          name: xiaomi-latte-cachyos-kernel
+          path: kernel-output
+
       - name: Verify kernel package
         id: kernel-artifact
         env:
           EXPECTED_KERNEL_SOURCE_COMMIT: ${{ steps.kernel-source.outputs.commit }}
+          REUSE_VERIFIED_R32_KERNEL: ${{ inputs.reuse_verified_r32_kernel }}
         run: |
           command -v zstd >/dev/null || { sudo apt-get update && sudo apt-get install -y zstd; }
           artifact_sha="$(python3 -c 'import json; print(json.load(open("kernel-output/kernel-artifact.json"))["sha256"])')"
+          if [[ "$REUSE_VERIFIED_R32_KERNEL" == true ]]; then
+            [[ "$artifact_sha" == "$R32_REUSE_PACKAGE_SHA256" ]] || { echo 'Retained R32 digest does not match the VM-qualified package' >&2; exit 1; }
+            artifact_sha="$R32_REUSE_PACKAGE_SHA256"
+          fi
           python3 scripts/resolve_kernel_artifact.py verify \
             --manifest kernel-output/kernel-artifact.json \
             --expected-source-commit "$EXPECTED_KERNEL_SOURCE_COMMIT" \
@@ -365,6 +398,7 @@ jobs:
           test -x "$rootfs/usr/lib/rtkit-daemon"
           test -x "$rootfs/usr/local/sbin/mipad2-gnome-osk-patch"
           test -s "$rootfs/etc/pacman.d/hooks/95-mipad2-gnome-osk.hook"
+          sudo chroot "$rootfs" /usr/local/sbin/mipad2-gnome-osk-patch --verify | tee "$RUNNER_TEMP/replay-receipt/osk-verification.txt"
           test -s "$rootfs/etc/brave/policies/managed/lean-browser.json"
           grep -qx 'SigLevel = Required DatabaseOptional' "$rootfs/etc/pacman.conf"
           ! grep -qx 'SigLevel = Optional TrustAll' "$rootfs/etc/pacman.conf"

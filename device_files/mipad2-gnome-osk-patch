@@ -1,148 +1,30 @@
 #!/usr/bin/env python3
-import gi, json, os, shutil, subprocess, tempfile
-from pathlib import Path
-
-gi.require_version("Gio", "2.0")
-from gi.repository import Gio
+"""Reapply the Mi Pad 2 compact GNOME keyboard from a versioned stock backup."""
+import argparse
+import fcntl
+import hashlib
+import json
+import math
+import os
+from pathlib import Path, PurePosixPath
+import re
+import subprocess
+import tempfile
+import xml.etree.ElementTree as ET
 
 SHELL_DIR = Path("/usr/share/gnome-shell")
-LAYOUT_RES = SHELL_DIR / "gnome-shell-osk-layouts.gresource"
-THEME_RES = SHELL_DIR / "gnome-shell-theme.gresource"
 BACKUPS = Path("/var/backups/mipad2-osk")
-BACKUPS.mkdir(parents=True, exist_ok=True)
-
-def sh(*args):
-    return subprocess.check_output(args, text=True).strip()
-
-shell_version = sh("gnome-shell", "--version")
-if not shell_version.startswith("GNOME Shell 50."):
-    print(f"Mi Pad 2 OSK patch skipped: unsupported {shell_version}")
-    raise SystemExit(0)
-
-pkgver = sh("pacman", "-Q", "gnome-shell").split(maxsplit=1)[1].replace("/", "_")
-
-def backup_path(res: Path):
-    return BACKUPS / f"{res.name}.{pkgver}.stock"
-
-def ensure_backup(res: Path):
-    b = backup_path(res)
-    if not b.exists():
-        shutil.copy2(res, b)
-    return b
-
-def walk_resource(res, path="/"):
-    out = []
-    try:
-        children = res.enumerate_children(path, Gio.ResourceLookupFlags.NONE)
-    except Exception:
-        return out
-    for child in children:
-        full = path + child
-        if child.endswith("/"):
-            out.extend(walk_resource(res, full))
-        else:
-            out.append(full)
-    return out
-
-def blob(res, path):
-    return bytes(res.lookup_data(path, Gio.ResourceLookupFlags.NONE).get_data())
-
-def compile_resource(files, prefix, target):
-    with tempfile.TemporaryDirectory(prefix="mipad2-gres-") as td:
-        root = Path(td)
-        src = root / "src"
-        src.mkdir()
-        for rel, data in files.items():
-            p = src / rel
-            p.parent.mkdir(parents=True, exist_ok=True)
-            p.write_bytes(data)
-
-        xml = root / "resource.xml"
-        names = sorted(files)
-        xml.write_text(
-            '<?xml version="1.0" encoding="UTF-8"?>\n'
-            '<gresources>\n'
-            f'  <gresource prefix="{prefix}">\n' +
-            ''.join(f'    <file compressed="true">{n}</file>\n' for n in names) +
-            '  </gresource>\n'
-            '</gresources>\n',
-            encoding="utf-8",
-        )
-        out = root / "out.gresource"
-        subprocess.check_call([
-            "glib-compile-resources",
-            "--target", str(out),
-            "--sourcedir", str(src),
-            str(xml),
-        ])
-        shutil.copy2(out, target)
-
-def replace_atomic(src, dst):
-    new = dst.with_suffix(dst.suffix + ".new")
-    shutil.copy2(src, new)
-    os.chmod(new, 0o644)
-    os.replace(new, dst)
-
-# ---- Layout ----
-# Always rebuild from the package-stock backup, so repeated runs do not
-# compound width multipliers.
-layout_base = ensure_backup(LAYOUT_RES)
-res = Gio.Resource.load(str(layout_base))
-prefix = "/org/gnome/shell/osk-layouts/"
-files = {
-    p[len(prefix):]: blob(res, p)
-    for p in walk_resource(res)
-    if p.startswith(prefix)
+LAYOUT = "gnome-shell-osk-layouts.gresource"
+THEME = "gnome-shell-theme.gresource"
+LAYOUT_PREFIX = "/org/gnome/shell/osk-layouts/"
+THEME_PREFIX = "/org/gnome/shell/theme/"
+CSS_NAMES = ("gnome-shell-dark.css", "gnome-shell-light.css", "gnome-shell-high-contrast.css")
+# Arch gnome-shell 1:51.1-1, verified against the official package signature.
+ARCH_51_1 = {
+    LAYOUT: "089e6a9031709169db4029b0fcbf51d61475f9aa5cf6fbd10357d0de675204bc",
+    THEME: "b25f0023c8793144764fd80d6c3a08f69794c3387621292f84885c175a626f1e",
 }
-
-ext = json.loads(files["us-extended.json"].decode("utf-8"))
-
-# Keep GNOME's native 4-row extended layout, but double all logical widths.
-# Relative key proportions stay identical while AspectContainer sees a much
-# wider layout and therefore stops shrinking it into the center of the tablet.
-for level in ext.get("levels", []):
-    rows = level.get("rows", [])
-    if level.get("level") in ("default", "shift") and len(rows) != 4:
-        raise RuntimeError(f"Unexpected stock row count in {level.get('level')}: {len(rows)}")
-    for row in rows:
-        for key in row:
-            key["width"] = (key.get("width", 1)) * 2
-            if "leftOffset" in key:
-                key["leftOffset"] *= 2
-
-us = json.loads(json.dumps(ext))
-us["name"] = "English United States (Mi Pad 2 compact touch)"
-ext["name"] = "English United States Extended (Mi Pad 2 compact touch)"
-files["us.json"] = (json.dumps(us, ensure_ascii=False, indent=2) + "\n").encode()
-files["us-extended.json"] = (json.dumps(ext, ensure_ascii=False, indent=2) + "\n").encode()
-
-with tempfile.NamedTemporaryFile(delete=False) as tf:
-    tmp = Path(tf.name)
-try:
-    compile_resource(files, prefix.rstrip("/"), tmp)
-    test = Gio.Resource.load(str(tmp))
-    for name in ("us.json", "us-extended.json"):
-        obj = json.loads(blob(test, prefix + name).decode())
-        levels = {x["level"]: x for x in obj["levels"]}
-        assert len(levels["default"]["rows"]) == 4
-        assert len(levels["shift"]["rows"]) == 4
-        # Ensure default-width keys were actually widened.
-        assert levels["default"]["rows"][0][1]["width"] == 2
-    replace_atomic(tmp, LAYOUT_RES)
-finally:
-    tmp.unlink(missing_ok=True)
-
-# ---- Theme ----
-theme_base = ensure_backup(THEME_RES)
-res = Gio.Resource.load(str(theme_base))
-prefix = "/org/gnome/shell/theme/"
-theme_files = {
-    p[len(prefix):]: blob(res, p)
-    for p in walk_resource(res)
-    if p.startswith(prefix)
-}
-
-css_patch = """
+CSS_PATCH = b"""
 
 /* Mi Pad 2 compact native OSK */
 #keyboard .key-container {
@@ -161,27 +43,210 @@ css_patch = """
 }
 """
 
-for name in (
-    "gnome-shell-dark.css",
-    "gnome-shell-light.css",
-    "gnome-shell-high-contrast.css",
-):
-    css = theme_files[name].decode("utf-8")
-    theme_files[name] = (css + css_patch).encode()
 
-with tempfile.NamedTemporaryFile(delete=False) as tf:
-    tmp = Path(tf.name)
-try:
-    compile_resource(theme_files, prefix.rstrip("/"), tmp)
-    test = Gio.Resource.load(str(tmp))
-    css = blob(test, prefix + "gnome-shell-dark.css").decode()
-    assert "Mi Pad 2 compact native OSK" in css
-    replace_atomic(tmp, THEME_RES)
-finally:
-    tmp.unlink(missing_ok=True)
+def profile(shell_version, pkgver):
+    if not re.fullmatch(r"[A-Za-z0-9:._+-]+", pkgver):
+        raise ValueError("invalid gnome-shell package version")
+    if shell_version.startswith("GNOME Shell 50."):
+        return {}
+    if shell_version == "GNOME Shell 51.1" and pkgver == "1:51.1-1":
+        return ARCH_51_1
+    return None
 
-print("Mi Pad 2 compact GNOME OSK patch applied")
-print("rows: 4")
-print("logical key widths: 2x (same proportions, wider fill)")
-print("key spacing/padding: 2px")
-print("suggestion padding: 4px")
+
+def read_resources(path):
+    import gi
+    gi.require_version("Gio", "2.0")
+    from gi.repository import Gio
+    resource = Gio.Resource.load(str(path))
+    files = {}
+
+    def walk(prefix):
+        for child in resource.enumerate_children(prefix, Gio.ResourceLookupFlags.NONE):
+            key = prefix + child
+            if child.endswith("/"):
+                walk(key)
+            else:
+                data = resource.lookup_data(key, Gio.ResourceLookupFlags.NONE)
+                files[key] = bytes(data.get_data())
+
+    walk("/")
+    if not files:
+        raise ValueError(f"empty GNOME archive: {path.name}")
+    return files
+
+
+def plan_layout(files):
+    if LAYOUT_PREFIX + "us.json" not in files:
+        raise ValueError("stock US layout is missing")
+    ext = json.loads(files[LAYOUT_PREFIX + "us-extended.json"])
+    if "Mi Pad 2 compact touch" in ext["name"]:
+        raise ValueError("missing stock backup for an already patched layout")
+    names = set()
+    for rowset in ext["levels"]:
+        level = rowset["level"]
+        rows = rowset["rows"]
+        if level in names or not isinstance(rows, list) or not rows:
+            raise ValueError("unexpected extended layout levels")
+        names.add(level)
+        if level in ("default", "shift") and len(rows) != 4:
+            raise ValueError(f"unexpected stock row count in {level}")
+        for row in rows:
+            if not isinstance(row, list) or not row:
+                raise ValueError("empty extended layout row")
+            for key in row:
+                width = key.get("width", 1)
+                if type(width) not in (int, float) or not math.isfinite(width) or width <= 0:
+                    raise ValueError("invalid stock key width")
+                key["width"] = width * 2
+                if "leftOffset" in key:
+                    offset = key["leftOffset"]
+                    if type(offset) not in (int, float) or not math.isfinite(offset) or offset < 0:
+                        raise ValueError("invalid stock key offset")
+                    key["leftOffset"] = offset * 2
+    if not {"default", "shift"} <= names:
+        raise ValueError("missing extended layout levels")
+
+    def serialize(name):
+        ext["name"] = f"{name} (Mi Pad 2 compact touch)"
+        return (json.dumps(ext, ensure_ascii=False, indent=2) + "\n").encode()
+
+    return {**files,
+            LAYOUT_PREFIX + "us.json": serialize("English United States"),
+            LAYOUT_PREFIX + "us-extended.json": serialize("English United States Extended")}
+
+
+def plan_theme(files):
+    result = files.copy()
+    for name in CSS_NAMES:
+        key = THEME_PREFIX + name
+        css = files[key]
+        if CSS_PATCH in css or not all(x in css for x in (b"#keyboard", b".key-container", b".word-suggestions")):
+            raise ValueError(f"unexpected stock theme in {name}")
+        result[key] = css + CSS_PATCH
+    return result
+
+
+def compile_resource(files, scratch):
+    src = scratch / "src"
+    src.mkdir(parents=True)
+    xml = ET.Element("gresources")
+    node = ET.SubElement(xml, "gresource", prefix="/")
+    for name, data in sorted(files.items()):
+        p = PurePosixPath(name)
+        if not p.is_absolute() or p.as_posix() != name or ".." in p.parts:
+            raise ValueError(f"unexpected GResource entry: {name}")
+        rel = Path(*p.parts[1:])
+        target = src / rel
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(data)
+        ET.SubElement(node, "file", compressed="true").text = rel.as_posix()
+    manifest = scratch / "resource.xml"
+    ET.ElementTree(xml).write(manifest, encoding="UTF-8", xml_declaration=True)
+    output = scratch / "output.gresource"
+    subprocess.run(["glib-compile-resources", "--target", str(output), "--sourcedir", str(src),
+                    str(manifest)], check=True)
+    if read_resources(output) != files:
+        raise ValueError("generated archive differs from the complete resource plan")
+    return output.read_bytes()
+
+
+def regular(path):
+    if not path.is_file() or path.is_symlink():
+        raise ValueError(f"expected regular resource: {path}")
+    return path
+
+
+def stock_plan(shell, backups, pkgver, pins):
+    results = []
+    for name, transform in ((LAYOUT, plan_layout), (THEME, plan_theme)):
+        live = regular(shell / name)
+        backup = backups / f"{name}.{pkgver}.stock"
+        base = regular(backup) if backup.exists() or backup.is_symlink() else live
+        original = base.read_bytes()
+        if name in pins and hashlib.sha256(original).hexdigest() != pins[name]:
+            raise ValueError(f"stock resource digest mismatch: {name}")
+        files = read_resources(base)
+        plan = transform(files)
+        results.append((live, backup, original, files, plan))
+    return results
+
+
+def atomic_file(path, data):
+    with tempfile.NamedTemporaryFile(dir=path.parent, prefix=f".{path.name}.", delete=False) as f:
+        scratch = Path(f.name)
+        try:
+            f.write(data)
+            f.flush()
+            os.fchmod(f.fileno(), 0o644)
+            os.fsync(f.fileno())
+        except BaseException:
+            scratch.unlink(missing_ok=True)
+            raise
+    try:
+        os.replace(scratch, path)
+    finally:
+        scratch.unlink(missing_ok=True)
+
+
+def apply(shell, backups, shell_version, pkgver, verify_only=False):
+    pins = profile(shell_version, pkgver)
+    if pins is None:
+        if verify_only:
+            raise ValueError(f"OSK not qualified for {shell_version} ({pkgver})")
+        print(f"Mi Pad 2 OSK patch skipped: unsupported {shell_version} ({pkgver})")
+        return False
+    if verify_only:
+        for live, backup, _, _, plan in stock_plan(shell, backups, pkgver, pins):
+            if not backup.is_file() or read_resources(live) != plan:
+                raise ValueError(f"compact OSK not applied: {live.name}")
+        print("Mi Pad 2 compact GNOME OSK verified")
+        return True
+
+    if backups.is_symlink():
+        raise ValueError("unsafe stock backup directory")
+    backups.mkdir(mode=0o700, parents=True, exist_ok=True)
+    flags = os.O_CREAT | os.O_WRONLY | os.O_NOFOLLOW
+    with os.fdopen(os.open(backups / ".lock", flags, 0o600), "w") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        plans = stock_plan(shell, backups, pkgver, pins)
+        # Validate and compile both complete archives before either live swap.
+        with tempfile.TemporaryDirectory(prefix="mipad2-osk-") as name:
+            pending = []
+            for live, backup, original, stock, plan in plans:
+                installed = read_resources(live)
+                if installed == plan:
+                    continue
+                if installed != stock:
+                    raise ValueError(f"refusing to replace locally modified resource: {live.name}")
+                new = compile_resource(plan, Path(name) / live.name)
+                pending.append((live, backup, original, live.read_bytes(), new))
+        swapped = []
+        try:
+            for live, backup, original, old, new in pending:
+                if not backup.exists():
+                    atomic_file(backup, original)
+                atomic_file(live, new)
+                swapped.append((live, old))
+        except BaseException:
+            for live, old in reversed(swapped):
+                atomic_file(live, old)
+            raise
+    print("Mi Pad 2 compact GNOME OSK applied (4 rows, 2x logical key widths)")
+    return True
+
+
+def main():
+    p = argparse.ArgumentParser(description=__doc__)
+    p.add_argument("--verify", action="store_true", help="check installed resources without writing")
+    args = p.parse_args()
+    try:
+        version = subprocess.check_output(["gnome-shell", "--version"], text=True).strip()
+        _, pkgver = subprocess.check_output(["pacman", "-Q", "gnome-shell"], text=True).strip().split(maxsplit=1)
+        apply(SHELL_DIR, BACKUPS, version, pkgver, args.verify)
+    except (OSError, ValueError, KeyError, subprocess.CalledProcessError) as exc:
+        p.exit(1, f"Mi Pad 2 OSK: {exc}\n")
+
+
+if __name__ == "__main__":
+    main()

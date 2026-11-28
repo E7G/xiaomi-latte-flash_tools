@@ -1,0 +1,43 @@
+name: Verify GNOME 51 compact OSK with the real Arch package
+
+on:
+  push:
+    branches: [codex/mipad2-72-qualified-image-preview]
+    paths:
+      - 'device_files/mipad2-gnome-osk-patch'
+      - 'tests/test_mipad2_gnome_osk.py'
+      - '.github/workflows/mipad2-72-gnome-osk.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  gresource:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Install the isolated GResource test tools
+        run: |
+          apt_sources=(-o Dir::Etc::sourcelist=/etc/apt/sources.list.d/ubuntu.sources -o Dir::Etc::sourceparts=-)
+          sudo apt-get "${apt_sources[@]}" update
+          sudo apt-get "${apt_sources[@]}" install -y python3-gi libglib2.0-dev-bin zstd
+      - name: Fetch the exact stock package and exercise the helper on copies
+        run: |
+          set -euo pipefail
+          fixture="$RUNNER_TEMP/arch-gnome51-stock"
+          mkdir "$fixture"
+          zip="$fixture/gnome-shell.pkg.tar.zst"
+          # Locally verified Arch signer 83BC8889351B5DEBBB68416EB8AC08600F108CDF.
+          curl --disable --fail --silent --show-error --location --proto '=https' --proto-redir '=https' \
+            --connect-timeout 20 --max-time 120 --retry 3 --output "$zip" \
+            'https://archive.archlinux.org/packages/g/gnome-shell/gnome-shell-1%3A51.1-1-x86_64.pkg.tar.zst'
+          printf '%s  %s\n' 'c0e8e344a1543dd576a44ec00b47762921bb30bb510f05d481e667d0e93cc4df' "$zip" | sha256sum -c -
+          tar --zstd -xOf "$zip" .PKGINFO | grep -Fx 'pkgver = 1:51.1-1'
+          for name in gnome-shell-osk-layouts.gresource gnome-shell-theme.gresource; do
+            tar --zstd -xOf "$zip" "usr/share/gnome-shell/$name" > "$fixture/$name"
+          done
+          MIPAD2_GNOME51_STOCK="$fixture" /usr/bin/python3 -B tests/test_mipad2_gnome_osk.py
+          MIPAD2_GNOME51_STOCK="$fixture" /usr/bin/python3 -B -O tests/test_mipad2_gnome_osk.py

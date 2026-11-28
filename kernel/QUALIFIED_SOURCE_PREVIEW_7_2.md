@@ -121,3 +121,22 @@ contain the four-row default/shift layout and the three keyboard theme
 files, so a version-specific resource test is available for the next
 compatibility change. Neither this gap nor the separate native-AE
 application was resolved by reaching the console login prompt.
+
+## GNOME 51.1 userspace follow-up
+
+The new keyboard helper accepts the exact Arch GNOME Shell 51.1 package
+`1:51.1-1` and checks the signed stock-resource digests before modifying
+anything. It preserves the four-row extended input and the old width and
+spacing adjustments without dropping unrelated resources. Other 51.x
+packages are not assumed compatible; the legacy 50.x profile remains.
+The full image workflow now compares the installed resources with the
+complete plan in read-only mode. This supplements, not replaces, a
+real graphical touch-keyboard test.
+
+For a userspace-only rebuild, keep the same `kernel_commit` and pass
+`-f reuse_verified_r32_kernel=true` to the documented DNX workflow.
+This opt-in still verifies the original run, immutable package SHA and
+current package handoff, but avoids rebuilding the VM-qualified R32
+kernel. It requires that the old artifact is still retained. Leave the
+option off to rebuild from the pinned source and SDK after it expires.
+Neither choice modifies the physically installed LPAT31.
