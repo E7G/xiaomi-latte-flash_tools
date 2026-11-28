@@ -186,6 +186,9 @@ jobs:
             --expected-source-commit "$EXPECTED_KERNEL_SOURCE_COMMIT" \
             --expected-sha256 "$EXPECTED_KERNEL_SHA256" --require-format source-ci --require-family "$EXPECTED_KERNEL_FAMILY"
 
+      - name: Download and verify the pinned Windows Platform-Tools
+        run: bash scripts/fetch_windows_platform_tools.sh --fetch work/platform-tools-windows.zip
+
       - name: Prepare NBD devices
         run: |
           sudo modprobe nbd max_part=8
@@ -340,6 +343,7 @@ jobs:
           printf '%s\n' "$GITHUB_SHA" > "$RUNNER_TEMP/replay-receipt/flash-source-commit.txt"
           sudo chroot "$rootfs" pacman -Q | LC_ALL=C sort > "$RUNNER_TEMP/replay-receipt/rootfs-packages.txt"
           sha256sum work/platform-tools-windows.zip > "$RUNNER_TEMP/replay-receipt/platform-tools.sha256"
+          bash scripts/fetch_windows_platform_tools.sh --print-pin > "$RUNNER_TEMP/replay-receipt/platform-tools-pin.txt"
           cp dist/*.img.xz.sha256 "$RUNNER_TEMP/replay-receipt/"
           if [[ "$kernel_release" =~ ^7\.2\.[0-9]+-mipad2- ]]; then
             rule=/usr/lib/udev/rules.d/61-mipad2-navkeys-72.rules

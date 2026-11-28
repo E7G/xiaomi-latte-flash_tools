@@ -19,6 +19,9 @@ proof="$(python3 ./scripts/resolve_kernel_artifact.py verify \
   --expected-sha256 "$EXPECTED_KERNEL_SHA256" --require-format "$KERNEL_ARTIFACT_REQUIRE_FORMAT" "${family_args[@]}")"
 kernel_pkg="$(python3 -c 'import json,sys; print(json.load(sys.stdin)["package"])' <<< "$proof")"
 export KERNEL_PKGBASE="$(python3 -c 'import json,sys; print(json.load(sys.stdin)["pkgbase"])' <<< "$proof")"
+# Qualify Fastboot input before copying the kernel or creating image files.
+platform_archive="${repo_root}/work/platform-tools-windows.zip"
+bash ./scripts/fetch_windows_platform_tools.sh --fetch "$platform_archive"
 install -Dm0644 "${kernel_pkg}" "device_files/$(basename "${kernel_pkg}")"
 install -Dm0644 kernel-output/kernel-artifact.json device_files/kernel-artifact.json
 
@@ -30,9 +33,7 @@ bash ./build_rootfs.sh
 
 stage="${repo_root}/work/dnx-package"
 out="${repo_root}/dist"
-platform_archive="${repo_root}/work/platform-tools-windows.zip"
 platform_unpack="${repo_root}/work/platform-tools-windows"
-platform_url="${PLATFORM_TOOLS_URL:-https://dl.google.com/android/repository/platform-tools-latest-windows.zip}"
 rm -rf "${stage}" "${out}" "${platform_unpack}"
 mkdir -p "${stage}/images" "${stage}/device_files" "${out}"
 
@@ -54,9 +55,8 @@ install -m0644 DNX_flash_all.bat DNX_flash-boot.bat ONE_KEY_FLASH.bat \
   flash-one-click.ps1 "${stage}/"
 install -m0644 README.md "${stage}/README.md"
 
-echo 'Downloading official Android SDK Platform-Tools for Windows'
-curl --fail --location --retry 5 --retry-all-errors \
-  --output "${platform_archive}" "${platform_url}"
+echo 'Unpacking verified Android SDK Platform-Tools for Windows'
+bash ./scripts/fetch_windows_platform_tools.sh --verify "$platform_archive"
 mkdir -p "${platform_unpack}"
 bsdtar -xf "${platform_archive}" -C "${platform_unpack}"
 [[ -f "${platform_unpack}/platform-tools/fastboot.exe" ]] || {

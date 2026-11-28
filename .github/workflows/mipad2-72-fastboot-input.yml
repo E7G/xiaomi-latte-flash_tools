@@ -1,0 +1,40 @@
+name: Verify the Mi Pad 2 7.2 Windows flasher input
+
+on:
+  push:
+    branches: [codex/mipad2-72-qualified-image-preview]
+    paths:
+      - 'scripts/fetch_windows_platform_tools.sh'
+      - 'scripts/build_dnx_package.sh'
+      - '.github/workflows/mipad2-72-fastboot-input.yml'
+      - 'tests/test_windows_platform_tools.py'
+
+permissions:
+  contents: read
+
+jobs:
+  input:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Exercise rejection and cache handling
+        run: |
+          python3 -B tests/test_windows_platform_tools.py
+          apt_sources=(-o Dir::Etc::sourcelist=/etc/apt/sources.list.d/ubuntu.sources -o Dir::Etc::sourceparts=-)
+          sudo apt-get "${apt_sources[@]}" update
+          sudo apt-get "${apt_sources[@]}" install -y python3-yaml unzip zstd
+          sudo env PYTHONPATH="$PWD/scripts:$PWD/tests" python3 -B tests/test_kernel_artifact_handoff.py
+      - name: Verify Google's immutable archive without executing Fastboot
+        run: |
+          set -euo pipefail
+          archive="$RUNNER_TEMP/platform-tools.zip"
+          bash scripts/fetch_windows_platform_tools.sh --fetch "$archive"
+          bash scripts/fetch_windows_platform_tools.sh --verify "$archive"
+          bash scripts/fetch_windows_platform_tools.sh --fetch "$archive"
+          unzip -tqq "$archive"
+          unzip -p "$archive" platform-tools/source.properties | tr -d '\r' | grep -Fx 'Pkg.Revision=37.0.3'
+          unzip -l "$archive" platform-tools/fastboot.exe | grep -F 'platform-tools/fastboot.exe'
+          bash scripts/fetch_windows_platform_tools.sh --print-pin

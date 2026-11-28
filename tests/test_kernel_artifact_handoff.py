@@ -254,9 +254,12 @@ class ArtifactTests(unittest.TestCase):
         self.assertEqual(jobs['dnx']['needs'],'kernel')
         self.assertEqual(jobs['kernel']['outputs']['sha256'],'${{ steps.kernel-artifact.outputs.sha256 }}')
         guard=next(i for i,x in enumerate(steps) if x.get('name')=='Verify downloaded kernel before loading NBD')
+        fastboot=next(i for i,x in enumerate(steps) if x.get('name')=='Download and verify the pinned Windows Platform-Tools')
         nbd=next(i for i,x in enumerate(steps) if x.get('name')=='Prepare NBD devices')
         build=next(x for x in steps if x.get('name')=='Build rootfs and one-click package')
-        self.assertLess(guard,nbd)
+        self.assertLess(guard,fastboot)
+        self.assertLess(fastboot,nbd)
+        self.assertIn('fetch_windows_platform_tools.sh --fetch',steps[fastboot]['run'])
         self.assertEqual(workflow['env']['EXPECTED_KERNEL_FAMILY'],'7.2')
         self.assertIn('--require-family "$EXPECTED_KERNEL_FAMILY"',steps[guard]['run'])
         self.assertIn('-e EXPECTED_KERNEL_FAMILY',build['run'])
@@ -293,10 +296,15 @@ class ArtifactTests(unittest.TestCase):
         self.record();scripts=self.root/'scripts';scripts.mkdir();out=self.root/'kernel-output';out.mkdir()
         for name in ['resolve_kernel_artifact.py','package_integrated_kernel.py','preflight_integrated_kernel_package.py','stage_kernel_support.py','build_dnx_package.sh']:
             shutil.copyfile(REPO/'scripts'/name,scripts/name)
+        # Test only the handoff in this fixture; the fetcher's pin is tested separately.
+        (scripts/'fetch_windows_platform_tools.sh').write_text(
+            'set -eu\ntest "$1" = --fetch\nprintf checked > platform-checked\n'
+            'exit "${MOCK_PLATFORM_EXIT:-0}"\n')
         shutil.copyfile(self.package,out/self.package.name);shutil.copyfile(self.manifest,out/self.manifest.name)
         prefix=(REPO/'build_rootfs.sh').read_text().split('if [[ ! -d /sys/module/nbd ]]; then',1)[0]
         (self.root/'build_rootfs.sh').write_text(prefix+'\nprintf validated > rootfs-validated\nexit 91\n')
         env={k:v for k,v in os.environ.items() if not k.startswith(('KERNEL_','EXPECTED_KERNEL_','CAMERA_CANDIDATE_'))}
+        env.pop('MOCK_PLATFORM_EXIT',None)
         env.update(EXPECTED_KERNEL_SOURCE_COMMIT=self.commit,EXPECTED_KERNEL_SHA256=self.pin,PYTHONDONTWRITEBYTECODE='1')
         return env
 
@@ -312,6 +320,16 @@ class ArtifactTests(unittest.TestCase):
     def test_dnx_fails_before_copy_without_trusted_pin(self):
         env=self.prepare_shell();del env['EXPECTED_KERNEL_SHA256'];result=self.dnx(env)
         self.assertNotEqual(result.returncode,91)
+        self.assertFalse((self.root/'device_files').exists())
+        self.assertFalse((self.root/'rootfs-validated').exists())
+        self.assertFalse((self.root/'platform-checked').exists())
+
+    def test_dnx_fails_before_copy_on_platform_archive_verification_failure(self):
+        env=self.prepare_shell()
+        env['MOCK_PLATFORM_EXIT']='52'
+        result=self.dnx(env)
+        self.assertEqual(result.returncode,52,result.stderr)
+        self.assertTrue((self.root/'platform-checked').exists())
         self.assertFalse((self.root/'device_files').exists())
         self.assertFalse((self.root/'rootfs-validated').exists())
 

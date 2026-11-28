@@ -39,6 +39,12 @@ candidate and later sleep changes are intentionally not in this source pin.
   digest and preview public certificate. Private signing material is not
   published. The independently generated preview key is not that of the
   tablet; no firmware enrollment is requested.
+- The DNX package uses Google's versioned Windows Platform-Tools 37.0.3
+  archive, not the moving `latest` alias. Its SHA-256 matches the historical
+  successful R4 preview receipt. The download/cache is checked before NBD
+  or image generation and checked again before unpacking; the new receipt
+  records the immutable URL, version and digest. No Fastboot command runs
+  during the input check.
 - This is not a claim of byte-identical images. Signatures, image metadata
   and the rootfs's live Arch/third-party packages can differ. The image uses
   the stock Snapshot application with the launch helper; the tablet's
