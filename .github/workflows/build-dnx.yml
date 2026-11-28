@@ -149,7 +149,7 @@ jobs:
           contents="${RUNNER_TEMP}/latte-kernel-package-contents.txt"
           package="$(python3 -c 'import json; print(json.load(open("kernel-artifact.json"))["filename"])')"
           test -n "$package"
-          pkgbase="$(cat pkgbase)"
+          pkgbase="$(jq -er .pkgbase kernel-artifact.json)"
           [[ "$pkgbase" == linux-latte-integrated-7-2 ]]
           [[ "$(basename "$package")" =~ ^${pkgbase}-.+\.r[0-9]{14}\.g[0-9a-f]{12}-1-x86_64\.pkg\.tar\.zst$ ]]
           tar -tf "$package" > "$contents"
