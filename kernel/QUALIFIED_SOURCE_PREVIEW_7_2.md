@@ -73,3 +73,24 @@ candidate and later sleep changes are intentionally not in this source pin.
 - The R32 kernel was built before the new Fastboot gate was committed.
   The full image run and the Fastboot-input qualification are separate
   receipts, not a claim that the original image run used the new gate.
+
+## R32 package boot and remaining USB-image gate
+
+[Package VM run 46120201235](https://github.com/E7G/xiaomi-latte-flash_tools/actions/runs/46120201235)
+booted the exact ALPM package's kernel (SHA-256
+`a23bb6597fc269825ec356d60bc2dca34de95a4cfd08bbb32163ed8d884d010e`)
+through isolated OVMF/GRUB. It reported R32 and the default-off PMC event,
+rejected an EROFS control with only its signature removed, and loaded 11
+original signed modules with enforcement active. The guest had no network,
+production storage or real Mi Pad 2 peripherals; this proves the packaged
+kernel boot, not image boot, Secure Boot enrollment or hardware parity.
+
+After the complete USB artifact is available, invoke
+`scripts/boot_r32_usb_preview_vm.sh IMAGE.img.xz SHA256 EMPTY_OUTPUT_DIR`
+on a Linux validation host with the isolated VM tools. It checks the XZ
+hash, GPT and image size, then instruments only a disposable raw copy's
+GRUB menu for serial output. The original EFI binary, kernel,
+root UUID, subvolume and initramfs are retained. The virtual board is
+not identified as Mi Pad 2, the installer is masked, the VM has no
+eMMC and no host disk is attached. This distinguishes actual image
+firmware-to-userspace boot from the narrower package smoke test.
