@@ -71,6 +71,32 @@ the [qualified focus helper](https://github.com/E7G/xiaomi-latte-flash_tools/blo
 from PR #45. The fixture is not automatically included in the DNX image and
 does not replace the image's default camera target.
 
+### Native-AE cloud artifact against the physical LPAT31 runtime
+
+[Snapshot run 46109195747](https://github.com/E7G/snapshot/actions/runs/46109195747)
+built the same native-AE source. Its archive SHA-256 is
+`7fa71e0b63832ebb7e7439df1265e80df10515889afc8ecb39b303082b6bbede`.
+Its executable SHA-256 is
+`5ea70f161f3cc4b6503030c890c39c64780ab001045072fe2d29c46d3ee718d9`,
+not the installed
+`f16944d2b075af0ad6aa75e465036a5520fb00a74b0180d4bf433968f6a6b3d6`.
+Hashes identify this run, not every future rebuild of the source.
+
+The signed-host connection used private tablet tmpfs to check the exact cloud
+binary without entering the app. The system loader resolved the same 136
+entries for the cloud and installed executables; both were x86-64 with the
+system interpreter and no RPATH/RUNPATH. Relocation checks found no missing
+libraries or undefined symbols on LPAT31 with GStreamer 1.28.7-1.
+The GLib schema XML and GResource were byte-identical to the installed ones;
+the extracted schema passed strict GLib validation.
+
+No Snapshot main, camera stream, or restart was run. The ISP was runtime
+suspended before and after, the temporary files were removed, and the live
+launcher was not changed. This is evidence for the actual userspace ABI and
+resource inputs, not new front/rear image-quality, frame-interval, or
+successful-preview qualification of the cloud executable. The independent
+USB/DNX preview still uses the stock application.
+
 Do not erase signing/trust backups, local hardware-test evidence, rollback
 media, or the tablet's per-user configuration on the assumption that these
 builds recreate them. This procedure only replaces the listed build inputs.
