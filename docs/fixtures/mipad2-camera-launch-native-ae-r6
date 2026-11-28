@@ -1,0 +1,34 @@
+#!/bin/sh
+set -eu
+
+mode=normal
+case "${1:-}" in
+    --autofocus)
+        mode=fast
+        shift
+        ;;
+    --full-autofocus)
+        mode=full
+        shift
+        ;;
+esac
+
+# Refresh the validated factory preset when ready. Missing rear hardware
+# must not delay an interactive front-camera launch indefinitely.
+if command -v sudo >/dev/null 2>&1; then
+    timeout --kill-after=1s 2s sudo -n /usr/local/sbin/mipad2-camera-init-focus --no-wait \
+        >/dev/null 2>&1 || true
+fi
+
+# Autofocus is opt-in from the desktop action so the normal camera launch
+# remains immediate. Never prevent Snapshot from opening if AF cannot run.
+case "$mode" in
+    fast)
+        timeout 10s /usr/local/bin/mipad2-camera-af --fast >/tmp/mipad2-camera-af.log 2>&1 || true
+        ;;
+    full)
+        timeout 30s /usr/local/bin/mipad2-camera-af --full >/tmp/mipad2-camera-af.log 2>&1 || true
+        ;;
+esac
+
+exec /usr/local/lib/mipad2-snapshot-native-ae-r6/bin/snapshot "$@"

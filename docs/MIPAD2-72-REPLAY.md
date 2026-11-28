@@ -47,10 +47,15 @@ gh workflow run mipad2-quicktile-desktop-build.yml -R E7G/linux_latte \
   --ref codex/mipad2-72-denial-replay
 ```
 
-The tablet's Snapshot 15 fps display preview uses the
-[separate Snapshot replay workflow](https://github.com/E7G/snapshot/blob/codex/mipad2-72-snapshot-replay/docs/MIPAD2-72-REPLAY.md).
-It pins the local installation recipe; scaling, extra buffers and direct NV12
-are separate experiments, not active image defaults.
+The tablet's currently active Snapshot executable is **native-AE r6**,
+source `db794b2fe85c72dd77710880bbc45ca3909ace1a`, not the earlier
+15 fps installation candidate. Rebuild it with the
+[Snapshot replay workflow](https://github.com/E7G/snapshot/blob/codex/mipad2-72-snapshot-replay/docs/MIPAD2-72-REPLAY.md).
+The [native-AE launcher fixture](fixtures/mipad2-camera-launch-native-ae-r6)
+records the live launcher after the bounded focus-startup change. It uses
+the [qualified focus helper](https://github.com/E7G/xiaomi-latte-flash_tools/blob/b57ba7ab486dfc251c199463efb6636e22507b28/device_files/mipad2-camera-init-focus)
+from PR #45. The fixture is not automatically included in the DNX image and
+does not replace the image's default camera target.
 
 Do not erase signing/trust backups, local hardware-test evidence, rollback
 media, or the tablet's per-user configuration on the assumption that these
